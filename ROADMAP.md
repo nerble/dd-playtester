@@ -13,19 +13,23 @@ character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 18, 2026
+### Current campaign status: October 19, 2026
 
-Campaign **35**, checkpoint **54677**, keeps Dorrik as the only progression
-pilot. The latest saved character state is segment run **18490** at healer room
-**3054**: level **39 Knight**, **1,310,690 XP**, **18 QP**, and no current
+Campaign **35**, checkpoint **55734**, keeps Dorrik as the only progression
+pilot. The latest completed segment is run **18688**; the saved character state
+is at healer room
+**3054**: level **39 Knight**, **1,312,170 XP**, **18 QP**, and no current
 level-up shortfall. The current DD4 boot remains **Wed Oct 14 09:25:18 2026**.
 
-The latest checkpoint records **314** source candidates, **32** current-band
-candidates, and **24** autonomous-safe candidates, but no executable route on
-this boot. Current protection and same-boot evidence close the remaining
-options; campaign 36 is a separate stale run that exhausted its 100-segment
-budget and is not the active track. Keep the same pilot and wait for genuinely
-fresh source/live evidence; do not create roster breadth.
+The latest checkpoint records **541** source candidates, **61** current-band
+candidates, and **38** autonomous-safe candidates, but no executable plain
+route on this boot. Current protection and same-boot evidence close the
+remaining options; campaign 36 is a separate stale run that exhausted its
+100-segment budget and is not the active track. Run **18688** reached
+Hephaestus after the source-alignment crowd correction and recorded a real
+own-health withdrawal with an XP loss, so that exact target remains closed.
+Keep the same pilot and wait for genuinely fresh area/boot evidence; do not
+create roster breadth.
 The campaign and HERO result paths now distinguish bounded execution,
 segment-objective, safety, and overall target outcomes. `show-campaign` reports
 the target outcome from the latest checkpoint, so a safe segment is not
@@ -35,14 +39,18 @@ diagnostic evidence only, never an admission, ranking, or withdrawal gate.
 
 The verified **spiked key** (object **9565**) is deliberately dropped in room
 **3007** and remains available until the next DD4 reboot. Its receipt is tied to
-the current boot and must be rechecked after reboot before relying on it.
+the current boot; a later source-mirror refresh does not invalidate it, and the
+recorded source revision is provenance only. Recheck the room after reboot
+before relying on it.
 
-The October 18 target-admission revision now lets ordinary source-ranked
+The October 19 target-admission revision now lets ordinary source-ranked
 targets through the source-supported **+5** band for live `consider`. Source
 identity, route hazards and isolation still gate the trip, while target HP,
 predicted output, Sanctuary and damage-window estimates are retained as
-evidence rather than used as ordinary target-selection vetoes. The focused
-campaign/candidate checks pass; no live connection was opened for this change.
+evidence rather than used as ordinary target-selection vetoes. It also corrects
+NPC-target alignment handling for `spec_guard`, so a good-alignment guard does
+not falsely close a good-alignment target. Focused campaign, candidate and
+starter checks pass; the correction was confirmed live by run **18688**.
 
 The optional Daycare ring retry preserves its three positive-XP,
 non-maintenance segment cooldown across reboot. Maintenance XP does not age

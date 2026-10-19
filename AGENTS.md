@@ -47,9 +47,10 @@ fastwalks. An unreachable result from the generic recall graph does not close
 an area: register a separate bounded route and exact target set, then retain
 live isolation, consider, output, recovery and return-route checks.
 The verified spiked key (object VNUM 9565) may be left loose in room 3007 as a
-world cache. Treat that receipt as valid only for the current DD4 reboot and
-source revision; the key is expected to remain there until the next reboot, but
-must be rechecked after reboot before relying on it.
+world cache. Treat that receipt as valid for the current DD4 reboot even if the
+source mirror is refreshed; retain the source revision as provenance only. The
+key is expected to remain there until the next reboot, but must be rechecked
+after reboot before relying on it.
 The exact Midgaard Drunk (mobile VNUM 3064) is not a route blocker when his
 source-verified maximum level is at least five below the active pilot and the
 existing bounded-transit evidence passes. Do not wait or reroute solely for
@@ -340,6 +341,11 @@ live consider, useful-XP, health/output, and finite-action gates still apply.
 An arena route stays in control unless same-level, same-boot below-band
 evidence closes its target set; then the campaign may try the independent
 source-ranked fallback instead of replaying that arena or waiting for a reboot.
+Ota'ar Dar is a hard five-favour circuit: its gladiators do not release the
+character until all five distinct current-reboot favour receipts are confirmed.
+Never issue the exit route, generic recall, logout, or a maintenance detour
+from inside that arena while any favour is missing; resume the exact remaining
+gladiator circuit instead.
 Names and credentials identify history, never behavior. Distinguish source
 estimates, offline replays, live observations, and sustained progression.
 Keep `runs/dd4-source` current with `origin/master`. Finish live workers first,

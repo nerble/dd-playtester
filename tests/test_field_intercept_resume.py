@@ -74,6 +74,21 @@ def test_run_12822_rejected_waypoint_resumes_original_route(later_stop):
     assert not policy.fastwalk_returning and not policy.fastwalk_abort_reason
 
 
+def test_reset_consider_revalidation_bypasses_only_the_exact_persisted_skip():
+    policy, state = intercepted_route(later_stop=False)
+    stop = policy.fastwalk_hunt_stops[0]
+
+    assert policy._has_persisted_below_band_sighting(state, stop)
+
+    policy.source_ranked_consider_revalidation_policy_id = (
+        stop.source_policy_id
+    )
+    assert not policy._has_persisted_below_band_sighting(state, stop)
+
+    policy.source_ranked_consider_revalidation_policy_id = "different-policy"
+    assert policy._has_persisted_below_band_sighting(state, stop)
+
+
 def test_old_intercept_handoff_reproduces_nonadjacent_next_leg(monkeypatch):
     policy, state = intercepted_route()
     monkeypatch.setattr(policy, "_intercepted_field_route_can_resume", lambda: False)

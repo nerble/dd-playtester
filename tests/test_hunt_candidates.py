@@ -68,6 +68,7 @@ from dd4tester.hunt_candidates import (
     parse_area_file,
     rank_hunt_candidates,
     source_guard_can_join_player_fight,
+    source_guard_can_join_target_fight,
     rank_coin_stashes,
     rank_food_stashes,
     _least_ambiguous_source_keyword,
@@ -5552,6 +5553,32 @@ def test_guard_special_has_its_own_player_alignment_threshold(
     assert source_guard_can_join_player_fight(
         world, guard, character_alignment=alignment,
     ) is can_join
+
+
+def test_guard_special_does_not_assist_a_positive_alignment_npc_target():
+    guard = MobileSource(200, "guard", "the guard", 25, 0, 1000, "target.are")
+    target = MobileSource(
+        908, "hephaestus", "Hephaestus", 38, 0, 1000, "target.are",
+    )
+    world = WorldSource(
+        mobiles={200: guard, 908: target}, rooms={}, mob_resets=[],
+        mobile_specials={200: ("spec_guard",)},
+    )
+
+    assert source_guard_can_join_target_fight(
+        world,
+        guard,
+        target,
+        character_alignment=-317,
+    ) is False
+
+    neutral_target = replace(target, alignment=0)
+    assert source_guard_can_join_target_fight(
+        world,
+        guard,
+        neutral_target,
+        character_alignment=-317,
+    ) is True
 
 
 def test_good_spec_guard_companion_can_ignore_good_player_fighting_neutral_target(

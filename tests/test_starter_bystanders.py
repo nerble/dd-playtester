@@ -551,6 +551,35 @@ def test_good_alignment_combat_special_bystander_is_ignored_for_good_player() ->
     )
 
 
+def test_guard_cannot_join_positive_alignment_target_for_bad_alignment_player() -> None:
+    policy, state = _encounter()
+    world = policy.source_world
+    world.mobiles[100] = replace(world.mobiles[100], alignment=1000)
+    world.mobiles[101] = replace(world.mobiles[101], alignment=0)
+    world.mobile_specials[101] = ("spec_guard",)
+    policy.source_mobile_vnums_by_target_room["illusionist"] = {"200": (100,)}
+    policy.source_mobile_vnums_by_target_room["midget"] = {"200": (101,)}
+    policy.source_mobile_level_ranges_by_vnum[101] = (1, 5)
+    policy.fastwalk_hunt_stops = (replace(
+        policy.fastwalk_hunt_stops[0],
+        source_mobile_room_description=world.mobiles[100].room_description,
+        source_policy_id="source-ranked-hunt-test-100-200-8",
+    ),)
+    state.progress["alignment"] = -317
+
+    assert policy._source_mobile_name_is_non_assisting_target_bystander(
+        "illusionist",
+        "midget",
+        state,
+        policy.fastwalk_hunt_stops[0],
+    )
+    assert policy._source_mobile_room_hazard_bystanders(
+        state,
+        "illusionist",
+        policy.fastwalk_hunt_stops[0],
+    ) == ()
+
+
 def test_bystander_consider_accepts_split_response_without_target_contamination() -> None:
     policy, state = _encounter()
     policy.consider_target = "illusionist"

@@ -1,13 +1,19 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from dd4tester.campaign import (
+    _BUY_FLIGHT_POLICY,
     _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY,
     _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY,
+    _FLIGHT_FUNDING_REQUIRED_KEY,
+    _SOURCE_REVISION_KEY,
     _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+    CampaignRunner,
     _campaign_segment_end_state,
+    _repair_stale_caerlin_staff_reserve,
     _caerlin_staff_handoff_repair_allowed,
     _caerlin_staff_locator_revalidation_allowed,
     _caerlin_staff_locator_retry_allowed,
@@ -466,6 +472,226 @@ def test_caerlin_staff_can_be_reacquired_once_after_liquidation_loss() -> None:
         _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
     ] = True
     assert not _caerlin_staff_reserve_reacquisition_allowed(state)
+
+
+def test_newer_live_liquidation_loss_reopens_caerlin_reacquisition() -> None:
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "campaign_source_revision": "new-source",
+            "campaign_source_resource_reserves": {
+                "sanctuary": {
+                    "effect": "sanctuary",
+                    "object_vnum": 19173,
+                    "object_description": "staff of the bard",
+                    "mode": "staff",
+                    "charges_remaining": 9,
+                }
+            },
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "old-source",
+                "status": "closed",
+                "outcome": "reserve_reacquisition_missed",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+                _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY: True,
+            },
+        }
+    )
+
+    repaired = _repair_stale_caerlin_staff_reserve(
+        state,
+        {
+            **state,
+            "inventory": "[[{\"short_desc\": \"a bard's amulet\"}]]",
+        },
+        source_revision="new-source",
+    )
+
+    assert repaired["campaign_source_resource_reserves"] == {}
+    assert repaired[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY]["status"] == "succeeded"
+    assert repaired[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY][
+        _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
+    ] is False
+    assert _caerlin_staff_reserve_reacquisition_allowed(repaired)
+
+
+def test_caerlin_reacquisition_preempts_optional_rearming() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = None
+    runner._selected_source_consumable_object_vnums = ()
+    runner._policy_without_learned_flight = (
+        lambda _state: _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY
+    )
+    runner._catacombs_key_recovery_policy_if_ready = lambda _state: None
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="warrior")
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_source_resource_reserves": {},
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "succeeded",
+                "outcome": "staff_acquired",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert selected.execution == "moria-sanctuary-hunt"
+    assert runner._selected_source_consumable_candidate is not None
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 19004
+    assert runner._selected_source_consumable_object_vnums == (19173,)
+    assert state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY][
+        _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
+    ] is True
+
+
+def test_prepared_moria_sanctuary_candidate_preempts_caerlin_reacquisition() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = SimpleNamespace(
+        mobile_vnum=4055,
+        room_vnum=4064,
+        requires_flight=False,
+    )
+    runner._selected_source_consumable_object_vnums = (4050,)
+    runner._policy_without_learned_flight = (
+        lambda _state: _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY
+    )
+    runner._catacombs_key_recovery_policy_if_ready = lambda _state: None
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="warrior")
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_source_resource_reserves": {},
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "succeeded",
+                "outcome": "staff_acquired",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.policy_id
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 4055
+    assert runner._selected_source_consumable_object_vnums == (4050,)
+    assert state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY].get(
+        _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
+    ) is not True
+
+
+def test_moria_recovery_prepares_affordable_flight_before_deep_route() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = SimpleNamespace(
+        mobile_vnum=4055,
+        room_vnum=4064,
+        requires_flight=True,
+    )
+    runner._selected_source_consumable_object_vnums = (4050,)
+    runner._policy_without_learned_flight = (
+        lambda _state: _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY
+    )
+    runner._catacombs_key_recovery_policy_if_ready = lambda _state: None
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="warrior")
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "area": "Midgaard",
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_magic_shop_flight_price": 108,
+            "campaign_magic_shop_flight_price_boot_id": "test-boot",
+            "campaign_source_resource_reserves": {},
+        }
+    )
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _BUY_FLIGHT_POLICY.policy_id
+    assert selected.execution == "buy-flight"
+    assert selected.minimum_flight_duration == 3
+    assert state[_FLIGHT_FUNDING_REQUIRED_KEY] is True
+
+
+def test_source_ranked_alternate_sanctuary_carrier_prepares_flight() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = SimpleNamespace(
+        mobile_vnum=916,
+        room_vnum=927,
+        requires_flight=True,
+    )
+    runner._selected_source_consumable_object_vnums = (4050,)
+    runner._policy_without_learned_flight = (
+        lambda _state: _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY
+    )
+    runner._catacombs_key_recovery_policy_if_ready = lambda _state: None
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="warrior")
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "area": "Midgaard",
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_magic_shop_flight_price": 108,
+            "campaign_magic_shop_flight_price_boot_id": "test-boot",
+            "campaign_source_resource_reserves": {},
+        }
+    )
+
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _BUY_FLIGHT_POLICY.policy_id
+    assert selected.execution == "buy-flight"
+    assert selected.minimum_flight_duration == 3
+    assert state[_FLIGHT_FUNDING_REQUIRED_KEY] is True
 
 
 def test_caerlin_reacquisition_handoff_reopens_after_pre_dispatch_return_home() -> None:

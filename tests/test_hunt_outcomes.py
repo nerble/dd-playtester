@@ -153,6 +153,39 @@ def test_extra_attacker_loss_scopes_only_the_observed_target() -> None:
     assert state == original
 
 
+def test_extra_attacker_scope_accepts_a_linked_cumulative_loss() -> None:
+    state, segment, summary = _crowded_loss_evidence()
+    start = json.loads(segment["start_state_json"])
+    start["campaign_registered_research_xp_loss_policies"] = [{
+        "policy_id": POLICY,
+        "boot_id": "boot",
+        "level": 30,
+        "loss_count": 1,
+        "loss_event_id": 41,
+    }]
+    state["campaign_registered_research_xp_loss_policies"][0]["loss_count"] = 2
+    segment["start_state_json"] = json.dumps(start)
+
+    assert crowded_combat_loss_target(
+        state, segment, summary, policy_id=POLICY, source_policy_ids=(SOURCE,),
+    ) == SOURCE
+
+
+def test_extra_attacker_scope_accepts_full_health_with_stale_lower_maximum() -> None:
+    state, segment, summary = _crowded_loss_evidence()
+    start = json.loads(segment["start_state_json"])
+    end = json.loads(segment["end_state_json"])
+    for snapshot in (state, start, end):
+        snapshot["hp"] = 937
+        snapshot["max_hp"] = 927
+    segment["start_state_json"] = json.dumps(start)
+    segment["end_state_json"] = json.dumps(end)
+
+    assert crowded_combat_loss_target(
+        state, segment, summary, policy_id=POLICY, source_policy_ids=(SOURCE,),
+    ) == SOURCE
+
+
 @pytest.mark.parametrize("change", [
     "loss_total", "loss_record", "loss_id", "repeated_loss", "level", "boot", "run",
     "source_pair", "missing_source", "health", "location", "death", "objective", "no_combat",

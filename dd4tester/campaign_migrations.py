@@ -2783,7 +2783,10 @@ def _repair_pounding_weapon_rearm_attempt(
         error = str(segment.get("error") or "")
         located_route_blocked = (
             "Dave's located room" in error
-            and "no source-safe sweep within 22 commands" in error
+            and (
+                "no source-safe sweep within 22 commands" in error
+                or "no source-safe sweep within the bounded locator budget" in error
+            )
         )
         located_room_unmapped = (
             "Dave's located room" in error

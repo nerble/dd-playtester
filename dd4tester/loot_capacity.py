@@ -32,6 +32,11 @@ class LootCapacityReply:
             self.buffer,
             re.MULTILINE,
         ))
+        get_acknowledged = bool(re.search(
+            r"^\s*You (?:get|pick up) [^\r\n]+\.[ \t]*\n",
+            self.buffer,
+            re.MULTILINE,
+        ))
         if self.command.startswith("eat ") and not eat_acknowledged and any(
             marker in self.buffer.casefold()
             for marker in (
@@ -45,6 +50,23 @@ class LootCapacityReply:
             )
         ):
             self.failure = "surplus food capacity relief was not accepted"
+        elif self.command.startswith("get ") and not get_acknowledged and any(
+            marker in self.buffer.casefold()
+            for marker in (
+                "i see no",
+                "you see no",
+                "you don't see",
+                "you do not see",
+                "you can't find",
+                "you cannot find",
+                "you can't get",
+                "you cannot get",
+                "you can't pick",
+                "you cannot pick",
+                "nothing like that",
+            )
+        ):
+            self.failure = "the requested cached object was not present"
 
     def capacity(self) -> tuple[int, int] | None:
         header = self.buffer.casefold().find("your backpack contains:")
@@ -87,6 +109,8 @@ class LootCapacityReply:
         verb = self.command.split()[0]
         if verb == "eat":
             pattern = r"^\s*You eat [^\r\n]+\.[ \t]*\n"
+        elif verb == "get":
+            pattern = r"^\s*You (?:get|pick up) [^\r\n]+\.[ \t]*\n"
         elif verb in {"drop", "sacrifice"}:
             pattern = r"^\s*You " + verb + r" [^\r\n]+\.[ \t]*\n"
         elif verb == "remove":

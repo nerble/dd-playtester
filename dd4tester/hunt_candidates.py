@@ -4536,6 +4536,19 @@ def rank_hunt_candidates(
                 character_level=character_level,
                 character_alignment=character_alignment,
             )
+            if {
+                str(special).strip().casefold()
+                for special in companion_specials
+            } & {"spec_guard", "spec_sahuagin_guard"}:
+                # The guard special's NPC-assist branch compares the target
+                # mobile's alignment, not the player's.  A positive-alignment
+                # target such as Hephaestus cannot be selected by that branch.
+                companion_can_join = source_guard_can_join_target_fight(
+                    world,
+                    companion,
+                    mobile,
+                    character_alignment=character_alignment,
+                )
             companion_is_source_capable = source_mobile_can_join_player_fight(
                 world,
                 companion,
@@ -6814,6 +6827,29 @@ def source_guard_can_join_player_fight(
             type(character_alignment) is int
             and 300 <= character_alignment <= 1000
         )
+    )
+
+
+def source_guard_can_join_target_fight(
+    world: WorldSource,
+    guard: MobileSource,
+    target: MobileSource,
+    *,
+    character_alignment: int | None = None,
+) -> bool:
+    """Apply the source guard's NPC-target alignment rule at an endpoint.
+
+    ``special.c`` only chooses an NPC victim when that victim's alignment is
+    below 300.  Keep the existing player-alignment helper for route and
+    criminal-flag checks, but do not let it turn a positive-alignment target
+    into a false endpoint crowd hazard.
+    """
+    if target.alignment >= 300:
+        return False
+    return source_guard_can_join_player_fight(
+        world,
+        guard,
+        character_alignment=character_alignment,
     )
 
 

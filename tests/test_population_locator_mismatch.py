@@ -13,6 +13,10 @@ from dd4tester.populations import (
     population_locator_mismatch_receipt,
 )
 from dd4tester.campaign import (
+    _MAGIC_SHOP_SEE_INVISIBLE_RETRY_KEY,
+    _MAGIC_SHOP_SEE_INVISIBLE_RETRY_REVISION,
+    _magic_shop_see_invisible_failure_active,
+    _repair_observed_see_invisible_state,
     _record_population_locator_mismatch,
     _source_ranked_visibility_preparation_policy,
 )
@@ -184,6 +188,8 @@ def test_source_ranked_invisible_target_schedules_only_needed_healer_preparation
         status="research",
         execution="source-ranked-hunt",
         summary="hunt",
+        evidence=(),
+        practice_skill=None,
     )
     candidate = SimpleNamespace(requires_detect_invisibility=True)
     state = {
@@ -202,3 +208,109 @@ def test_source_ranked_invisible_target_schedules_only_needed_healer_preparation
     assert (policy is not None) is expected
     if expected:
         assert policy.execution == "buy-see-invisible"
+
+
+def test_pending_same_boot_visibility_retry_overrides_one_old_failure():
+    selected = ProgressionPolicy(
+        policy_id="source-ranked-hunt-test-908-937-39",
+        minimum_level=39,
+        maximum_level=39,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="hunt",
+        evidence=(),
+        practice_skill=None,
+    )
+    state = {
+        "level": 39,
+        "world_boot_id": "boot-A",
+        "affects": [],
+        "magic_shop_see_invisible_purchase_failed": True,
+        "magic_shop_see_invisible_purchase_failed_boot": "boot-A",
+        _MAGIC_SHOP_SEE_INVISIBLE_RETRY_KEY: {
+            "boot_id": "boot-A",
+            "level": 39,
+            "policy_revision": _MAGIC_SHOP_SEE_INVISIBLE_RETRY_REVISION,
+            "status": "pending",
+        },
+    }
+
+    assert not _magic_shop_see_invisible_failure_active(state)
+    policy = _source_ranked_visibility_preparation_policy(
+        selected,
+        SimpleNamespace(requires_detect_invisibility=True),
+        state,
+        character_level=39,
+        can_prepare=True,
+    )
+
+    assert policy is not None
+    assert policy.execution == "buy-see-invisible"
+    assert state[_MAGIC_SHOP_SEE_INVISIBLE_RETRY_KEY]["status"] == "attempted"
+    assert _magic_shop_see_invisible_failure_active(state)
+
+
+def test_visibility_retry_repair_recovers_same_boot_quote_and_funding():
+    class StorageStub:
+        def list_campaign_segments(self, campaign_id: int):
+            return [{
+                "phase": "buy-see-invisible-potion",
+                "status": "success",
+                "run_id": 22,
+                "start_state_json": json.dumps({"world_boot_id": "boot-A"}),
+                "end_state_json": json.dumps({
+                    "world_boot_id": "boot-A",
+                    "magic_shop_see_invisible_price": None,
+                }),
+            }]
+
+        def get_latest_run_state_event(self, run_id: int, *, states):
+            assert run_id == 22
+            return {
+                "payload_json": json.dumps({
+                    "state": "completed",
+                    "world_boot_id": None,
+                    "magic_shop_see_invisible_price": 254,
+                    "magic_shop_see_invisible_stock": 11,
+                }),
+            }
+
+    state = {
+        "level": 39,
+        "world_boot_id": "boot-A",
+        "magic_shop_see_invisible_purchase_failed": True,
+        "magic_shop_see_invisible_purchase_failed_boot": "boot-A",
+        "currencies": {
+            "platinum": 0,
+            "gold": 3,
+            "silver": 0,
+            "copper": 0,
+        },
+    }
+
+    repaired = _repair_observed_see_invisible_state(StorageStub(), 8, state)
+
+    assert repaired["magic_shop_see_invisible_price"] == 254
+    assert repaired["magic_shop_see_invisible_price_boot_id"] == "boot-A"
+    assert repaired["magic_shop_see_invisible_stock"] == 11
+    assert repaired[_MAGIC_SHOP_SEE_INVISIBLE_RETRY_KEY]["status"] == "pending"
+
+
+def test_visibility_retry_repair_discards_old_boot_quote():
+    class StorageStub:
+        def list_campaign_segments(self, campaign_id: int):
+            return []
+
+    state = {
+        "level": 39,
+        "world_boot_id": "boot-B",
+        "magic_shop_see_invisible_price": 254,
+        "magic_shop_see_invisible_price_boot_id": "boot-A",
+        "magic_shop_see_invisible_stock": 11,
+    }
+
+    repaired = _repair_observed_see_invisible_state(StorageStub(), 8, state)
+
+    assert "magic_shop_see_invisible_price" not in repaired
+    assert "magic_shop_see_invisible_price_boot_id" not in repaired
+    assert "magic_shop_see_invisible_stock" not in repaired

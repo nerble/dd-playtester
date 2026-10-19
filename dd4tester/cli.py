@@ -125,6 +125,7 @@ from .starter import (
     run_magic_shop_research_profile,
     run_midennir_research_profile,
     run_moria_research_profile,
+    run_ota_arena_research_profile,
     run_outfit_profile,
     run_rearm_profile,
     run_restock_profile,
@@ -262,6 +263,21 @@ def build_parser() -> argparse.ArgumentParser:
         "profile",
         type=Path,
         help="path to an existing level-2 character profile",
+    )
+
+    ota_arena_parser = subcommands.add_parser(
+        "ota-arena",
+        help="run or resume the source-verified five-favour Ota'ar arena circuit",
+    )
+    ota_arena_parser.add_argument(
+        "profile",
+        type=Path,
+        help="path to the existing character YAML profile",
+    )
+    ota_arena_parser.add_argument(
+        "--start-in-circuit",
+        action="store_true",
+        help="resume from a known lower-arena room instead of entering from recall",
     )
 
     resupply_parser = subcommands.add_parser(
@@ -1580,6 +1596,22 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception as exc:
             print(f"Arena research failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Run {result.run_id} {result.status}")
+        print(f"Transcript: {result.transcript_path}")
+        print(f"Database: {result.database_path}")
+        return 0
+
+    if args.command == "ota-arena":
+        try:
+            result = asyncio.run(
+                run_ota_arena_research_profile(
+                    args.profile,
+                    start_in_circuit=args.start_in_circuit,
+                )
+            )
+        except Exception as exc:
+            print(f"Ota'ar arena run failed: {exc}", file=sys.stderr)
             return 1
         print(f"Run {result.run_id} {result.status}")
         print(f"Transcript: {result.transcript_path}")

@@ -3,27 +3,31 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 18, 2026
+## Current Status: October 19, 2026
 
-Latest durable campaign checkpoint **54677** (campaign **35**, segment run
-**18490**): Dorrik is a level **39 Knight** with **1,310,690 XP**, **65,760 XP**
+Latest durable campaign checkpoint **55734** (campaign **35**, latest completed
+segment run **18688**): Dorrik is a level **39 Knight** with **1,312,170 XP**, **64,280 XP**
 to level 40, and **18 quest points**. He is alive, fully recovered, and logged
 out in the Midgaard healer room **3054**. No current level-up quest shortfall
 is present. HERO remains unproved, and Dorrik remains the sole progression
 pilot; campaign 36 is a separate stale run that exhausted its 100-segment
 budget and is not the active track.
 
-The source mirror is **e85c085a**, clean and aligned with `origin/master`.
+The source mirror is **a4052a7702148a4d72b96a84a43128566059d725**, clean and
+aligned with `origin/master`.
 The current DD4 boot is **Wed Oct 14 09:25:18 2026**. Campaign 35's latest
-frontier diagnosis has **314 candidates**, **32 current-band** candidates, and
-**24 autonomous-safe** candidates, but no executable route on this boot: the
-remaining options are closed by the current protection and same-boot evidence
-ledger. Continue the same pilot after genuinely fresh boot/live evidence
-rather than creating roster breadth.
+frontier diagnosis has **541 candidates**, **61 current-band** candidates, and
+**38 autonomous-safe** candidates, but no executable plain route on this boot:
+the remaining options are closed by the current protection and same-boot
+evidence ledger. Run **18688** reached Hephaestus after the alignment-crowd
+correction and recorded a real, safe withdrawal with an XP loss; that target
+is closed rather than retried. Continue the same pilot after genuinely fresh
+area/boot evidence rather than creating roster breadth.
 
 The verified Catacombs spiked key (object **9565**) is deliberately dropped in
-room **3007**. Its world-cache receipt is tied to the current boot and source
-revision, so it is expected to remain available until the next DD4 reboot and
+room **3007**. Its world-cache receipt is tied to the current boot; the recorded
+source revision is provenance only, so a later source-mirror refresh does not
+invalidate it. It is expected to remain available until the next DD4 reboot and
 must be rechecked afterward.
 
 The October 18 target-admission update widens ordinary source-ranked scouting

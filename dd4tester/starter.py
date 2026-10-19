@@ -104,6 +104,19 @@ from .fastwalks import (
     HuntPostCommandAction,
     route_named,
 )
+from .ota_arena import (
+    OTA_ARENA_AREA,
+    OTA_ARENA_ENTRY_ROUTE,
+    OTA_ARENA_EXIT_ROUTE,
+    OTA_ARENA_FORCED_ENTRY_ROOM_VNUM,
+    OTA_ARENA_GUARD_ROOM_VNUM,
+    OTA_ARENA_RECOVERY_ROUTES,
+    OTA_ARENA_STAGING_ROOM_VNUM,
+    OTA_ARENA_TARGETS,
+    OTA_ARENA_WIZINVIS_ROOM_VNUM,
+    ota_arena_target,
+    ota_arena_token_terms_present,
+)
 from .flight import FLIGHT_EVIDENCE_KEY, FlightPreparation, learned_flight_spell
 from .level_gear import single_kill_gear_window
 from .loot_capacity import LootCapacityReply
@@ -155,10 +168,12 @@ from .hunt_candidates import (
     source_route_movement_cost,
     source_room_level_rejection,
     source_safe_route_to_room_with_origin,
+    source_mobile_has_only_economic_transit_risk,
     source_subclass_teacher_route,
     source_mobile_search_rooms,
     source_mobile_identities as _canonical_source_mobile_identities,
     source_mobile_can_join_player_fight,
+    source_guard_can_join_target_fight,
     source_combat_output_estimate,
     _bounded_borderline_route_aggressor,
     source_mobile_route_aggressor_is_bounded,
@@ -673,8 +688,12 @@ _CITY_REARM_POUNDING_ROUTE_ROOMS = (
 )
 _CITY_REARM_POUNDING_REQUIRED_FREE_WEIGHT = 5
 _CITY_REARM_SHOP_LOCATOR_TARGET = "Dave the Dealer"
-_CITY_REARM_LOCATOR_MAX_ROUTE_STEPS = 22
-_CITY_REARM_LOCATOR_MAX_CANDIDATES = 4
+# Dave can be on the far side of Midgaard. Keep the locator bounded, but allow
+# one ordinary healer-to-shop round trip across all source rooms sharing a
+# coarse ``where`` label. Park Road currently needs seven source candidates.
+_CITY_REARM_LOCATOR_MAX_ROUTE_STEPS = 60
+_CITY_REARM_DIRECT_LEG_MAX_ROUTE_STEPS = 22
+_CITY_REARM_LOCATOR_MAX_CANDIDATES = 8
 _CITY_REARM_PRIVATE_OR_SOLITARY_FLAGS = (1 << 9) | (1 << 11)
 
 
@@ -797,22 +816,49 @@ def _city_rearm_routes_to_room(
     *,
     origin_vnum: int,
     character_level: int,
+    economic_special_mobile_vnums: Collection[int] = (),
 ) -> tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]] | None:
     """Plan bounded source-safe shop and healer legs from one live room."""
+
+    def direct_noncombat_route(
+        start_vnum: int,
+        end_vnum: int,
+    ) -> tuple[tuple[str, ...], tuple[int, ...], int, int, int] | None:
+        direct = _shortest_paths_from(world.rooms, start_vnum).get(end_vnum)
+        if direct is None or len(direct[0]) > _CITY_REARM_DIRECT_LEG_MAX_ROUTE_STEPS:
+            return None
+        if source_route_hazard_rejections(
+            world,
+            direct[1],
+            character_level=character_level,
+            combat_at_destination=False,
+            economic_special_mobile_vnums=economic_special_mobile_vnums,
+        ):
+            return None
+        return (*direct, 0, start_vnum)
+
+    def bounded_route(
+        start_vnum: int,
+        end_vnum: int,
+    ) -> tuple[tuple[str, ...], tuple[int, ...], int, int, int] | None:
+        route = source_safe_route_to_room_with_origin(
+            world,
+            end_vnum,
+            character_level=character_level,
+            recall_origins={0: start_vnum},
+        )
+        if route is not None and len(route[0]) <= _CITY_REARM_DIRECT_LEG_MAX_ROUTE_STEPS:
+            return route
+        # The generic source-safe planner may choose a longer detour to avoid
+        # a transit-only special. For this short city errand, use the direct
+        # route when its noncombat hazard audit passes; do not let a 30-step
+        # detour make a 16-step return impossible.
+        return direct_noncombat_route(start_vnum, end_vnum)
+
     if destination_vnum == origin_vnum:
         return None
-    outbound = source_safe_route_to_room_with_origin(
-        world,
-        destination_vnum,
-        character_level=character_level,
-        recall_origins={0: origin_vnum},
-    )
-    returning = source_safe_route_to_room_with_origin(
-        world,
-        3054,
-        character_level=character_level,
-        recall_origins={0: destination_vnum},
-    )
+    outbound = bounded_route(origin_vnum, destination_vnum)
+    returning = bounded_route(destination_vnum, 3054)
     if outbound is None or returning is None:
         return None
     out_commands, out_rooms, _, _, _ = outbound
@@ -840,6 +886,7 @@ def _city_rearm_locator_routes(
     origin_vnum: int,
     character_level: int,
     mobile_vnum: int = 3050,
+    economic_special_mobile_vnums: Collection[int] = (),
 ) -> tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]] | None:
     """Resolve a unique live shopkeeper label to source-safe city routes."""
     candidates = _city_rearm_locator_candidate_rooms(
@@ -854,6 +901,7 @@ def _city_rearm_locator_routes(
         candidates[0],
         origin_vnum=origin_vnum,
         character_level=character_level,
+        economic_special_mobile_vnums=economic_special_mobile_vnums,
     )
 
 
@@ -863,6 +911,7 @@ def _city_rearm_locator_sweep_routes(
     *,
     origin_vnum: int,
     character_level: int,
+    economic_special_mobile_vnums: Collection[int] = (),
 ) -> tuple[
     tuple[tuple[str, ...], tuple[int, ...], tuple[str, ...], tuple[int, ...]], ...
 ] | None:
@@ -877,6 +926,7 @@ def _city_rearm_locator_sweep_routes(
             candidate_vnum,
             origin_vnum=current_origin,
             character_level=character_level,
+            economic_special_mobile_vnums=economic_special_mobile_vnums,
         )
         if route is None:
             return None
@@ -2756,6 +2806,12 @@ class StarterPolicy:
         objective_level: int = 2,
         arena_kill_limit: int | None = None,
         arena_respawn_wait: bool = True,
+        ota_arena_research: bool = False,
+        ota_arena_start_in_circuit: bool = False,
+        ota_arena_allow_unprotected_fallback: bool = False,
+        ota_arena_stage: str | None = None,
+        ota_arena_target_index: int = 0,
+        ota_arena_token_receipts: Collection[Mapping[str, Any]] = (),
         resupply_only: bool = False,
         return_home: bool = False,
         city_restock: bool = False,
@@ -2808,6 +2864,7 @@ class StarterPolicy:
         vault_only: bool = False,
         fastwalk_world_cache_items: tuple[str, ...] = (),
         fastwalk_world_cache_object_vnums: tuple[int, ...] = (),
+        fastwalk_world_cache_skip_preflight: bool = False,
         fastwalk_train_before_departure: bool = False,
         required_practice_skill: str | None = None,
         required_practice_type: str = "physical",
@@ -2861,6 +2918,7 @@ class StarterPolicy:
         source_resource_reserve: Mapping[str, Any] | None = None,
         verified_source_resources: Mapping[str, Any] | None = None,
         fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
+        source_ranked_consider_revalidation_policy_id: str | None = None,
         fastwalk_route_gate_attempted_selectors: Collection[str] = (),
         preserved_primary_weapon_vnum: int | None = None,
         gear_inventory_source_hints: Mapping[str, int] | None = None,
@@ -2919,6 +2977,47 @@ class StarterPolicy:
         self.objective_level = objective_level
         self.arena_kill_limit = arena_kill_limit
         self.arena_respawn_wait = arena_respawn_wait
+        self.ota_arena_research = bool(ota_arena_research)
+        self.ota_arena_start_in_circuit = bool(ota_arena_start_in_circuit)
+        self.ota_arena_allow_unprotected_fallback = bool(
+            ota_arena_allow_unprotected_fallback
+        )
+        self.ota_arena_stage = (
+            "target" if self.ota_arena_research and ota_arena_start_in_circuit
+            else "entry" if self.ota_arena_research
+            else None
+        )
+        if ota_arena_stage in {"entry", "target", "wizinvis", "exit", "return"}:
+            self.ota_arena_stage = ota_arena_stage
+        try:
+            parsed_ota_arena_target_index = int(ota_arena_target_index)
+        except (TypeError, ValueError):
+            parsed_ota_arena_target_index = 0
+        self.ota_arena_target_index = max(0, parsed_ota_arena_target_index)
+        self.ota_arena_route_commands: tuple[str, ...] = ()
+        self.ota_arena_route_index = 0
+        self.ota_arena_pending_move: tuple[str, str | None] | None = None
+        self.ota_arena_look_attempts = 0
+        self.ota_arena_consider_issued = False
+        self.ota_arena_where_pending = False
+        self.ota_arena_where_observed = False
+        self.ota_arena_where_buffer = ""
+        self.ota_arena_where_locations: tuple[str, ...] = ()
+        self.ota_arena_where_target_vnum: int | None = None
+        self.ota_arena_where_retries = 0
+        self.ota_arena_candidate_rooms: tuple[int, ...] = ()
+        self.ota_arena_candidate_index = 0
+        self.ota_arena_candidate_room_vnum: int | None = None
+        self.ota_arena_pending_loot = False
+        self.ota_arena_loot_attempts = 0
+        self.ota_arena_current_target_vnum: int | None = None
+        self.ota_arena_kill_records: list[dict[str, Any]] = []
+        self.ota_arena_token_receipts: list[dict[str, Any]] = [
+            dict(receipt)
+            for receipt in ota_arena_token_receipts
+            if isinstance(receipt, Mapping)
+        ]
+        self.ota_arena_forced_arrivals: list[dict[str, Any]] = []
         self.resupply_only = resupply_only
         self.return_home = return_home
         self.city_restock = city_restock
@@ -3096,7 +3195,8 @@ class StarterPolicy:
         self.fastwalk_world_cache_preflight_index = 0
         self.fastwalk_world_cache_preflight_returning = False
         self.fastwalk_world_cache_preflight_complete = (
-            not self.fastwalk_world_cache_items
+            fastwalk_world_cache_skip_preflight
+            or not self.fastwalk_world_cache_items
         )
         self.fastwalk_world_cache_post_index = 0
         self.fastwalk_world_cache_post_returning = False
@@ -3780,6 +3880,8 @@ class StarterPolicy:
         self.fastwalk_attack_started = False
         self.fastwalk_plain_transit_fight_active = False
         self.fastwalk_plain_transit_fight_count = 0
+        self.fastwalk_armed_transit_sanctuary_pending = False
+        self.fastwalk_armed_transit_sanctuary_acknowledged = False
         self.fastwalk_opening_potion_pending = False
         self.fastwalk_opening_resource_hold_pending = False
         self.fastwalk_sanctuary_consumed_in_combat = False
@@ -3863,6 +3965,12 @@ class StarterPolicy:
             (str(room_vnum), str(target).casefold())
             for room_vnum, target in fastwalk_skip_target_sightings
         }
+        # A reset-scoped source recheck stays open only for the exact hunt
+        # segment that consumed its marker. It must not become a durable
+        # exemption from the persisted below-band sighting.
+        self.source_ranked_consider_revalidation_policy_id = (
+            source_ranked_consider_revalidation_policy_id
+        )
         self.fastwalk_source_below_band_sightings: set[
             tuple[str, str, str]
         ] = set()
@@ -3917,6 +4025,8 @@ class StarterPolicy:
             for effect, record in (verified_source_resources or {}).items()
             if isinstance(record, Mapping)
         }
+        self.source_resource_effect_acknowledged: str | None = None
+        self.source_resource_effect_snapshot_requested = False
         self.failed_source_resource_effects: set[str] = set()
         self.pending_source_resource_effect: str | None = None
         self.pending_source_resource_hold: str | None = None
@@ -4005,6 +4115,13 @@ class StarterPolicy:
         self.purgatory_portal_entered = False
         self.purgatory_sleep_started = False
         self.purgatory_recovery_complete = False
+        self.purgatory_visited_rooms: set[str] = set()
+        self.purgatory_parent_rooms: dict[str, str] = {}
+        self.purgatory_parent_directions: dict[str, str] = {}
+        self.purgatory_arrival_parents: dict[str, str] = {}
+        self.purgatory_tried_exits: dict[str, set[str]] = {}
+        self.purgatory_pending_departure: tuple[str, str] | None = None
+        self.purgatory_exploration_steps = 0
         self.moria_seen = False
         self.moria_returning = False
         self.moria_observed_rooms: set[str] = set()
@@ -4158,6 +4275,91 @@ class StarterPolicy:
         self.fastwalk_pending_move_command = None
         self.prompt_ready = True
 
+    def _ota_arena_forced_arrival(
+        self,
+        *,
+        source_room_vnum: str | None,
+        destination_room_vnum: str,
+    ) -> bool:
+        """Adopt one of the two source-program arena transfers."""
+        if not self.ota_arena_research:
+            return False
+        source = str(source_room_vnum or "")
+        destination = str(destination_room_vnum)
+        if (
+            source == str(OTA_ARENA_GUARD_ROOM_VNUM)
+            and destination == str(OTA_ARENA_FORCED_ENTRY_ROOM_VNUM)
+            and self.ota_arena_stage == "entry"
+        ):
+            self.ota_arena_stage = "target"
+            self.ota_arena_target_index = 0
+            self.ota_arena_route_commands = ()
+            self.ota_arena_route_index = 0
+            self.ota_arena_where_pending = False
+            self.ota_arena_where_observed = False
+            self.ota_arena_where_buffer = ""
+            self.ota_arena_where_locations = ()
+            self.ota_arena_where_target_vnum = None
+            self.ota_arena_where_retries = 0
+            self.ota_arena_candidate_rooms = ()
+            self.ota_arena_candidate_index = 0
+            self.ota_arena_candidate_room_vnum = None
+            self.fastwalk_route = None
+            self.fastwalk_hunt_stops = ()
+            self.fastwalk_returning = False
+            self.fastwalk_emergency_recall_pending = False
+            self.fastwalk_arrival_observed = True
+            self.fastwalk_outbound_index = 0
+            self.fastwalk_pending_move_command = None
+            self.pending_fastwalk_outbound_move = False
+            self.pending_fastwalk_hunt_move = False
+            self.pending_travel_origin = None
+            self.pending_travel_destination = None
+            self.ota_arena_pending_move = None
+            self.ota_arena_forced_arrivals.append(
+                {
+                    "from": source,
+                    "to": destination,
+                    "kind": "forced",
+                    "phase": "entry",
+                    "boot_id": self.world_boot_id,
+                }
+            )
+            self.prompt_ready = True
+            return True
+        if (
+            source == str(OTA_ARENA_WIZINVIS_ROOM_VNUM)
+            and destination == str(OTA_ARENA_STAGING_ROOM_VNUM)
+            and self.ota_arena_stage == "wizinvis"
+            and self._ota_arena_all_favours_collected()
+        ):
+            self.ota_arena_stage = "exit"
+            self.ota_arena_route_commands = OTA_ARENA_EXIT_ROUTE
+            self.ota_arena_route_index = 0
+            self.fastwalk_route = None
+            self.fastwalk_hunt_stops = ()
+            self.fastwalk_returning = False
+            self.fastwalk_emergency_recall_pending = False
+            self.fastwalk_pending_move_command = None
+            self.pending_fastwalk_outbound_move = False
+            self.pending_fastwalk_hunt_move = False
+            self.pending_travel_origin = None
+            self.pending_travel_destination = None
+            self.ota_arena_pending_move = None
+            self.ota_arena_look_attempts = 0
+            self.ota_arena_forced_arrivals.append(
+                {
+                    "from": source,
+                    "to": destination,
+                    "kind": "forced",
+                    "phase": "freedom",
+                    "boot_id": self.world_boot_id,
+                }
+            )
+            self.prompt_ready = True
+            return True
+        return False
+
     def _recover_closed_fastwalk_exit(self, marker: str) -> bool:
         """Open one exact route exit before retrying a dynamically closed door."""
         if (
@@ -4284,6 +4486,45 @@ class StarterPolicy:
                 self.route_visibility_affects_observed = False
         self.route_visibility_text = self.route_visibility_text[-512:]
         self.last_response = cleaned
+        if self.ota_arena_where_pending:
+            self.ota_arena_where_buffer = _append_locator_response_chunk(
+                self.ota_arena_where_buffer,
+                cleaned,
+            )
+            where_text = self.ota_arena_where_buffer
+            where_folded = where_text.casefold()
+            where_header = where_folded.rfind(
+                "you detect the presence of:"
+            )
+            where_complete = (
+                "you fail to find anyone by that name" in where_folded
+                or (
+                    where_header >= 0
+                    and _DD4_PROMPT.search(where_text, where_header) is not None
+                )
+            )
+            if where_complete:
+                target = ota_arena_target(self.ota_arena_target_index)
+                mobile = (
+                    self.source_world.mobiles.get(target.mobile_vnum)
+                    if self.source_world is not None and target is not None
+                    else None
+                )
+                self.ota_arena_where_locations = (
+                    _where_locations_from_response(
+                        where_text,
+                        mobile.short_description if mobile is not None else None,
+                    )
+                    if mobile is not None
+                    else ()
+                )
+                self.ota_arena_where_pending = False
+                self.ota_arena_where_observed = True
+                self.ota_arena_candidate_rooms = ()
+                self.ota_arena_candidate_index = 0
+                self.ota_arena_candidate_room_vnum = None
+                self.ota_arena_route_commands = ()
+                self.ota_arena_route_index = 0
         if self.fastwalk_pouch_audit_pending:
             self.combat_pouch_audit_response_buffer = (
                 self.combat_pouch_audit_response_buffer + cleaned
@@ -4486,6 +4727,16 @@ class StarterPolicy:
                 self._consume_source_resource(pending_effect)
                 self.pending_source_resource_effect = None
                 self.source_resource_hold_ready = None
+                if pending_effect == "sanctuary":
+                    self.source_resource_effect_acknowledged = pending_effect
+                    self.source_resource_effect_snapshot_requested = False
+                if (
+                    pending_effect == "sanctuary"
+                    and self.fastwalk_armed_transit_sanctuary_pending
+                ):
+                    # A staff/potion acknowledgement can precede Char.Affect;
+                    # keep the route paused until live Sanctuary is observed.
+                    self.fastwalk_armed_transit_sanctuary_acknowledged = True
             elif any(
                 marker in recent
                 for marker in (
@@ -4517,6 +4768,12 @@ class StarterPolicy:
                 self.failed_source_resource_effects.add(pending_effect)
                 self.pending_source_resource_effect = None
                 self.source_resource_hold_ready = None
+                if (
+                    pending_effect == "sanctuary"
+                    and self.fastwalk_armed_transit_sanctuary_pending
+                ):
+                    self.fastwalk_armed_transit_sanctuary_pending = False
+                    self.fastwalk_armed_transit_sanctuary_acknowledged = False
         if self.city_rearm and self.city_rearm_step == 1:
             self.city_rearm_shop_listing_buffer = (
                 self.city_rearm_shop_listing_buffer + cleaned
@@ -4740,6 +4997,7 @@ class StarterPolicy:
             self.fastwalk_route is not None
             and not self.fastwalk_returning
             and not self.fastwalk_emergency_recall_pending
+            and not self.ota_arena_research
         ):
             for marker in _FORCED_FIELD_RELOCATION_MARKERS:
                 if marker in recent:
@@ -6597,6 +6855,40 @@ class StarterPolicy:
                         self.active_target,
                         self.active_target_selector,
                     )
+                if (
+                    self.ota_arena_research
+                    and defeated_target
+                    and self.ota_arena_current_target_vnum is not None
+                ):
+                    arena_target = ota_arena_target(self.ota_arena_target_index)
+                    if (
+                        arena_target is not None
+                        and arena_target.mobile_vnum
+                        == self.ota_arena_current_target_vnum
+                        and self.active_target_mobile_vnum
+                        == arena_target.mobile_vnum
+                    ):
+                        arena_record = {
+                            "mobile_vnum": arena_target.mobile_vnum,
+                            "source_mobile_vnum": arena_target.mobile_vnum,
+                            "room_vnum": (
+                                self.ota_arena_candidate_room_vnum
+                                or arena_target.room_vnum
+                            ),
+                            "token_vnum": arena_target.token_vnum,
+                            "objective_eligible": xp_gain is not None,
+                            "source_policy_id": getattr(
+                                self, "policy_execution", None
+                            ) or "ota-arena-favour-circuit",
+                            "boot_id": self.world_boot_id,
+                        }
+                        if self.completed_kills:
+                            self.completed_kills[-1].update(arena_record)
+                        self.ota_arena_kill_records.append(
+                            {"mob_name": defeated_target, **arena_record}
+                        )
+                        self.ota_arena_pending_loot = True
+                        self.ota_arena_loot_attempts = 0
                 if not plain_transit_kill:
                     if self.current_room != "3722":
                         if _is_arena_vnum(self.current_room):
@@ -6921,6 +7213,7 @@ class StarterPolicy:
         if (
             "you failed to flee" in recent
             or "you couldn't escape" in recent
+            or "not while fighting" in recent
             or generic_flee_failure
         ):
             self.flee_pending = False
@@ -7174,6 +7467,26 @@ class StarterPolicy:
                 self.route_visibility_affects_observed = True
                 if not _has_named_affect(state.affects, "invis"):
                     self.route_invisibility_revoked = False
+                if self.source_resource_effect_acknowledged is not None:
+                    effect = self.source_resource_effect_acknowledged
+                    if _has_named_affect(state.affects, effect):
+                        self.source_resource_effect_acknowledged = None
+                        self.source_resource_effect_snapshot_requested = False
+                    elif self.source_resource_effect_snapshot_requested:
+                        arena_refresh = (
+                            effect == "sanctuary"
+                            and self.ota_arena_research
+                            and self.ota_arena_stage == "target"
+                            and (
+                                self.combat_active
+                                or state.in_combat
+                                or bool(state.combat_target)
+                            )
+                        )
+                        if not arena_refresh:
+                            self.failed_source_resource_effects.add(effect)
+                        self.source_resource_effect_acknowledged = None
+                        self.source_resource_effect_snapshot_requested = False
             if event.type == "vitals_changed":
                 if state.hunger is not None and state.hunger <= 0:
                     self.needs_food = True
@@ -7232,6 +7545,52 @@ class StarterPolicy:
                     and arrival.get("from") is not None
                     else None
                 )
+                arrival_kind = (
+                    str(arrival.get("kind"))
+                    if isinstance(arrival, dict)
+                    and arrival.get("kind") is not None
+                    else None
+                )
+                if (
+                    arrival_kind == "forced"
+                    and room
+                    and self.ota_arena_research
+                ):
+                    adopted = self._ota_arena_forced_arrival(
+                        source_room_vnum=arrival_from,
+                        destination_room_vnum=room,
+                    )
+                    if not adopted:
+                        reason = (
+                            "unexpected forced relocation inside the Ota'ar arena policy"
+                        )
+                        destination_room = (
+                            self.source_world.rooms.get(_int_or_none(room))
+                            if self.source_world is not None
+                            else None
+                        )
+                        if (
+                            destination_room is not None
+                            and destination_room.area_file == OTA_ARENA_AREA
+                            and not self._ota_arena_all_favours_collected()
+                        ):
+                            # A bad forced-transfer receipt is still an
+                            # in-arena state.  Keep the captive controller
+                            # alive so generic recovery cannot recall or log
+                            # out before the five favour gate is satisfied.
+                            self.fastwalk_abort_reason = reason
+                            self.ota_arena_research = True
+                            self.ota_arena_stage = "target"
+                            self.return_home = False
+                            self.deferred_failure = None
+                            marker = f"arena captive hold: {reason}"
+                            if marker not in self.fastwalk_route_hazards:
+                                self.fastwalk_route_hazards.append(marker)
+                        else:
+                            self.fastwalk_abort_reason = reason
+                            self.ota_arena_stage = "failed"
+                            self.ota_arena_research = False
+                            self.deferred_failure = reason
                 arrived_after_pending_move = bool(
                     self.pending_travel_origin is not None
                     and room
@@ -7731,6 +8090,13 @@ class StarterPolicy:
                 self.flee_pending = False
                 self.flee_succeeded = False
                 self.flee_failed = False
+                self.purgatory_visited_rooms.clear()
+                self.purgatory_parent_rooms.clear()
+                self.purgatory_parent_directions.clear()
+                self.purgatory_arrival_parents.clear()
+                self.purgatory_tried_exits.clear()
+                self.purgatory_pending_departure = None
+                self.purgatory_exploration_steps = 0
                 self.cleric_combat_heals = 0
                 self.prompt_ready = True
                 self.utility_abort_reason = (
@@ -8181,9 +8547,34 @@ class StarterPolicy:
         self._last_decision_room_flags = frozenset(
             str(flag).casefold() for flag in state.room_flags
         )
+        self._adopt_ota_arena_captive_state(state)
         if self.done or self.failure:
             return None
         self._observe_healer_nutrition_needs(state)
+
+        if (
+            self.magic_shop_research
+            and self.magic_shop_buy_water_breathing
+            and not self.magic_shop_water_breathing_verified
+            and can_breathe_underwater(state.to_compact_dict())
+        ):
+            # A reconnect can resume in the field with a live GMCP affect.
+            # Treat that current observation as the required preparation
+            # receipt instead of forcing the character back through the shop.
+            self.magic_shop_water_breathing_verified = True
+            self.magic_shop_water_breathing_step = 8
+
+        if self.source_resource_effect_acknowledged is not None:
+            effect = self.source_resource_effect_acknowledged
+            if _has_named_affect(state.affects, effect):
+                self.source_resource_effect_acknowledged = None
+                self.source_resource_effect_snapshot_requested = False
+            elif not self.source_resource_effect_snapshot_requested:
+                self.source_resource_effect_snapshot_requested = True
+                return BotDecision(
+                    "affects",
+                    f"confirm the live {effect} effect before changing combat gear",
+                )
 
         capacity_reply = self._recovery_session.loot_capacity_reply
         if capacity_reply.command is not None and (
@@ -8692,6 +9083,24 @@ class StarterPolicy:
                     return None
             else:
                 self.pending_recall_origin = None
+        if self.ota_arena_pending_move is not None:
+            move_origin, move_destination = self.ota_arena_pending_move
+            current_room = _room_key(state)
+            if (
+                current_room
+                and move_destination is not None
+                and current_room == move_destination
+            ) or (current_room and current_room != move_origin):
+                self.ota_arena_pending_move = None
+            elif current_room == move_origin:
+                self.ota_arena_pending_move = None
+                return self._ota_arena_abort_decision(
+                    state,
+                    "an Ota'ar arena movement command did not leave its source room",
+                )
+            else:
+                self.prompt_ready = False
+                return None
         if self.pending_travel_origin is not None:
             current_room = _room_key(state)
             if (
@@ -9258,6 +9667,11 @@ class StarterPolicy:
                     "target": str(enemies[0].get("name") or ""), "reason": decision.reason,
                     "evidence_source": "live_withdrawal",
                 }
+                withdrawal_health = self._field_combat_withdrawal_evidence(state)
+                if withdrawal_health:
+                    self._combat_session.pending_withdrawal[
+                        "withdrawal_health"
+                    ] = withdrawal_health
                 output = self._encounter_output(state, (stop.source_mobile_vnum,))
                 weapon = self._wielded_weapon()
                 if (
@@ -9354,6 +9768,14 @@ class StarterPolicy:
                 time.monotonic() + _WHERE_RESPONSE_GRACE_SECONDS
             )
         if (
+            self.ota_arena_research
+            and decision.command.casefold().startswith("where ")
+            and decision.reason.startswith("locate Ota'ar arena target")
+        ):
+            self.ota_arena_where_pending = True
+            self.ota_arena_where_observed = False
+            self.ota_arena_where_buffer = ""
+        if (
             decision.command == "look"
             and decision.reason
             == "confirm no pursuer entered the post-flee room before recall"
@@ -9376,6 +9798,14 @@ class StarterPolicy:
                 if state is not None
                 else None
             )
+            if (
+                self.ota_arena_research
+                and decision.reason.startswith("follow Ota'ar arena")
+            ):
+                self.ota_arena_pending_move = (
+                    self.pending_travel_origin or "",
+                    self.pending_travel_destination,
+                )
         recall_origin = (
             _room_key(state)
             if state is not None and _room_key(state)
@@ -10162,6 +10592,756 @@ class StarterPolicy:
             "recall immediately after poison was observed before the next damage tick",
         )
 
+    def _ota_arena_candidate_rooms_for(
+        self,
+        target: Any,
+    ) -> tuple[int, ...]:
+        """Return the bounded source rooms in the live ``where`` area."""
+        if self.source_world is None:
+            room = _int_or_none(target.room_vnum)
+            return (room,) if room is not None else ()
+        source_rooms = tuple(
+            sorted(
+                int(room_vnum)
+                for room_vnum in source_mobile_search_rooms(
+                    self.source_world,
+                    int(target.mobile_vnum),
+                )
+                if int(room_vnum) in self.source_world.rooms
+                and self.source_world.rooms[int(room_vnum)].area_file
+                == OTA_ARENA_AREA
+            )
+        )
+        if not source_rooms:
+            fallback = _int_or_none(target.room_vnum)
+            return (fallback,) if fallback is not None else ()
+        if self.ota_arena_where_locations:
+            wanted_labels = {
+                _normalise_room_label(location)
+                for location in self.ota_arena_where_locations
+            }
+            mapped_rooms = tuple(
+                room_vnum
+                for room_vnum in source_rooms
+                if _normalise_room_label(
+                    self.source_world.rooms[room_vnum].name
+                )
+                in wanted_labels
+            )
+            if mapped_rooms:
+                source_rooms = mapped_rooms
+        preferred = _int_or_none(target.room_vnum)
+        if preferred is None or preferred not in source_rooms:
+            return source_rooms
+        return (preferred, *(room for room in source_rooms if room != preferred))
+
+    def _ota_arena_plan_candidate_route(
+        self,
+        state: CharacterState,
+        target: Any,
+    ) -> bool:
+        """Plan the next source-room probe without crossing the arena gate."""
+        if self.source_world is None:
+            return False
+        if (
+            self.ota_arena_where_target_vnum != int(target.mobile_vnum)
+            or not self.ota_arena_candidate_rooms
+        ):
+            self.ota_arena_where_target_vnum = int(target.mobile_vnum)
+            self.ota_arena_candidate_rooms = (
+                self._ota_arena_candidate_rooms_for(target)
+            )
+            self.ota_arena_candidate_index = 0
+            self.ota_arena_candidate_room_vnum = None
+            self.ota_arena_route_commands = ()
+            self.ota_arena_route_index = 0
+        current_room = _int_or_none(state.room_vnum)
+        if current_room is None:
+            return False
+        arena_rooms = {
+            int(room_vnum): room
+            for room_vnum, room in self.source_world.rooms.items()
+            if room.area_file == OTA_ARENA_AREA
+        }
+        if current_room not in arena_rooms:
+            return False
+        paths = _shortest_paths_from(arena_rooms, current_room)
+        for index in range(
+            self.ota_arena_candidate_index,
+            len(self.ota_arena_candidate_rooms),
+        ):
+            candidate_room = self.ota_arena_candidate_rooms[index]
+            path = paths.get(candidate_room)
+            if path is None:
+                continue
+            self.ota_arena_candidate_index = index
+            self.ota_arena_candidate_room_vnum = candidate_room
+            self.ota_arena_route_commands = tuple(path[0])
+            self.ota_arena_route_index = 0
+            return True
+        self.ota_arena_candidate_room_vnum = None
+        self.ota_arena_route_commands = ()
+        self.ota_arena_route_index = 0
+        return False
+
+    def _ota_arena_advance_candidate(self, target: Any) -> bool:
+        """Move the bounded room sweep to its next source location."""
+        if (
+            self.ota_arena_where_target_vnum != int(target.mobile_vnum)
+            or not self.ota_arena_candidate_rooms
+        ):
+            return False
+        self.ota_arena_candidate_index += 1
+        self.ota_arena_candidate_room_vnum = None
+        self.ota_arena_route_commands = ()
+        self.ota_arena_route_index = 0
+        self.ota_arena_look_attempts = 0
+        return self.ota_arena_candidate_index < len(self.ota_arena_candidate_rooms)
+
+    def _ota_arena_listing_target(
+        self,
+        state: CharacterState,
+        target: Any,
+        mobile: MobileSource,
+    ) -> Mapping[str, Any] | None:
+        """Match one source mobile in the current TARGETMODE room listing."""
+        listing = state.room_listing
+        if (
+            not isinstance(listing, Mapping)
+            or str(listing.get("room_vnum")) != str(state.room_vnum)
+            or listing.get("render_complete") is not True
+            or not isinstance(listing.get("targeted_lines"), list)
+            or not isinstance(listing.get("unkeyed_lines"), list)
+            or listing["unkeyed_lines"]
+        ):
+            return None
+        source_short = _normalize_mobile_line(mobile.short_description)
+        source_description = _normalize_mobile_line(mobile.room_description)
+        matches: list[Mapping[str, Any]] = []
+        for raw_line in listing["targeted_lines"]:
+            if not isinstance(raw_line, Mapping):
+                continue
+            target_id = str(raw_line.get("target_id") or "").strip()
+            if not target_id.isdigit():
+                continue
+            description = _normalize_mobile_line(
+                str(raw_line.get("description") or "")
+            )
+            if (
+                description == source_short
+                or description.startswith(source_short + " ")
+                or description == source_description
+                or description.startswith(source_description + " ")
+            ):
+                matches.append(raw_line)
+        if len(matches) != 1:
+            return None
+        return {
+            "name": mobile.short_description,
+            "long_desc": mobile.room_description,
+            "level": str(mobile.level),
+            "isnpc": str(target.mobile_vnum),
+            "selector": f"#{matches[0]['target_id']}",
+        }
+
+    def _ota_arena_live_target(
+        self,
+        state: CharacterState,
+        target: Any,
+    ) -> Mapping[str, Any] | None:
+        """Return one exact live arena target, never a display-name guess."""
+        expected_room = self.ota_arena_candidate_room_vnum or target.room_vnum
+        if self.source_world is None or state.room_vnum != str(expected_room):
+            return None
+        mobile = self.source_world.mobiles.get(target.mobile_vnum)
+        if mobile is None:
+            return None
+        enemies = self._current_room_enemy_records(state, deduplicate=False)
+        if len(enemies) == 1:
+            enemy = enemies[0]
+            if _int_or_none(enemy.get("isnpc")) == target.mobile_vnum:
+                live_name = str(enemy.get("name") or "").strip()
+                if live_name and _targets_match(
+                    live_name,
+                    mobile.short_description,
+                ):
+                    live_description = _normalize_mobile_line(
+                        str(enemy.get("long_desc") or "")
+                    )
+                    source_description = _normalize_mobile_line(
+                        mobile.room_description
+                    )
+                    if source_description and live_description == source_description:
+                        return enemy
+        return self._ota_arena_listing_target(state, target, mobile)
+
+    def _adopt_ota_arena_captive_state(self, state: CharacterState) -> bool:
+        """Adopt any live Ota'ar room as a five-favour captive circuit."""
+        if not self._ota_arena_state_is_inside(state):
+            return False
+        expected = {target.token_vnum for target in OTA_ARENA_TARGETS}
+        received = self._ota_arena_received_token_vnums()
+        if expected.issubset(received):
+            return False
+        missing_index = next(
+            (
+                index
+                for index, target in enumerate(OTA_ARENA_TARGETS)
+                if target.token_vnum not in received
+            ),
+            0,
+        )
+        if (
+            not self.ota_arena_research
+            or self.ota_arena_stage not in {"target", "wizinvis", "exit"}
+        ):
+            self.ota_arena_research = True
+            self.ota_arena_stage = "target"
+            self.ota_arena_target_index = missing_index
+        elif self.ota_arena_target_index >= len(OTA_ARENA_TARGETS):
+            self.ota_arena_target_index = missing_index
+        self.done = False
+        self.failure = None
+        self.deferred_failure = None
+        self.return_home = False
+        self.return_home_recall_started = False
+        self.fastwalk_returning = False
+        self.fastwalk_emergency_recall_pending = False
+        self.fastwalk_route = None
+        marker = "arena captive hold: gladiators require all five favours"
+        if marker not in self.fastwalk_route_hazards:
+            self.fastwalk_route_hazards.append(marker)
+        return True
+
+    def _ota_arena_abort_decision(
+        self,
+        state: CharacterState,
+        reason: str,
+    ) -> BotDecision | None:
+        """Keep a captive arena run alive until its five favours are complete.
+
+        The ordinary arena controller can abandon a depleted circuit, but
+        Ota'ar is different: the gladiators keep an outsider on the floor
+        until every favour has been collected.  A route, identity, or loot
+        problem therefore becomes a bounded retry inside the arena, never a
+        generic recall/logout handoff.
+        """
+        if self._adopt_ota_arena_captive_state(state):
+            expected = {target.token_vnum for target in OTA_ARENA_TARGETS}
+            received = self._ota_arena_received_token_vnums()
+            self.ota_arena_stage = "target"
+            self.ota_arena_target_index = next(
+                (
+                    index
+                    for index, target in enumerate(OTA_ARENA_TARGETS)
+                    if target.token_vnum not in received
+                ),
+                0,
+            )
+            self.ota_arena_route_commands = ()
+            self.ota_arena_route_index = 0
+            self.ota_arena_where_pending = False
+            self.ota_arena_where_observed = False
+            self.ota_arena_where_buffer = ""
+            self.ota_arena_where_locations = ()
+            self.ota_arena_where_target_vnum = None
+            self.ota_arena_where_retries = 0
+            self.ota_arena_candidate_rooms = ()
+            self.ota_arena_candidate_index = 0
+            self.ota_arena_candidate_room_vnum = None
+            self.ota_arena_pending_move = None
+            self.ota_arena_loot_attempts = 0
+            self.fastwalk_route = None
+            self.fastwalk_hunt_stops = ()
+            self.fastwalk_returning = False
+            self.fastwalk_emergency_recall_pending = False
+            self.return_home = False
+            self.return_home_recall_started = False
+            marker = f"arena captive hold: {reason}"
+            if marker not in self.fastwalk_route_hazards:
+                self.fastwalk_route_hazards.append(marker)
+            self.prompt_ready = True
+            if self.combat_active or state.in_combat or self._current_room_enemy_records(state):
+                return BotDecision(
+                    "flee",
+                    f"withdraw within Ota'ar while favour {len(received) + 1} of {len(expected)} remains",
+                )
+            return BotDecision(
+                "look",
+                f"remain inside Ota'ar until all five favours are confirmed after {reason}",
+            )
+        self.fastwalk_abort_reason = reason
+        self.deferred_failure = reason
+        self.ota_arena_stage = "failed"
+        self.ota_arena_research = False
+        self.return_home = True
+        self.fastwalk_returning = False
+        self.fastwalk_emergency_recall_pending = False
+        self.ota_arena_pending_move = None
+        if self.combat_active or state.in_combat or self._current_room_enemy_records(state):
+            return BotDecision("flee", f"leave the arena after {reason}")
+        if "no_recall" not in state.room_flags and _can_recall_from_position(state):
+            self.return_home_recall_started = True
+            return BotDecision("recall", f"return after arena policy failure: {reason}")
+        # The arena floor is intentionally no-recall.  Do not issue a doomed
+        # recall; leave the failure visible for the campaign rather than
+        # looping on a command the room cannot accept.
+        self.failure = reason
+        return None
+
+    def _ota_arena_state_is_inside(self, state: CharacterState) -> bool:
+        """Return whether the live room is inside the source arena area."""
+        room_vnum = _int_or_none(state.room_vnum)
+        if room_vnum is None or self.source_world is None:
+            return False
+        room = self.source_world.rooms.get(room_vnum)
+        return room is not None and room.area_file == OTA_ARENA_AREA
+
+    def _ota_arena_favours_incomplete(self, state: CharacterState) -> bool:
+        """Keep generic recovery paths inside until every favour is verified."""
+        if not self._ota_arena_state_is_inside(state):
+            return False
+        expected = {target.token_vnum for target in OTA_ARENA_TARGETS}
+        received = self._ota_arena_received_token_vnums()
+        return not expected.issubset(received)
+
+    def _ota_arena_received_token_vnums(self) -> set[int]:
+        """Return favour receipts that belong to the current DD4 reboot."""
+        current_boot = self.world_boot_id
+        received: set[int] = set()
+        for receipt in self.ota_arena_token_receipts:
+            if not isinstance(receipt, Mapping):
+                continue
+            if current_boot is not None and receipt.get("boot_id") != current_boot:
+                continue
+            token_vnum = _int_or_none(receipt.get("token_vnum"))
+            if token_vnum is not None:
+                received.add(token_vnum)
+        return received
+
+    def _ota_arena_all_favours_collected(self) -> bool:
+        """Require the five distinct source token receipts before release."""
+        expected = {target.token_vnum for target in OTA_ARENA_TARGETS}
+        received = self._ota_arena_received_token_vnums()
+        return expected.issubset(received)
+
+    def _ota_arena_no_sanctuary_fallback_allowed(
+        self,
+        state: CharacterState,
+        target: Any,
+    ) -> bool:
+        """Allow one exact arena fight when the captive has no reserve.
+
+        Sanctuary is useful preparation, but it is not a world requirement
+        for collecting favours.  Once inside the no-recall arena, refusing
+        every gladiator because the reserve is unavailable would strand the
+        character permanently.  Keep this fallback narrow: it is enabled by
+        the campaign only for this circuit, requires a healthy player, and
+        accepts only the source-known empty/spec_warrior special profile.
+        """
+        if not self.ota_arena_allow_unprotected_fallback:
+            return False
+        if not self._ota_arena_state_is_inside(state):
+            return False
+        if _health_ratio(state) < 0.90:
+            return False
+        if _has_poison_affect(state.affects):
+            return False
+        if self.source_world is None:
+            return False
+        specials = {
+            str(value).casefold().strip()
+            for value in self.source_world.mobile_specials.get(
+                int(target.mobile_vnum),
+                (),
+            )
+        }
+        if specials - {"spec_warrior"}:
+            return False
+        marker = (
+            "arena Sanctuary reserve unavailable; exact gladiator admitted "
+            "under the no-reserve health gate"
+        )
+        if marker not in self.fastwalk_route_hazards:
+            self.fastwalk_route_hazards.append(marker)
+        return True
+
+    def _ota_arena_recovery_room(self, state: CharacterState) -> bool:
+        """Identify a quiet arena room where bounded in-place recovery is safe."""
+        return bool(
+            self.ota_arena_research
+            and self.ota_arena_stage == "target"
+            and not self.ota_arena_pending_loot
+            and self._ota_arena_state_is_inside(state)
+            and not self.combat_active
+            and not state.in_combat
+            and not state.combat_target
+            and not self._current_room_enemy_records(state)
+        )
+
+    def _ota_arena_route_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Advance one exact lower-arena route step after a live room check."""
+        if self.ota_arena_stage == "target":
+            target = ota_arena_target(self.ota_arena_target_index)
+            if target is None:
+                return self._ota_arena_abort_decision(
+                    state, "arena target sequence exceeded its five source resets"
+                )
+            if not self._ota_arena_plan_candidate_route(state, target):
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"no source-audited arena route remains for mobile {target.mobile_vnum}",
+                )
+            expected_room = str(
+                self.ota_arena_candidate_room_vnum or target.room_vnum
+            )
+            if str(state.room_vnum or "") == expected_room:
+                return None
+            if not self.ota_arena_route_commands:
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"arena route did not reach candidate room {expected_room}",
+                )
+            if self.ota_arena_route_index >= len(self.ota_arena_route_commands):
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"arena route did not reach candidate room {expected_room}",
+                )
+            command = self.ota_arena_route_commands[self.ota_arena_route_index]
+            self.ota_arena_route_index += 1
+            return BotDecision(
+                command,
+                f"follow Ota'ar arena route to source target room {expected_room}",
+            )
+        if self.ota_arena_stage == "wizinvis":
+            if str(state.room_vnum or "") == str(OTA_ARENA_WIZINVIS_ROOM_VNUM):
+                return None
+            if not self.ota_arena_route_commands:
+                self.ota_arena_route_commands = ("down", "north")
+                self.ota_arena_route_index = 0
+            if self.ota_arena_route_index >= len(self.ota_arena_route_commands):
+                return self._ota_arena_abort_decision(
+                    state, "arena route did not reach the favour gate"
+                )
+            command = self.ota_arena_route_commands[self.ota_arena_route_index]
+            self.ota_arena_route_index += 1
+            return BotDecision(command, "follow Ota'ar arena route to the favour gate")
+        if self.ota_arena_stage == "exit":
+            if not self._ota_arena_all_favours_collected():
+                # The arena's gladiators keep the character captive until all
+                # five favours are carried.  A stale resume or generic helper
+                # must never turn a partial circuit into an exit attempt.
+                self.ota_arena_stage = "target"
+                self.ota_arena_target_index = next(
+                    (
+                        index
+                        for index, target in enumerate(OTA_ARENA_TARGETS)
+                        if target.token_vnum
+                        not in self._ota_arena_received_token_vnums()
+                    ),
+                    0,
+                )
+                self.ota_arena_route_commands = ()
+                self.ota_arena_route_index = 0
+                return None
+            if str(state.room_vnum or "") == str(OTA_ARENA_EXIT_ROOM_VNUM):
+                self.ota_arena_stage = "return"
+                self.ota_arena_research = False
+                self.return_home = True
+                self.fastwalk_route = None
+                self.return_home_recall_started = False
+                return self._return_home_decision(state)
+            if not self.ota_arena_route_commands:
+                self.ota_arena_route_commands = OTA_ARENA_EXIT_ROUTE
+                self.ota_arena_route_index = 0
+            if self.ota_arena_route_index >= len(self.ota_arena_route_commands):
+                return self._ota_arena_abort_decision(
+                    state, "arena exit route did not reach the outside gate"
+                )
+            command = self.ota_arena_route_commands[self.ota_arena_route_index]
+            self.ota_arena_route_index += 1
+            return BotDecision(command, "follow Ota'ar arena route to the outside gate")
+        return None
+
+    def _ota_arena_decision(self, state: CharacterState) -> BotDecision | None:
+        """Run the exact five-favour arena circuit after forced entry."""
+        if not self.ota_arena_research:
+            return None
+        if self.ota_arena_stage == "entry" and self.fastwalk_route is not None:
+            # The ordinary source-ranked fastwalk owns the canal approach until
+            # the guard's forced transfer is observed by GMCP.
+            return None
+        if (
+            self.ota_arena_stage in {"target", "wizinvis", "exit"}
+            and self.fastwalk_route is None
+            and self.return_home
+            and not self._ota_arena_state_is_inside(state)
+        ):
+            # A death or corpse recovery can leave the arena controller alive
+            # while the shared return controller owns a healer/purgatory room.
+            # Let that controller finish the safe return instead of trying to
+            # interpret the healer as an arena graph node.
+            return None
+        if (
+            self.ota_arena_stage == "target"
+            and self.fastwalk_route is not None
+            and not self._ota_arena_state_is_inside(state)
+        ):
+            # A reconnect may recover a corpse and return to the healer before
+            # the saved in-circuit flag is resumed.  Re-enter through the same
+            # audited route instead of trying to apply an arena-only graph to
+            # a Midgaard room.
+            self.ota_arena_stage = "entry"
+            self.ota_arena_target_index = 0
+            self.ota_arena_where_pending = False
+            self.ota_arena_where_observed = False
+            self.ota_arena_where_buffer = ""
+            self.ota_arena_where_locations = ()
+            self.ota_arena_where_target_vnum = None
+            self.ota_arena_where_retries = 0
+            self.ota_arena_candidate_rooms = ()
+            self.ota_arena_candidate_index = 0
+            self.ota_arena_candidate_room_vnum = None
+            self.ota_arena_route_commands = ()
+            self.ota_arena_route_index = 0
+            return None
+        if (
+            self.ota_arena_stage == "target"
+            and self.fastwalk_route is not None
+            and self._ota_arena_state_is_inside(state)
+        ):
+            # ``--start-in-circuit`` supplies the entry route only as a
+            # reconnect fallback. Once the socket is inside the arena, the
+            # arena controller owns movement and combat; the generic fastwalk
+            # layer must not classify its targets as route interruptions.
+            self.fastwalk_route = None
+            self.fastwalk_returning = False
+            self.fastwalk_emergency_recall_pending = False
+        if self.ota_arena_pending_move is not None:
+            return None
+        if (
+            self._ota_arena_recovery_room(state)
+            and _health_ratio(state) < 0.5
+        ):
+            self.waiting_for_heal = True
+            return BotDecision(
+                "sleep",
+                "recover inside Ota'ar until the remaining favours can be fought",
+            )
+        # This controller runs before the shared combat loop. Once the exact
+        # arena opener has landed, hand control back to that loop so ordinary
+        # rounds, withdrawal floors, and combat skills can progress the fight.
+        if self.ota_arena_stage == "target" and (
+            self.combat_active
+            or state.in_combat
+            or state.combat_target
+        ):
+            return None
+        if self.ota_arena_stage == "target" and not self.ota_arena_pending_loot:
+            target = ota_arena_target(self.ota_arena_target_index)
+            if target is None:
+                return self._ota_arena_abort_decision(
+                    state, "arena target sequence has no next source target"
+                )
+            if self.ota_arena_where_pending:
+                return None
+            if not self.ota_arena_where_observed:
+                self.ota_arena_where_target_vnum = target.mobile_vnum
+                return BotDecision(
+                    f"where {target.command_keyword}",
+                    f"locate Ota'ar arena target {target.mobile_vnum} before the bounded room sweep",
+                )
+        if self.ota_arena_stage in {"target", "wizinvis", "exit"}:
+            route_decision = self._ota_arena_route_decision(state)
+            if route_decision is not None:
+                return route_decision
+        if self.ota_arena_stage == "target":
+            target = ota_arena_target(self.ota_arena_target_index)
+            if target is None:
+                return self._ota_arena_abort_decision(
+                    state, "arena target sequence has no next source target"
+                )
+            if not self.ota_arena_pending_loot and self.ota_arena_where_pending:
+                return None
+            if not self.ota_arena_pending_loot and not self.ota_arena_where_observed:
+                self.ota_arena_where_target_vnum = target.mobile_vnum
+                self.ota_arena_where_buffer = ""
+                return BotDecision(
+                    f"where {target.command_keyword}",
+                    f"locate Ota'ar arena target {target.mobile_vnum} before the bounded room sweep",
+                )
+            if self.ota_arena_pending_loot:
+                descriptions = _inventory_descriptions(state.inventory)
+                if ota_arena_token_terms_present(descriptions, target):
+                    self.ota_arena_token_receipts.append(
+                        {
+                            "mobile_vnum": target.mobile_vnum,
+                            "room_vnum": (
+                                self.ota_arena_candidate_room_vnum
+                                or target.room_vnum
+                            ),
+                            "token_vnum": target.token_vnum,
+                            "boot_id": self.world_boot_id,
+                        }
+                    )
+                    self.ota_arena_pending_loot = False
+                    self.ota_arena_loot_attempts = 0
+                    self.ota_arena_target_index += 1
+                    self.ota_arena_where_pending = False
+                    self.ota_arena_where_observed = False
+                    self.ota_arena_where_buffer = ""
+                    self.ota_arena_where_locations = ()
+                    self.ota_arena_where_target_vnum = None
+                    self.ota_arena_where_retries = 0
+                    self.ota_arena_candidate_rooms = ()
+                    self.ota_arena_candidate_index = 0
+                    self.ota_arena_candidate_room_vnum = None
+                    self.ota_arena_route_commands = ()
+                    self.ota_arena_route_index = 0
+                    if self._ota_arena_all_favours_collected():
+                        self.ota_arena_stage = "wizinvis"
+                    return BotDecision(
+                        "look",
+                        f"confirm the next Ota'ar arena route after favour {target.token_vnum}",
+                    )
+                if self.ota_arena_loot_attempts == 0:
+                    self.ota_arena_loot_attempts = 1
+                    return BotDecision(
+                        "inventory",
+                        f"check whether favour {target.token_vnum} was already collected",
+                    )
+                if self.ota_arena_loot_attempts == 1:
+                    self.ota_arena_loot_attempts = 2
+                    return BotDecision(
+                        f"get favour {target.command_keyword} corpse",
+                        f"retrieve the exact favour token from source mobile {target.mobile_vnum}",
+                    )
+                if self.ota_arena_loot_attempts == 2:
+                    self.ota_arena_loot_attempts = 3
+                    return BotDecision(
+                        "inventory",
+                        f"verify favour {target.token_vnum} after corpse retrieval",
+                    )
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"favour token {target.token_vnum} was not confirmed after the source kill",
+                )
+            enemy = self._ota_arena_live_target(state, target)
+            if enemy is None:
+                if self.ota_arena_look_attempts < 2:
+                    self.ota_arena_look_attempts += 1
+                    return BotDecision(
+                        "look",
+                        f"refresh the exact source target {target.mobile_vnum} before considering it",
+                    )
+                if self._ota_arena_advance_candidate(target):
+                    return self._ota_arena_route_decision(state)
+                if self.ota_arena_where_retries < 1:
+                    self.ota_arena_where_retries += 1
+                    self.ota_arena_where_pending = False
+                    self.ota_arena_where_observed = False
+                    self.ota_arena_where_buffer = ""
+                    self.ota_arena_where_locations = ()
+                    self.ota_arena_candidate_rooms = ()
+                    self.ota_arena_candidate_index = 0
+                    self.ota_arena_candidate_room_vnum = None
+                    self.ota_arena_route_commands = ()
+                    self.ota_arena_route_index = 0
+                    return BotDecision(
+                        f"where {target.command_keyword}",
+                        f"refresh the wandering Ota'ar arena target {target.mobile_vnum} before closing its bounded sweep",
+                    )
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"source target {target.mobile_vnum} was not isolated and live after the bounded arena room sweep",
+                )
+            self.ota_arena_look_attempts = 0
+            target_name = str(enemy.get("name") or target.command_keyword).strip()
+            selector = str(enemy.get("selector") or "").strip() or None
+            selector = selector or self._target_selector_for(target_name)
+            if self.consider_response_pending:
+                return None
+            if self.consider_target is not None and self.consider_viable is False:
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"live consider rejected source target {target.mobile_vnum}",
+                )
+            if self.consider_viable is not True:
+                self.consider_target = target_name
+                self.consider_target_selector = selector
+                self.consider_viable = None
+                self.consider_response_buffer = ""
+                self.consider_response_target_absent = False
+                return BotDecision(
+                    f"consider {selector or target.command_keyword}",
+                    f"check live consider for source mobile {target.mobile_vnum} before the arena fight",
+                )
+            self.active_target = target_name
+            self.active_target_selector = selector
+            self.active_target_level = _int_or_none(enemy.get("level"))
+            self.active_target_mobile_vnum = target.mobile_vnum
+            self.ota_arena_current_target_vnum = target.mobile_vnum
+            if (
+                target.requires_sanctuary
+                and not _has_named_affect(state.affects, "sanctuary")
+            ):
+                protection = self._combat_pouch_potion_decision(state)
+                if protection is not None:
+                    self.combat_active = False
+                    return protection
+                if (
+                    self.pending_source_resource_hold is not None
+                    or self.pending_source_resource_effect is not None
+                    or self.source_resource_effect_acknowledged is not None
+                ):
+                    self.combat_active = False
+                    return None
+                if self._ota_arena_no_sanctuary_fallback_allowed(state, target):
+                    self.combat_active = True
+                    self.consider_response_pending = False
+                    self.consider_response_deadline = None
+                    return self._combat_opener_decision(
+                        target_name,
+                        (
+                            "fight the exact source-verified arena mobile "
+                            f"{target.mobile_vnum} without a reserve; the "
+                            "live no-reserve health gate passed"
+                        ),
+                        command_keyword=target.command_keyword,
+                        selector_override=selector,
+                        state=state,
+                    )
+                return self._ota_arena_abort_decision(
+                    state,
+                    f"arena target {target.mobile_vnum} requires a verified "
+                    "Sanctuary effect before combat",
+                )
+            self.combat_active = True
+            self.consider_response_pending = False
+            self.consider_response_deadline = None
+            return self._combat_opener_decision(
+                target_name,
+                f"fight source-verified arena mobile {target.mobile_vnum} after live consider",
+                command_keyword=target.command_keyword,
+                selector_override=selector,
+                state=state,
+            )
+        if self.ota_arena_stage == "wizinvis":
+            if str(state.room_vnum or "") == str(OTA_ARENA_WIZINVIS_ROOM_VNUM):
+                if self.ota_arena_look_attempts < 1:
+                    self.ota_arena_look_attempts += 1
+                    return BotDecision(
+                        "look",
+                        "trigger the source favour-gate greeting after collecting all five tokens",
+                    )
+                return self._ota_arena_abort_decision(
+                    state, "the source favour gate did not transfer the character"
+                )
+        return self._ota_arena_route_decision(state)
+
     def _tutorial_decision(self, state: CharacterState) -> BotDecision | None:
         # A reconnect may provide a numeric starvation state without repeating
         # the warning text that normally arms these local flags. Treat the
@@ -10231,7 +11411,33 @@ class StarterPolicy:
             self.combat_spell_rotation_extensions_used = 0
 
         route_hazard = self._active_route_preflight_hazard(state)
-        if route_hazard is not None:
+        live_enemies = self._current_room_enemy_records(state)
+        bounded_midgaard_drunk = (
+            route_hazard is not None
+            and self._bounded_midgaard_drunk_route_interruption(
+                state,
+                route_hazard,
+                live_enemies,
+            )
+        )
+        bounded_special_transit = bool(
+            route_hazard is not None
+            and not bounded_midgaard_drunk
+            and len(live_enemies) == 1
+            and self._source_mobile_route_transit_special_is_bounded(
+                live_enemies[0],
+                state,
+            )
+            and self._source_plain_transit_attacker_is_admitted(
+                state,
+                live_enemies,
+            )
+        )
+        if (
+            route_hazard is not None
+            and not bounded_midgaard_drunk
+            and not bounded_special_transit
+        ):
             # Source-registered route hazards are never opportunistic targets:
             # they can respawn inside a randomized route after the boundary
             # preflight, so this path must not reuse the waypoint-resume logic.
@@ -10271,7 +11477,6 @@ class StarterPolicy:
                 f"leave the route after source-registered hazard {route_hazard!r} appeared",
             )
 
-        live_enemies = self._current_room_enemy_records(state)
         if (
             self.flee_failed
             and self.fastwalk_route is not None
@@ -10760,7 +11965,27 @@ class StarterPolicy:
             self.magic_shop_waiting_for_flight_expiry = False
 
         if _is_sleeping(state):
+            if (
+                self._ota_arena_recovery_room(state)
+                and _health_ratio(state) < 0.8
+            ):
+                self.prompt_ready = False
+                return None
             return BotDecision("stand", "wake before travel or arena actions")
+
+        ota_arena = self._ota_arena_decision(state)
+        if ota_arena is not None:
+            return ota_arena
+        if self._ota_arena_favours_incomplete(state) and not (
+            self.combat_active
+            or state.in_combat
+            or state.combat_target
+        ):
+            # The arena controller may be waiting on a bounded live reply or
+            # a forced-transfer observation.  Do not let a generic return,
+            # logout, or resupply controller issue an exit in that gap.
+            self.prompt_ready = False
+            return None
 
         if self._resume_required_loot_cleanup_before_emergency_return(state):
             # Let the ordinary corpse-extraction path run before an emergency
@@ -11334,8 +12559,19 @@ class StarterPolicy:
                     self.fastwalk_plain_transit_fight_count += 1
                     self.fastwalk_attack_started = True
                     self.combat_active = True
+                    transit_kind = (
+                        "armed Sanctuary-backed"
+                        if self.fastwalk_route is not None
+                        and mobile_vnum
+                        in set(
+                            self.fastwalk_route
+                            .route_allowed_armed_transit_mobile_vnums
+                        )
+                        else "plain"
+                    )
                     marker = (
-                        "source-registered plain current-band transit fight: "
+                        "source-registered "
+                        f"{transit_kind} current-band transit fight: "
                         f"{mobile_vnum}"
                     )
                     if marker not in self.fastwalk_route_hazards:
@@ -11528,6 +12764,10 @@ class StarterPolicy:
                 enemy
                 for enemy in live_enemies
                 if not plain_transit_active_target
+                and not self._source_mobile_route_transit_special_is_bounded(
+                    enemy,
+                    state,
+                )
                 and self._source_mobile_enemy_is_known_below_useful_band(
                     enemy,
                     state,
@@ -12386,12 +13626,17 @@ class StarterPolicy:
                 or self.needs_drink
                 or _health_ratio(state) < 0.25
             ):
-                if self.return_home:
-                    return BotDecision(
-                        "recall",
-                        "use emergency recall when reconnecting to trapped combat",
-                    )
-                return BotDecision("flee", "leave combat before emergency resupply")
+                # Ota'ar's gladiators do not release a combatant until all
+                # five favours are collected.  Hunger/thirst warnings alone
+                # must not trigger an XP-losing flee or an impossible recall
+                # while the active favour circuit is still in combat.
+                if not self._ota_arena_favours_incomplete(state):
+                    if self.return_home:
+                        return BotDecision(
+                            "recall",
+                            "use emergency recall when reconnecting to trapped combat",
+                        )
+                    return BotDecision("flee", "leave combat before emergency resupply")
             spell = self._between_round_combat_decision(state)
             if spell is not None:
                 return spell
@@ -12585,6 +13830,20 @@ class StarterPolicy:
                     save_reason="persist verified see-invisible preparation",
                     quit_reason="see-invisible potion verified and safely stored",
                 )
+            if (
+                self.magic_shop_buy_water_breathing
+                and not self.magic_shop_water_breathing_verified
+            ):
+                # A route through the ocean cannot be handed back to the
+                # fastwalk controller after an unaffordable or unconfirmed
+                # water-breathing purchase.  The route may require both
+                # flight and breathing; flight alone is not an exemption.
+                self.failure = (
+                    "water-breathing preparation was not live-verified; "
+                    "the water route remains closed"
+                )
+                self.fastwalk_abort_reason = self.failure
+                return None
             if self.magic_shop_continue_to_fastwalk:
                 self.magic_shop_research = False
                 self.magic_shop_continue_to_fastwalk = False
@@ -13170,6 +14429,16 @@ class StarterPolicy:
 
     def _gear_decision(self, state: CharacterState) -> BotDecision | None:
         """Apply the right source-backed loadout before the next activity."""
+        if (
+            self.pending_source_resource_hold is not None
+            or self.source_resource_hold_ready is not None
+            or self.pending_source_resource_effect is not None
+            or self.source_resource_effect_acknowledged is not None
+        ):
+            # A staff/scroll must remain in HOLD from acknowledgement through
+            # activation.  Stance management is lower priority and must not
+            # swap the resource out between those two commands.
+            return None
         if self.return_home and state.room_vnum == "3054":
             carried_food = (
                 self.needs_food
@@ -14142,6 +15411,42 @@ class StarterPolicy:
             for reset in resets
             for slot, object_vnum in reset.equipment
         )
+
+    def _source_mobile_has_single_armed_transit_reset(
+        self,
+        mobile_vnum: int,
+    ) -> bool:
+        """Require one singleton reset with exactly one ordinary weapon."""
+        if self.source_world is None:
+            return False
+        resets = tuple(
+            reset
+            for reset in self.source_world.mob_resets
+            if reset.mobile_vnum == mobile_vnum
+        )
+        if not resets or any(reset.maximum_count != 1 for reset in resets):
+            return False
+        for reset in resets:
+            wielded = [
+                object_vnum
+                for slot, object_vnum in reset.equipment
+                if slot == WEAR_WIELD
+            ]
+            if len(wielded) != 1 or any(
+                slot == WEAR_DUAL for slot, _object_vnum in reset.equipment
+            ):
+                return False
+            for slot, object_vnum in reset.equipment:
+                item = self.source_world.objects.get(object_vnum)
+                if item is None or (
+                    slot == WEAR_WIELD
+                    and item.item_type != ITEM_WEAPON
+                ) or (
+                    slot != WEAR_WIELD
+                    and item.item_type != ITEM_ARMOR
+                ):
+                    return False
+        return True
 
     def _source_stop_has_adept_support_only_special(
         self,
@@ -19169,6 +20474,9 @@ class StarterPolicy:
             )
             return BotDecision(direction, reason)
 
+        if not deposit and self.fastwalk_world_cache_object_vnums:
+            return self._fastwalk_world_cache_verified_get_decision(state)
+
         index = getattr(self, index_attr)
         if index < len(self.fastwalk_world_cache_items):
             if deposit and self.fastwalk_world_cache_object_vnums:
@@ -19236,6 +20544,88 @@ class StarterPolicy:
 
         setattr(self, returning_attr, True)
         return BotDecision("west", "return from the Midgaard world-item cache")
+
+    def _fastwalk_world_cache_verified_get_decision(
+        self,
+        state: CharacterState,
+    ) -> BotDecision | None:
+        """Verify one exact cached object before leaving the bank room."""
+        reply = self.fastwalk_world_cache_reply
+        now = time.monotonic()
+        if self.fastwalk_world_cache_phase == "retrieving":
+            if not reply.acknowledged():
+                if reply.failure or reply.expired(now):
+                    self.failure = (
+                        reply.failure
+                        or "world cache get acknowledgement exceeded five seconds"
+                    )
+                    self.fastwalk_world_cache_phase = "closed"
+                    reply.clear()
+                    return None
+                self.prompt_ready = False
+                return None
+            index = self.fastwalk_world_cache_pending_index
+            vnum = self.fastwalk_world_cache_pending_vnum
+            if (
+                index is None
+                or vnum is None
+                or not _inventory_contains_source_vnum(
+                    state.inventory,
+                    self.gear_catalog,
+                    vnum,
+                )
+            ):
+                self.failure = (
+                    "the cached source key was not confirmed in carried inventory"
+                )
+                self.fastwalk_world_cache_phase = "closed"
+                reply.clear()
+                return None
+            self.fastwalk_world_cache_preflight_index = index + 1
+            self.fastwalk_world_cache_phase = None
+            self.fastwalk_world_cache_pending_index = None
+            self.fastwalk_world_cache_pending_vnum = None
+            reply.clear()
+
+        index = self.fastwalk_world_cache_preflight_index
+        if index >= len(self.fastwalk_world_cache_items):
+            self.fastwalk_world_cache_preflight_returning = True
+            return BotDecision(
+                "west",
+                "return from the verified Midgaard world-item cache",
+            )
+        vnum = self.fastwalk_world_cache_object_vnums[index]
+        if _inventory_contains_source_vnum(
+            state.inventory,
+            self.gear_catalog,
+            vnum,
+        ):
+            self.fastwalk_world_cache_preflight_index = index + 1
+            if index + 1 >= len(self.fastwalk_world_cache_items):
+                self.fastwalk_world_cache_preflight_returning = True
+                return BotDecision(
+                    "west",
+                    "return with the already-carried source key",
+                )
+            return self._fastwalk_world_cache_verified_get_decision(state)
+        target_item = (
+            self.gear_catalog.objects.get(vnum)
+            if self.gear_catalog is not None
+            else None
+        )
+        if target_item is None:
+            self.failure = f"world cache object VNUM {vnum} is not in the source catalog"
+            self.fastwalk_world_cache_phase = "closed"
+            return None
+        keyword = self.fastwalk_world_cache_items[index]
+        self.fastwalk_world_cache_pending_index = index
+        self.fastwalk_world_cache_pending_vnum = vnum
+        self.fastwalk_world_cache_phase = "retrieving"
+        reply.begin(f"get {keyword}", now=now)
+        return BotDecision(
+            f"get {keyword}",
+            "retrieve and verify the exact source key from the reboot-scoped cache",
+        )
 
     def _fastwalk_world_cache_verified_drop_decision(
         self,
@@ -19761,8 +21151,33 @@ class StarterPolicy:
         state: CharacterState,
         enemies: Collection[Mapping[str, Any]],
     ) -> bool:
-        """Admit one exact current-band plain mobile on an audited route."""
+        """Admit one exact current-band transit mobile on an audited route."""
         route = self.fastwalk_route
+        plain_vnums = set(
+            route.route_allowed_plain_transit_mobile_vnums
+            if route is not None
+            else ()
+        )
+        armed_vnums = set(
+            route.route_allowed_armed_transit_mobile_vnums
+            if route is not None
+            else ()
+        )
+        special_vnums = set(
+            route.route_bounded_transit_special_mobile_vnums
+            if route is not None
+            else ()
+        )
+        allowed_vnums = plain_vnums | armed_vnums | special_vnums
+        allowed_room_vnums = set(
+            (
+                route.route_allowed_plain_transit_room_vnums
+                + route.route_allowed_armed_transit_room_vnums
+                + route.route_bounded_transit_special_room_vnums
+            )
+            if route is not None
+            else ()
+        )
         if (
             route is None
             or self.fastwalk_returning
@@ -19776,9 +21191,9 @@ class StarterPolicy:
             or state.hp is None
             or state.max_hp <= 0
             or state.hp <= 0
-            or not route.route_allowed_plain_transit_mobile_vnums
+            or not allowed_vnums
             or str(state.room_vnum or self.current_room or "")
-            not in set(route.route_allowed_plain_transit_room_vnums)
+            not in allowed_room_vnums
             or len(enemies) != 1
         ):
             return False
@@ -19790,7 +21205,7 @@ class StarterPolicy:
             return False
         enemy = enemies[0]
         mobile_vnum = _int_or_none(enemy.get("isnpc"))
-        if mobile_vnum not in set(route.route_allowed_plain_transit_mobile_vnums):
+        if mobile_vnum not in allowed_vnums:
             return False
         if mobile_vnum in {
             stop.source_mobile_vnum
@@ -19799,6 +21214,23 @@ class StarterPolicy:
         }:
             return False
         mobile = self.source_world.mobiles.get(mobile_vnum)
+        if mobile_vnum in special_vnums:
+            if (
+                not self._source_mobile_route_transit_special_is_bounded(
+                    enemy,
+                    state,
+                )
+                or mobile is None
+                or not mobile.room_description.strip()
+                or _target_identity_without_article(
+                    str(enemy.get("name") or "")
+                )
+                != _target_identity_without_article(mobile.short_description)
+                or _normalize_mobile_line(str(enemy.get("long_desc") or ""))
+                != _normalize_mobile_line(mobile.room_description)
+            ):
+                return False
+            return True
         if (
             mobile is None
             or not mobile.aggressive
@@ -19817,30 +21249,57 @@ class StarterPolicy:
             != _target_identity_without_article(mobile.short_description)
             or _normalize_mobile_line(str(enemy.get("long_desc") or ""))
             != _normalize_mobile_line(mobile.room_description)
-            or self._source_mobile_has_armed_reset(mobile_vnum)
         ):
+            return False
+        armed = mobile_vnum in armed_vnums
+        if armed:
+            if (
+                not mobile.wanders
+                or not self._source_mobile_has_single_armed_transit_reset(
+                    mobile_vnum
+                )
+                or not _has_named_affect(state.affects, "sanctuary")
+                or int(state.hp) < math.ceil(int(state.max_hp) * 0.95)
+            ):
+                return False
+        elif self._source_mobile_has_armed_reset(mobile_vnum):
             return False
         resets = tuple(
             reset
             for reset in self.source_world.mob_resets
             if reset.mobile_vnum == mobile_vnum
         )
-        if not resets or any(reset.equipment for reset in resets):
+        if not resets or (
+            not armed and any(reset.equipment for reset in resets)
+        ):
             return False
         maximum_level = _mobile_level_range(mobile.level)[1]
         if not state.level - 5 < maximum_level <= state.level + 1:
             return False
-        peak_damage = _mobile_peak_round_damage(
-            maximum_level,
-            wielding=False,
-            dual_wielding=False,
-            damage_modifier=mobile.damage_modifier,
-        )
-        critical_damage = _mobile_critical_hit_damage(
-            maximum_level,
-            wielding=False,
-            damage_modifier=mobile.damage_modifier,
-        )
+        if armed:
+            peak_damage = mobile_sanctuary_peak_round_damage(
+                maximum_level,
+                wielding=True,
+                dual_wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            critical_damage = mobile_sanctuary_critical_hit_damage(
+                maximum_level,
+                wielding=True,
+                damage_modifier=mobile.damage_modifier,
+            )
+        else:
+            peak_damage = _mobile_peak_round_damage(
+                maximum_level,
+                wielding=False,
+                dual_wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            critical_damage = _mobile_critical_hit_damage(
+                maximum_level,
+                wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
         health_floor = (int(state.max_hp) + 4) // 5
         return bool(
             int(state.hp) > health_floor
@@ -19882,15 +21341,19 @@ class StarterPolicy:
         enemy: Mapping[str, Any],
         state: CharacterState,
     ) -> bool:
-        """Validate the one exact level-25 Catacombs transit special."""
+        """Validate one exact, source-bounded special transit mobile."""
         route = self.fastwalk_route
+        route_name = route.name.casefold() if route is not None else ""
+        catacombs_route = route_name.startswith(
+            "source dwarven catacombs sanctuary reserve"
+        )
+        ota_arena_route = route_name.startswith(
+            "source-ranked ota'ar arena favour circuit"
+        )
         if (
             route is None
-            or not route.name.casefold().startswith(
-                "source dwarven catacombs sanctuary reserve"
-            )
-            or state.level != 25
             or state.max_hp is None
+            or not (catacombs_route or ota_arena_route)
         ):
             return False
         mobile_vnum = _int_or_none(enemy.get("isnpc"))
@@ -19910,6 +21373,65 @@ class StarterPolicy:
                 (),
             )
         )
+        if ota_arena_route:
+            if (
+                state.level is None
+                or state.hp is None
+                or str(state.room_vnum or self.current_room or "")
+                not in set(route.route_bounded_transit_special_room_vnums)
+                or mobile.short_description.casefold() != "old higue"
+                or not mobile.aggressive
+                or not mobile.wanders
+                or mobile.programs
+                or mobile.attack_programs
+                or mobile.non_corporeal
+                or mobile.costs_fame
+                or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+                or specials != ("spec_bloodsucker",)
+                or not mobile.hp_modifier_known
+                or not mobile.damage_modifier_known
+            ):
+                return False
+            resets = tuple(
+                reset
+                for reset in self.source_world.mob_resets
+                if reset.mobile_vnum == mobile_vnum
+            )
+            if (
+                len(resets) != 1
+                or resets[0].room_vnum != 27141
+                or resets[0].maximum_count != 1
+                or resets[0].equipment
+                or resets[0].object_vnums != (27102,)
+            ):
+                return False
+            maximum_level = _mobile_level_range(mobile.level)[1]
+            if maximum_level > int(state.level) - 5:
+                return False
+            peak_damage = _mobile_peak_round_damage(
+                maximum_level,
+                wielding=False,
+                dual_wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            ordinary_attacks = 5 + int(maximum_level >= 20)
+            special_extra_damage = max(1, peak_damage // ordinary_attacks)
+            critical_damage = _mobile_critical_hit_damage(
+                maximum_level,
+                wielding=False,
+                damage_modifier=mobile.damage_modifier,
+            )
+            health_floor = (int(state.max_hp) + 4) // 5
+            return bool(
+                int(state.hp) > health_floor
+                and peak_damage
+                + special_extra_damage
+                + critical_damage
+                + health_floor
+                <= int(state.max_hp)
+            )
+        if not catacombs_route or state.level != 25:
+            return False
         if (
             not mobile.aggressive
             or mobile.programs
@@ -20416,6 +21938,20 @@ class StarterPolicy:
                 and origin_vnum is not None
                 and level is not None
             ):
+                economic_transit_vnums = (
+                    tuple(
+                        sorted(
+                            vnum
+                            for vnum in self.source_world.mobile_specials
+                            if source_mobile_has_only_economic_transit_risk(
+                                self.source_world,
+                                int(vnum),
+                            )
+                        )
+                    )
+                    if _state_coin_value(state) <= 1_250
+                    else ()
+                )
                 candidates = _city_rearm_locator_candidate_rooms(
                     self.source_world,
                     locations[0],
@@ -20426,6 +21962,7 @@ class StarterPolicy:
                         candidates,
                         origin_vnum=origin_vnum,
                         character_level=int(level),
+                        economic_special_mobile_vnums=economic_transit_vnums,
                     )
             if plan is not None:
                 self.city_rearm_locator_candidates = candidates
@@ -20450,7 +21987,8 @@ class StarterPolicy:
                 else:
                     self.city_rearm_shop_failure = (
                         f"Dave's located room {locations[0]!r} had no source-safe "
-                        "sweep within 22 commands and the observed movement budget"
+                        "sweep within the bounded locator budget and the observed "
+                        "movement budget"
                     )
                 self.city_rearm_locator_candidates = ()
                 self.city_rearm_locator_candidate_index = 0
@@ -22017,6 +23555,40 @@ class StarterPolicy:
                 and source_program_below_xp_band
             )
         if (
+            self.field_city_preflight_active
+            and not observe_only
+            and not force_locator
+            and source_program_below_xp_band
+            and not self.runtime_boundary_requested
+            and not self.combat_active
+            and not state.in_combat
+            and not self._current_room_enemy_records(state)
+            and _position_number(state) == 7
+            and _health_ratio(state) >= 0.95
+            and not self.needs_food
+            and not self.needs_drink
+            and bounded_city_shop_transit_available(
+                self.source_world, state.to_dict(),
+            )
+            and self.city_shop_transit.status != "aborted"
+        ):
+            # The exact source Drunk is below the useful XP band for this
+            # pilot. Keep the bounded transit proof, but do not wait for a
+            # wandering low-level mobile to leave the city route. If he does
+            # greet in the live route, ordinary combat and return gates still
+            # handle that interruption.
+            if field_route_room_vnums:
+                self.city_shop_transit.admit(
+                    route_room_vnums=field_route_room_vnums,
+                )
+            self.magic_shop_drunk_preflight_complete = True
+            self.magic_shop_drunk_preflight_pending = False
+            self.magic_shop_drunk_preflight_deadline = None
+            self.magic_shop_drunk_preflight_buffer = ""
+            self.magic_shop_drunk_preflight_locations = ()
+            self.magic_shop_route_blocked_by_drunk = False
+            return None
+        if (
             not observe_only and not force_locator
             and self.allow_bounded_city_shop_transit
             and (
@@ -22466,9 +24038,26 @@ class StarterPolicy:
                 _has_named_affect(state.affects, effect)
                 for effect in ("fly", "levitation")
             )
-            # A fresh live flight affect satisfies this objective. Do not make
-            # the character idle at the healer just to renew a short timer.
-            flight_is_sufficient = active_flight
+            flight_duration = max(
+                (
+                    duration
+                    for effect in ("fly", "levitation")
+                    if (duration := _named_affect_duration(state.affects, effect))
+                    is not None
+                ),
+                default=None,
+            )
+            # A source-ranked route owns a minimum reserve.  A merely visible
+            # affect is still enough for ordinary shop research, but not for a
+            # route that may spend time on a preflight and a bounded retry.
+            flight_is_sufficient = active_flight and (
+                not self.magic_shop_continue_to_fastwalk
+                or self.magic_shop_minimum_flight_duration is None
+                or (
+                    flight_duration is not None
+                    and flight_duration >= self.magic_shop_minimum_flight_duration
+                )
+            )
             if flight_is_sufficient:
                 # A fresh live affect supersedes a stale campaign checkpoint;
                 # finish safely instead of sleeping through its expiry.
@@ -25429,6 +27018,55 @@ class StarterPolicy:
                 return target
         return None
 
+    def _bounded_midgaard_drunk_route_interruption(
+        self,
+        state: CharacterState,
+        route_hazard: str,
+        enemies: Collection[Mapping[str, Any]],
+    ) -> bool:
+        """Admit the exact low-level Drunk when he greets a field route.
+
+        The Drunk's greet program can fire after a route preflight has already
+        cleared Temple Square.  A source-proven VNUM 3064 at least five levels
+        below the pilot is a bounded transit interruption, not a reason to
+        issue an XP-losing flee.  Keep this exception exact and leave the
+        ordinary combat, health, nutrition, and return gates in control.
+        """
+        route = self.fastwalk_route
+        if (
+            route is None
+            or self.source_world is None
+            or not _targets_match(route_hazard, "the drunk")
+            or str(state.area or "").casefold() != "midgaard"
+            or len(enemies) != 1
+            or state.level is None
+            or state.max_hp is None
+            or state.hp is None
+            or state.dead
+            or self.runtime_boundary_requested
+            or self.needs_food
+            or self.needs_drink
+            or _health_ratio(state) < 0.70
+        ):
+            return False
+        enemy = enemies[0]
+        if _int_or_none(enemy.get("isnpc")) != CITY_GREETER_VNUM:
+            return False
+        mobile = self.source_world.mobiles.get(CITY_GREETER_VNUM)
+        if mobile is None or not _targets_match(
+            str(enemy.get("name") or ""), mobile.short_description
+        ):
+            return False
+        live_level = _int_or_none(enemy.get("level"))
+        if live_level is None or live_level > int(state.level) - 4:
+            return False
+        if not bounded_city_shop_transit_available(
+            self.source_world,
+            state.to_dict(),
+        ):
+            return False
+        return self._source_mobile_return_enemy_is_bounded(enemy, state)
+
     def _resolve_fastwalk_route_preflight(
         self,
         *,
@@ -25734,6 +27372,78 @@ class StarterPolicy:
                     "recall",
                     "return because the route hazard locator was inconclusive",
                 )
+            armed_transit = bool(
+                route.route_preflight_source_mobile_vnum is not None
+                and route.route_preflight_source_mobile_vnum
+                in set(route.route_allowed_armed_transit_mobile_vnums)
+            )
+            if armed_transit:
+                if _has_named_affect(state.affects, "sanctuary"):
+                    self.fastwalk_armed_transit_sanctuary_pending = False
+                    self.fastwalk_armed_transit_sanctuary_acknowledged = False
+                    self.fastwalk_route_preflight_complete = True
+                    self.fastwalk_route_preflight_hazard_observed = False
+                    marker = (
+                        "source-registered armed transit route cleared with "
+                        "live Sanctuary"
+                    )
+                    if marker not in self.fastwalk_route_hazards:
+                        self.fastwalk_route_hazards.append(marker)
+                    return None
+                if (
+                    state.max_hp is None
+                    or state.hp is None
+                    or int(state.max_hp) <= 0
+                    or int(state.hp) < math.ceil(int(state.max_hp) * 0.95)
+                ):
+                    self.fastwalk_route_preflight_complete = True
+                    self.fastwalk_abort_reason = (
+                        "armed transit route requires at least 95% health "
+                        "before Sanctuary preparation"
+                    )
+                    self.fastwalk_returning = True
+                    return BotDecision(
+                        "recall",
+                        "return before crossing the armed route hazard below full health",
+                    )
+                if self.fastwalk_armed_transit_sanctuary_acknowledged:
+                    self.prompt_ready = False
+                    return None
+                if (
+                    self.pending_source_resource_hold is not None
+                    or self.pending_source_resource_effect is not None
+                ):
+                    self.fastwalk_armed_transit_sanctuary_pending = True
+                    self.prompt_ready = False
+                    return None
+                if "sanctuary" in self.failed_source_resource_effects:
+                    self.fastwalk_armed_transit_sanctuary_pending = False
+                    self.fastwalk_route_preflight_complete = True
+                    self.fastwalk_abort_reason = (
+                        "armed transit route could not establish Sanctuary"
+                    )
+                    self.fastwalk_returning = True
+                    return BotDecision(
+                        "recall",
+                        "return because the armed route hazard has no usable Sanctuary resource",
+                    )
+                resource = self._source_resource_decision(
+                    state,
+                    effect="sanctuary",
+                )
+                if resource is not None:
+                    self.fastwalk_armed_transit_sanctuary_pending = True
+                    return resource
+                self.fastwalk_armed_transit_sanctuary_pending = False
+                self.fastwalk_route_preflight_complete = True
+                self.fastwalk_abort_reason = (
+                    "armed transit route could not establish Sanctuary"
+                )
+                self.fastwalk_returning = True
+                return BotDecision(
+                    "recall",
+                    "return because the armed route hazard has no usable Sanctuary resource",
+                )
             detour = self._source_city_route_preflight_detour(state, route)
             if detour is not None:
                 return detour
@@ -25951,6 +27661,10 @@ class StarterPolicy:
 
     @property
     def _is_noncombat_utility_run(self) -> bool:
+        if self.ota_arena_research and self.ota_arena_stage in {
+            "target", "wizinvis", "exit",
+        }:
+            return False
         return not (
             self.course_started and not self.course_complete
         ) and any(
@@ -25983,11 +27697,47 @@ class StarterPolicy:
         # a duplicate saleable drop; ordinary XP hunts retain the terminal skip.
         if self._allows_below_band_resource_kill(state, stop):
             return False
+        if (
+            self.source_ranked_consider_revalidation_policy_id is not None
+            and stop.source_policy_id
+            == self.source_ranked_consider_revalidation_policy_id
+        ):
+            # The campaign consumed one exact reset marker immediately before
+            # opening this segment. Let the live room reach ``consider``;
+            # every identity, crowd, level, and combat gate still applies.
+            return False
         room_vnum = str(state.room_vnum or self.current_room or "")
+        if self._source_endpoint_has_present_target(state, stop, room_vnum):
+            # A prior below-band result is selection evidence, not a substitute
+            # for the live consider at an endpoint we have reached again.
+            return False
         return any(
             sighting_room == room_vnum
             and _stop_target_matches(sighting_target, stop.target, stop)
             for sighting_room, sighting_target in self.fastwalk_below_band_sightings
+        )
+
+    def _source_endpoint_has_present_target(
+        self,
+        state: CharacterState,
+        stop: FieldHuntStop,
+        room_vnum: str,
+    ) -> bool:
+        """Require fresh consider for a present source-ranked endpoint target."""
+        if (
+            not stop.source_policy_id
+            or not stop.source_policy_id.startswith("source-ranked-hunt-")
+            or not stop.exact_target
+        ):
+            return False
+        endpoint = stop.source_reset_room_vnum or (
+            stop.route_vnums[-1] if stop.route_vnums else None
+        )
+        if endpoint is None or room_vnum != str(endpoint):
+            return False
+        return any(
+            _stop_target_matches(target, stop.target, stop)
+            for target in self.room_targets.get(room_vnum, ())
         )
 
     def _allows_below_band_resource_kill(
@@ -27804,17 +29554,40 @@ class StarterPolicy:
                 and self.source_pair_encounter.budget.source_only
             ):
                 self._start_field_combat_damage_probe(state)
+            proactive_sanctuary = bool(
+                stop is not None
+                and not self._allows_below_band_resource_kill(state, stop)
+                and self.use_sanctuary_potions
+                and not _has_named_affect(state.affects, "sanctuary")
+                and (
+                    _verified_combat_potion_keyword_for_spell(
+                        self._known_combat_pouch_potions(),
+                        self.gear_catalog,
+                        "sanctuary",
+                    ) is not None
+                    or self._source_resource_record(
+                        state,
+                        effect="sanctuary",
+                    ) is not None
+                )
+            )
             if (
                 stop is not None
-                and stop.require_sanctuary
+                and (stop.require_sanctuary or proactive_sanctuary)
                 and not _has_named_affect(state.affects, "sanctuary")
             ):
                 potion = self._combat_pouch_potion_decision(state)
                 if potion is None:
-                    self.fastwalk_abort_reason = (
-                        f"field target {target!r} lost its required sanctuary "
-                        "reserve before combat"
-                    )
+                    if stop.require_sanctuary:
+                        self.fastwalk_abort_reason = (
+                            f"field target {target!r} lost its required "
+                            "sanctuary reserve before combat"
+                        )
+                    else:
+                        self.fastwalk_abort_reason = (
+                            f"field target {target!r} had no verified "
+                            "sanctuary reserve before combat"
+                        )
                     self.fastwalk_hunt_stop_skipped = True
                     # The target was only selected for the pre-combat reserve
                     # check; no attack has reached the server yet.
@@ -28049,6 +29822,8 @@ class StarterPolicy:
         self.source_resource_hold_ready = None
         if record_effect in self.failed_source_resource_effects:
             return None
+        if self.source_resource_effect_acknowledged == record_effect:
+            return None
         if self.pending_source_resource_effect == record_effect:
             return None
         self.pending_source_resource_effect = record_effect
@@ -28172,6 +29947,15 @@ class StarterPolicy:
     ) -> BotDecision | None:
         """Use only source-identified emergency potions from the worn pouch."""
         health_ratio = _health_ratio(state)
+        arena_sanctuary_refresh = (
+            self.ota_arena_research
+            and self.ota_arena_stage == "target"
+            and (
+                self.combat_active
+                or state.in_combat
+                or bool(state.combat_target)
+            )
+        )
         healing_thresholds = {
             "cure critical": 0.65,
             "cure serious": 0.60,
@@ -28226,8 +30010,14 @@ class StarterPolicy:
             self.use_sanctuary_potions
             and sanctuary_keyword is not None
             and not _has_named_affect(state.affects, "sanctuary")
-            and not self.fastwalk_sanctuary_consumed_in_combat
-            and self.sanctuary_potion_target is None
+            and (
+                not self.fastwalk_sanctuary_consumed_in_combat
+                or arena_sanctuary_refresh
+            )
+            and (
+                self.sanctuary_potion_target is None
+                or arena_sanctuary_refresh
+            )
             and (
                 not self.active_target
                 or self.active_target.casefold()
@@ -28253,8 +30043,14 @@ class StarterPolicy:
         if (
             self.use_sanctuary_potions
             and not _has_named_affect(state.affects, "sanctuary")
-            and not self.fastwalk_sanctuary_consumed_in_combat
-            and self.sanctuary_potion_target is None
+            and (
+                not self.fastwalk_sanctuary_consumed_in_combat
+                or arena_sanctuary_refresh
+            )
+            and (
+                self.sanctuary_potion_target is None
+                or arena_sanctuary_refresh
+            )
             and (
                 not self.active_target
                 or self.active_target.casefold()
@@ -32158,14 +33954,28 @@ class StarterPolicy:
         character_alignment = revealed_gmcp_alignment(
             state.progress.get("alignment"), level=state.level,
         )
-        if source_mobile_can_join_player_fight(
-            world,
-            bystander_mobile,
-            character_level=state.level,
-            character_alignment=character_alignment,
-        ):
+        if specials & {"spec_guard", "spec_sahuagin_guard"}:
+            guard_can_join = source_guard_can_join_target_fight(
+                world,
+                bystander_mobile,
+                target_mobile,
+                character_alignment=character_alignment,
+            )
+        else:
+            guard_can_join = source_mobile_can_join_player_fight(
+                world,
+                bystander_mobile,
+                character_level=state.level,
+                character_alignment=character_alignment,
+            )
+        if guard_can_join:
             return False
         if specials & {"spec_guard", "spec_sahuagin_guard"}:
+            if target_mobile.alignment >= 300:
+                # DD4's NPC-assist branch compares the fighting mobile's
+                # alignment. A positive-alignment target cannot be joined by
+                # this guard, regardless of the player's own alignment.
+                return True
             return (
                 observed_guard_safe_alignment(
                     state.progress.get("alignment"),
@@ -32938,15 +34748,26 @@ class StarterPolicy:
         }
         if not set(command_tokens).issubset(expected_tokens):
             return False
+        # A command keyword is resolved against every visible prototype in
+        # the room, not only the same-display variants in ``reachable``.
+        # For example, the Catacombs art critic also has ``man`` in its
+        # source keywords, so ``man`` can select the critic instead of the
+        # intended gallery visitor. Keep the keyword shortcut only when the
+        # source graph proves that no other room occupant can claim it.
+        room_reachable: set[int] = set()
+        for rooms in self.source_mobile_vnums_by_target_room.values():
+            room_reachable.update(
+                int(vnum) for vnum in rooms.get(room_vnum, ())
+            )
         for token in command_tokens:
-            if all(
-                token not in {
+            if not any(
+                vnum != expected
+                and (other := self.source_world.mobiles.get(vnum)) is not None
+                and token in {
                     keyword.casefold()
                     for keyword in re.findall(r"[A-Za-z0-9]+", other.keywords)
                 }
-                for vnum in reachable
-                if vnum != expected
-                if (other := self.source_world.mobiles.get(vnum)) is not None
+                for vnum in room_reachable
             ):
                 return True
         return False
@@ -35176,14 +36997,36 @@ class StarterPolicy:
         )
         if _has_poison_affect(state.affects):
             return max(_FIELD_CONTINUE_HEALTH_RATIO, stop_floor, 0.50)
-        if stop is not None and stop.source_target_armed is False and (
-            not stop.source_specials
-            or self._source_stop_has_adept_support_only_special(stop, room_vnum=state.room_vnum)
-            or self._source_stop_has_corpse_only_special(
-                stop,
-                room_vnum=str(state.room_vnum or self.current_room or ""),
+        plain_unarmed_target = bool(
+            stop is not None
+            and stop.source_target_armed is False
+            and (
+                not stop.source_specials
+                or self._source_stop_has_adept_support_only_special(
+                    stop,
+                    room_vnum=state.room_vnum,
+                )
+                or self._source_stop_has_corpse_only_special(
+                    stop,
+                    room_vnum=str(state.room_vnum or self.current_room or ""),
+                )
             )
-        ):
+        )
+        if plain_unarmed_target:
+            enemies = self._current_room_enemy_records(state)
+            target_name = self.active_target or (stop.target if stop else None)
+            plain_unarmed_target = bool(
+                len(enemies) == 1
+                and target_name
+                and _targets_match(str(enemies[0].get("name", "")), target_name)
+                and (
+                    stop is None
+                    or stop.source_mobile_vnum is None
+                    or _int_or_none(enemies[0].get("isnpc"))
+                    == stop.source_mobile_vnum
+                )
+            )
+        if plain_unarmed_target:
             return max(stop_floor, _FIELD_PLAIN_UNARMED_WITHDRAW_HEALTH_RATIO)
         normal_floor = max(_FIELD_WITHDRAW_HEALTH_RATIO, stop_floor)
         if not state.max_hp:
@@ -35194,6 +37037,42 @@ class StarterPolicy:
         # target critical, to decide when to withdraw.
         reserve = observed * 2
         return max(normal_floor, min(1.0, reserve / state.max_hp))
+
+    def _field_combat_withdrawal_evidence(
+        self,
+        state: CharacterState,
+    ) -> dict[str, Any]:
+        """Record the inputs to an own-health withdrawal decision."""
+        hp = _int_or_none(state.hp)
+        max_hp = _int_or_none(state.max_hp)
+        if hp is None or max_hp is None or max_hp <= 0:
+            return {}
+        stop = self._active_source_target_stop()
+        evidence: dict[str, Any] = {
+            "player_hp": hp,
+            "player_max_hp": max_hp,
+            "health_ratio": round(hp / max_hp, 6),
+            "withdraw_floor_ratio": round(
+                self._field_combat_withdraw_ratio(state),
+                6,
+            ),
+            "observed_incoming_damage": max(
+                0,
+                int(self.field_combat_max_observed_damage or 0),
+            ),
+            "stop_index": self.fastwalk_hunt_stop_index,
+        }
+        if stop is not None:
+            evidence.update(
+                {
+                    "source_mobile_vnum": stop.source_mobile_vnum,
+                    "source_target_armed": stop.source_target_armed,
+                    "source_specials": list(stop.source_specials),
+                    "minimum_combat_health_ratio": stop.minimum_combat_health_ratio,
+                    "minimum_health_ratio": stop.minimum_health_ratio,
+                }
+            )
+        return evidence
 
     def _sanctuary_expiry_withdraw_reason(
         self,
@@ -40523,6 +42402,35 @@ class StarterPolicy:
     ) -> BotDecision | None:
         """Retrieve the player's corpse and leave Purgatory before disconnecting."""
         room_vnum = state.room_vnum or ""
+        if room_vnum:
+            was_visited = room_vnum in self.purgatory_visited_rooms
+            self.purgatory_visited_rooms.add(room_vnum)
+            pending_departure = self.purgatory_pending_departure
+            if pending_departure is not None and room_vnum != pending_departure[0]:
+                departed_room, departed_direction = pending_departure
+                actual_parent = self.previous_room
+                if (
+                    not actual_parent
+                    or actual_parent == room_vnum
+                    or actual_parent not in self.purgatory_visited_rooms
+                ):
+                    actual_parent = departed_room
+                self.purgatory_arrival_parents[room_vnum] = actual_parent
+                if not was_visited:
+                    self.purgatory_parent_rooms[room_vnum] = actual_parent
+                    if actual_parent == departed_room:
+                        self.purgatory_parent_directions[room_vnum] = (
+                            _opposite_direction(departed_direction)
+                        )
+                self.purgatory_pending_departure = None
+            elif (
+                self.previous_room
+                and self.previous_room != room_vnum
+                and self.previous_room in self.purgatory_visited_rooms
+            ):
+                self.purgatory_arrival_parents[room_vnum] = self.previous_room
+                if not was_visited:
+                    self.purgatory_parent_rooms[room_vnum] = self.previous_room
         if self.purgatory_recovery_complete and room_vnum == "3054":
             return None
         if room_vnum == "427":
@@ -40582,21 +42490,120 @@ class StarterPolicy:
         if self.purgatory_recovery_complete:
             return None
 
-        destination = _PURGATORY_DESTINATION_PATH.get(room_vnum)
-        if destination is None:
-            return BotDecision(
-                "look",
-                "refresh Purgatory position without disconnecting",
+        if self.purgatory_exploration_steps >= 128:
+            self.failure = (
+                "Purgatory maze search reached its bounded movement limit "
+                f"without finding room 427 from room {room_vnum}"
             )
-        direction = _direction_to_destination(state, {destination})
-        if direction is None:
-            return BotDecision(
-                "look",
-                f"refresh randomized Purgatory exits toward room {destination}",
+            return None
+
+        direction_to_short = {
+            **{short: short for short in _DIRECTION_SHORTCUTS},
+            **{long: short for short, long in _DIRECTION_SHORTCUTS.items()},
+        }
+        normalized_exits: dict[str, tuple[str, Any]] = {}
+        for raw_direction, destination in state.exits.items():
+            raw_key = str(raw_direction).casefold()
+            short_direction = direction_to_short.get(raw_key, raw_key)
+            normalized_exits.setdefault(short_direction, (raw_key, destination))
+
+        tried_exits = self.purgatory_tried_exits.setdefault(room_vnum, set())
+
+        def dispatch(
+            short_direction: str,
+            reason: str,
+            destination: Any = None,
+        ) -> BotDecision:
+            direction = _DIRECTION_SHORTCUTS.get(short_direction, short_direction)
+            tried_exits.add(short_direction)
+            if destination is not None:
+                self.purgatory_parent_rooms.setdefault(
+                    str(destination), room_vnum
+                )
+            self.purgatory_pending_departure = (room_vnum, direction)
+            self.purgatory_exploration_steps += 1
+            return BotDecision(direction, reason)
+
+        # A randomized maze can legitimately return to a room already visited
+        # through a different edge. Keep the latest arrival as the immediate
+        # backtrack target, while retaining the first-discovery parent for
+        # diagnostics and older evidence.
+        parent_room = (
+            self.purgatory_arrival_parents.get(room_vnum)
+            or self.purgatory_parent_rooms.get(room_vnum)
+        )
+        parent_direction = self.purgatory_parent_directions.get(room_vnum)
+        parent_short = (
+            direction_to_short.get(
+                parent_direction.casefold(), parent_direction.casefold()
             )
+            if parent_direction is not None
+            else None
+        )
+
+        # Purgatory's room labels and live exit destinations can disagree after
+        # the maze is randomized. Explore each live direction once per room;
+        # do not choose an exit merely because its stale destination looks new.
+        for short_direction in ("n", "e", "s", "w", "u", "d"):
+            exit_data = normalized_exits.get(short_direction)
+            if exit_data is None or short_direction in tried_exits:
+                continue
+            _, destination = exit_data
+            reason = "search the randomized Purgatory maze for the protected corpse room"
+            if (
+                short_direction == parent_short
+                or (
+                    parent_room is not None
+                    and destination is not None
+                    and str(destination) == parent_room
+                )
+            ):
+                reason = "backtrack through the explored Purgatory maze to try another exit"
+            return dispatch(
+                short_direction,
+                reason,
+                destination,
+            )
+        for short_direction, (_, destination) in normalized_exits.items():
+            if short_direction not in tried_exits:
+                reason = "search the randomized Purgatory maze for the protected corpse room"
+                if short_direction == parent_short or (
+                    parent_room is not None
+                    and destination is not None
+                    and str(destination) == parent_room
+                ):
+                    reason = "backtrack through the explored Purgatory maze to try another exit"
+                return dispatch(
+                    short_direction,
+                    reason,
+                    destination,
+                )
+
+        if parent_direction is not None:
+            if parent_short not in tried_exits and parent_short in normalized_exits:
+                _, destination = normalized_exits[parent_short]
+                return dispatch(
+                    parent_short,
+                    "backtrack through the explored Purgatory maze to try another exit",
+                    destination,
+                )
+
+        if parent_room is not None:
+            direction = _direction_to_destination(state, {parent_room})
+            if direction is not None:
+                parent_short = direction_to_short.get(
+                    direction.casefold(), direction.casefold()
+                )
+                if parent_short in normalized_exits:
+                    return dispatch(
+                        parent_short,
+                        "backtrack through the explored Purgatory maze to try another exit",
+                        parent_room,
+                    )
+
         return BotDecision(
-            direction,
-            f"follow the Purgatory room graph toward protected corpse room {destination}",
+            "look",
+            "refresh randomized Purgatory exits before continuing the bounded search",
         )
 
     def _moria_return_decision(self, state: CharacterState) -> BotDecision:
@@ -42854,6 +44861,11 @@ class StarterPolicy:
         self,
         state: CharacterState,
     ) -> BotDecision | None:
+        if self._ota_arena_favours_incomplete(state):
+            # Ota'ar is a forced-favour circuit, not an ordinary arena
+            # checkpoint.  The generic arena completion path must not issue
+            # the outside route while the gladiators still hold the gate.
+            return None
         if self.fastwalk_route is not None:
             return None
         objective_reached = (
@@ -42905,6 +44917,11 @@ class StarterPolicy:
         state: CharacterState,
         reason: str,
     ) -> BotDecision:
+        if self._ota_arena_favours_incomplete(state):
+            return BotDecision(
+                "look",
+                "remain inside Ota'ar until all five favours are confirmed",
+            )
         if state.room_vnum == "3732":
             return BotDecision(
                 "north",
@@ -43023,6 +45040,12 @@ class StarterBotRunner:
         objective_level: int = 2,
         arena_kill_limit: int | None = None,
         arena_respawn_wait: bool = True,
+        ota_arena_research: bool = False,
+        ota_arena_start_in_circuit: bool = False,
+        ota_arena_allow_unprotected_fallback: bool = False,
+        ota_arena_stage: str | None = None,
+        ota_arena_target_index: int = 0,
+        ota_arena_token_receipts: Collection[Mapping[str, Any]] = (),
         resupply_only: bool = False,
         return_home: bool = False,
         world_time_probe: bool = False,
@@ -43071,6 +45094,7 @@ class StarterBotRunner:
         vault_only: bool = False,
         fastwalk_world_cache_items: tuple[str, ...] = (),
         fastwalk_world_cache_object_vnums: tuple[int, ...] = (),
+        fastwalk_world_cache_skip_preflight: bool = False,
         fastwalk_train_before_departure: bool = False,
         required_practice_skill: str | None = None,
         required_practice_type: str = "physical",
@@ -43129,6 +45153,7 @@ class StarterBotRunner:
         inactivity_timeout: float = 45.0,
         command_send_timeout: float | None = None,
         fastwalk_skip_target_sightings: frozenset[tuple[str, str]] = frozenset(),
+        source_ranked_consider_revalidation_policy_id: str | None = None,
         fastwalk_route_gate_attempted_selectors: Collection[str] = (),
         preserved_primary_weapon_vnum: int | None = None,
         gear_inventory_source_hints: Mapping[str, int] | None = None,
@@ -43185,6 +45210,18 @@ class StarterBotRunner:
         self.objective_level = objective_level
         self.arena_kill_limit = arena_kill_limit
         self.arena_respawn_wait = arena_respawn_wait
+        self.ota_arena_research = bool(ota_arena_research)
+        self.ota_arena_start_in_circuit = bool(ota_arena_start_in_circuit)
+        self.ota_arena_allow_unprotected_fallback = bool(
+            ota_arena_allow_unprotected_fallback
+        )
+        self.ota_arena_stage = ota_arena_stage
+        self.ota_arena_target_index = int(ota_arena_target_index or 0)
+        self.ota_arena_token_receipts = tuple(
+            dict(receipt)
+            for receipt in ota_arena_token_receipts
+            if isinstance(receipt, Mapping)
+        )
         self.resupply_only = resupply_only
         self.return_home = return_home
         self.world_time_probe = world_time_probe
@@ -43250,6 +45287,7 @@ class StarterBotRunner:
         self.fastwalk_world_cache_object_vnums = tuple(
             int(vnum) for vnum in fastwalk_world_cache_object_vnums
         )
+        self.fastwalk_world_cache_skip_preflight = fastwalk_world_cache_skip_preflight
         self.fastwalk_train_before_departure = fastwalk_train_before_departure
         self.required_practice_skill = (
             _normalize_skill_name(required_practice_skill)
@@ -43358,6 +45396,9 @@ class StarterBotRunner:
             else max(0.25, min(float(self.spec.timeout), 10.0))
         )
         self.fastwalk_skip_target_sightings = fastwalk_skip_target_sightings
+        self.source_ranked_consider_revalidation_policy_id = (
+            source_ranked_consider_revalidation_policy_id
+        )
         self.fastwalk_route_gate_attempted_selectors = tuple(
             str(selector).strip()
             for selector in fastwalk_route_gate_attempted_selectors
@@ -43391,6 +45432,8 @@ class StarterBotRunner:
                 if self.world_time_probe
                 else f"deity-protection:{self.spec.name}"
                 if self.deity_protection_probe
+                else f"ota-arena:{self.spec.name}"
+                if self.ota_arena_research
                 else f"learned-flight:{self.spec.name}"
                 if self.prepare_learned_flight
                 else f"restock:{self.spec.name}"
@@ -43438,6 +45481,8 @@ class StarterBotRunner:
                 if self.world_time_probe
                 else f"deity-protection-{self.spec.name}"
                 if self.deity_protection_probe
+                else f"ota-arena-{self.spec.name}"
+                if self.ota_arena_research
                 else f"learned-flight-{self.spec.name}"
                 if self.prepare_learned_flight
                 else f"restock-{self.spec.name}"
@@ -43949,6 +45994,14 @@ class StarterBotRunner:
                 objective_level=self.objective_level,
                 arena_kill_limit=self.arena_kill_limit,
                 arena_respawn_wait=self.arena_respawn_wait,
+                ota_arena_research=self.ota_arena_research,
+                ota_arena_start_in_circuit=self.ota_arena_start_in_circuit,
+                ota_arena_allow_unprotected_fallback=(
+                    self.ota_arena_allow_unprotected_fallback
+                ),
+                ota_arena_stage=self.ota_arena_stage,
+                ota_arena_target_index=self.ota_arena_target_index,
+                ota_arena_token_receipts=self.ota_arena_token_receipts,
                 resupply_only=self.resupply_only,
                 return_home=self.return_home,
                 city_restock=self.city_restock,
@@ -44030,6 +46083,9 @@ class StarterBotRunner:
                 fastwalk_world_cache_items=self.fastwalk_world_cache_items,
                 fastwalk_world_cache_object_vnums=(
                     self.fastwalk_world_cache_object_vnums
+                ),
+                fastwalk_world_cache_skip_preflight=(
+                    self.fastwalk_world_cache_skip_preflight
                 ),
                 fastwalk_train_before_departure=self.fastwalk_train_before_departure,
                 required_practice_skill=self.required_practice_skill,
@@ -44120,6 +46176,9 @@ class StarterBotRunner:
                 verified_source_resources=self.verified_source_resources,
                 fastwalk_skip_target_sightings=(
                     self.fastwalk_skip_target_sightings
+                ),
+                source_ranked_consider_revalidation_policy_id=(
+                    self.source_ranked_consider_revalidation_policy_id
                 ),
                 fastwalk_route_gate_attempted_selectors=(
                     self.fastwalk_route_gate_attempted_selectors
@@ -44904,8 +46963,15 @@ class StarterBotRunner:
                 if self.fastwalk_route is not None:
                     route_commands = self.fastwalk_route.commands
                     if not self.fastwalk_route.recall_after_loot:
+                        return_commands = (
+                            self.fastwalk_route.return_commands
+                            or self.fastwalk_route.commands
+                        )
                         route_commands += _reverse_fastwalk_commands(
-                            self.fastwalk_route.commands
+                            return_commands,
+                            allow_open=(
+                                self.fastwalk_route.return_commands_allow_open
+                            ),
                         )
                     repeat_limit = max(
                         repeat_limit,
@@ -45547,6 +47613,14 @@ class StarterBotRunner:
                 "fastwalk_route": (
                     self.fastwalk_route.name if self.fastwalk_route else None
                 ),
+                "campaign_ota_arena_stage": policy.ota_arena_stage,
+                "campaign_ota_arena_target_index": policy.ota_arena_target_index,
+                "campaign_ota_arena_forced_arrivals": list(
+                    policy.ota_arena_forced_arrivals
+                ),
+                "campaign_ota_arena_token_receipts": list(
+                    policy.ota_arena_token_receipts
+                ),
                 "fastwalk_resume_scope": policy.fastwalk_resume_scope,
                 "fastwalk_resume_checkpoint": fastwalk_resume_checkpoint_snapshot(),
                 "fastwalk_abort_reason": policy.fastwalk_abort_reason,
@@ -45806,11 +47880,27 @@ class StarterBotRunner:
                 final_state["verified_combat_pouch_potions"] = dict(
                     policy.verified_combat_pouch_potions
                 )
-            if policy.primary_weapon_observed is not None:
-                final_state["campaign_has_weapon"] = (
+            # A complete Char.Worn snapshot is stronger than the boolean
+            # acknowledgement alone. Preserve it when a delayed prompt or a
+            # stale text buffer left ``primary_weapon_observed`` unset.
+            wielded_weapon = policy._wielded_weapon()
+            if (
+                policy.primary_weapon_observed is not None
+                or policy.gear_wielded_vnum is not None
+                or wielded_weapon is not None
+            ):
+                live_weapon_observed = bool(
                     policy.primary_weapon_observed
-                    and not policy.primary_weapon_lost
+                    or policy.gear_wielded_vnum is not None
+                    or wielded_weapon is not None
                 )
+                final_state["campaign_has_weapon"] = bool(
+                    live_weapon_observed and not policy.primary_weapon_lost
+                )
+                if wielded_weapon is not None:
+                    final_state["campaign_primary_weapon"] = (
+                        wielded_weapon.short_description
+                    )
             if policy.counterbalanced_weapon_vnum is not None:
                 final_state["campaign_counterbalanced_weapon_vnum"] = (
                     policy.counterbalanced_weapon_vnum
@@ -45837,6 +47927,7 @@ class StarterBotRunner:
             if (connection is not None and not connection.closed and policy is not None
                     and not policy.done and policy.in_world
                     and not policy._current_room_enemy_records(self.character_state)
+                    and not policy._ota_arena_favours_incomplete(self.character_state)
                     and source_allows_failed_local_recall_logout(self.source_world, self.character_state)):
                 # do_quit saves the character. Keep this exact no-mob failure
                 # checkpoint separate from an achieved healer-return objective.
@@ -46343,6 +48434,83 @@ async def run_arena_research_profile(
     ).run()
 
 
+async def run_ota_arena_research_profile(
+    path: str | Path,
+    *,
+    start_in_circuit: bool = False,
+) -> RunResult:
+    """Run or resume the source-verified five-favour Ota'ar circuit."""
+    profile_path = Path(path)
+    spec = load_character_spec(profile_path)
+    source_world = load_world_source(
+        current_source_directory(),
+        include_all_areas=True,
+    )
+    entry_notation = ";".join(
+        {
+            "north": "n",
+            "east": "e",
+            "south": "s",
+            "west": "w",
+            "up": "u",
+            "down": "d",
+        }.get(command, command)
+        for command in OTA_ARENA_ENTRY_ROUTE
+    )
+    entry_route = Fastwalk(
+        name="ota-arena-entry",
+        minimum_level=1,
+        maximum_level=100,
+        notation=entry_notation,
+        recall_after_loot=True,
+        route_origin_room_vnum=3001,
+    )
+    return await StarterBotRunner(
+        spec,
+        profile_path,
+        objective_level=100,
+        ota_arena_research=True,
+        ota_arena_start_in_circuit=start_in_circuit,
+        fastwalk_route=entry_route,
+        # The source entry path crosses underwater rooms.  Buy and verify a
+        # water-breathing philter at the Midgaard Magic Shop before leaving
+        # the healer; flight alone is not an underwater exemption.
+        magic_shop_research=True,
+        # Water breathing is the hard entry prerequisite.  Flight is a useful
+        # movement optimisation, but it must not consume the funds needed for
+        # the water-breathing philter at reboot-dependent shop prices.
+        magic_shop_buy_fly=False,
+        magic_shop_buy_water_breathing=True,
+        magic_shop_continue_to_fastwalk=True,
+        require_fastwalk_kill=False,
+        allow_safe_fastwalk_abort=True,
+        # The exact source-audited Midgaard Drunk (VNUM 3064) is level 2
+        # with bounded damage/HP data; keep this exception scoped to the
+        # source-verified Ota route rather than changing ordinary travel.
+        allow_bounded_city_shop_transit=True,
+        # Caerlin's source reset supplies the ten-charge Staff of the Bard
+        # (VNUM 19173).  Seed only its source-backed activation ledger here;
+        # the live inventory audit still has to find the carried staff before
+        # hold/brandish can be issued.
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": 19173,
+                "object_description": "Staff of the Bard",
+                "spell": "sanctuary",
+                "command": "brandish",
+                "mode": "staff",
+                "requires_hold": True,
+                "consumes_object": False,
+                "consumes_charge": True,
+                "command_keyword": "bard",
+                "charges_remaining": 10,
+            }
+        },
+        source_world=source_world,
+    ).run()
+
+
 async def run_resupply_profile(path: str | Path) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -46396,10 +48564,37 @@ async def run_outfit_profile(path: str | Path) -> RunResult:
 async def run_sell_loot_profile(path: str | Path) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
+    # Standalone maintenance runs do not pass through CampaignRunner, so they
+    # must recover the latest durable source-resource ledger themselves.  A
+    # source-backed Sanctuary staff is campaign infrastructure, not ordinary
+    # loot; losing it during an unrelated funding pass can strand the next
+    # protected hunt.
+    verified_source_resources: dict[str, dict[str, Any]] = {}
+    storage = RunStorage(spec.database)
+    checkpoint = storage.get_latest_campaign_checkpoint_for_character_bounded(
+        spec.name
+    )
+    if checkpoint is not None:
+        try:
+            checkpoint_state = json.loads(checkpoint["state_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            checkpoint_state = {}
+        raw_resources = (
+            checkpoint_state.get("campaign_source_resource_reserves")
+            if isinstance(checkpoint_state, Mapping)
+            else None
+        )
+        if isinstance(raw_resources, Mapping):
+            verified_source_resources = {
+                str(effect).casefold(): dict(record)
+                for effect, record in raw_resources.items()
+                if isinstance(record, Mapping)
+            }
     return await StarterBotRunner(
         spec,
         profile_path,
         liquidate_loot=True,
+        verified_source_resources=verified_source_resources,
     ).run()
 
 
@@ -51184,12 +53379,19 @@ def _unvisited_exit(
     visited: set[str],
 ) -> str | None:
     ordered = ("n", "e", "s", "w", "u", "d")
+    exits = {
+        str(short).casefold(): destination
+        for short, destination in state.exits.items()
+    }
     for short in ordered:
-        if short not in state.exits:
+        if short not in exits:
             continue
-        destination = state.exits[short]
+        destination = exits[short]
         if destination is None or destination not in visited:
             return _DIRECTION_SHORTCUTS[short]
+    for short, destination in exits.items():
+        if destination is None or destination not in visited:
+            return _DIRECTION_SHORTCUTS.get(short, short)
     return None
 
 
@@ -52922,6 +55124,20 @@ def _sellable_inventory_keyword(
 
 def _inventory_descriptions(value: Any) -> list[str]:
     return [description for description, _ in _inventory_entries(value)]
+
+
+def _inventory_contains_source_vnum(
+    value: Any,
+    gear_catalog: GearCatalog | None,
+    source_vnum: int,
+) -> bool:
+    """Return whether carried inventory contains the exact source object."""
+    if gear_catalog is None:
+        return False
+    return any(
+        any(candidate.vnum == source_vnum for candidate in gear_catalog.candidates(description))
+        for description, _selector in _inventory_entries(value)
+    )
 
 
 def _inventory_source_flight_potion(

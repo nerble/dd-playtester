@@ -430,6 +430,15 @@ the routine at thirty commands and every response at five seconds. Store
 `campaign_area_recall_escape` evidence. This is recovery, never hunt admission;
 live success remains unproved until an observed healer return.
 
+### Ota'ar Dar Favour Gate
+
+The Ota'ar Dar gladiators hold a character in the arena until all five distinct
+favours have been collected. Treat this as a hard live gate, not a normal
+arena completion condition: retain arena control through the remaining
+gladiator sequence, verify each current-reboot favour receipt, and do not
+issue the exit route, generic recall, logout, or maintenance detour while any
+favour is missing. A saved receipt from an earlier DD4 reboot is not valid.
+
 Trainer visits record `subclass_selection` independently from execution and
 safety. A requested subclass in the profile is not proof: require the final
 observed character identity to match. New recovery and reporting cases are
@@ -897,8 +906,11 @@ Joan's required-loot policy may fight an otherwise below-XP-band Joan when the
 key is absent; that evidence must not close the key route as it would an
 ordinary XP hunt. After a successful key hunt, the starter now enters the
 reboot-scoped cache route from the healer before logout and verifies the key is
-dropped in room 3007. The key is then expected to remain available until the
-next MUD reboot; a missing cache receipt still means the key was not preserved.
+dropped in room 3007. The world-cache receipt is valid for the current MUD boot;
+a later source-mirror refresh does not invalidate the physical cache, although
+the recorded source revision remains useful provenance. The key is then
+expected to remain available until the next MUD reboot; a missing cache receipt
+still means the key was not preserved. Floor receipts remain source-checked.
 
 The target-scoped loss and fallback behavior passed its focused campaign tests,
 and all 120 `test_hunt_outcomes.py` tests passed on October 17. The full
@@ -3777,7 +3789,7 @@ pre-probe handoff above and still requires its source ceiling and measured
 damage window. This does not authorize special, armed, scripted, or otherwise
 uncertain aggressive targets.
 
-When sanctuary recovery is cooling, the runner may also try at most three
+When sanctuary recovery is cooling, the runner may also try at most eight
 distinct plain, unarmed, source-safe current-band targets without sanctuary.
 For an HP range above the character ceiling, both the lower bound and the
 uncertainty gap must fit the audited attack budget. The live endpoint then

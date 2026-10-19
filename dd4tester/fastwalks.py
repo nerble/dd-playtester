@@ -115,16 +115,26 @@ class Fastwalk:
     # that exact mobile once, but only when this route explicitly registers
     # its source VNUM; ordinary routes never inherit the exception.
     route_bounded_borderline_source_mobile_vnums: tuple[int, ...] = ()
-    # One exact source special may be tolerated as a level-25 required-loot
-    # transit interruption.  The starter still requires its live GMCP VNUM;
-    # this never authorizes an endpoint or progression kill.
+    # One exact source special may be tolerated as a bounded transit
+    # interruption. The starter still requires its live GMCP VNUM; this never
+    # authorizes an endpoint or progression kill.
     route_bounded_transit_special_mobile_vnums: tuple[int, ...] = ()
+    # Keep those special-mobile exceptions tied to the exact audited route
+    # rooms as well as to the source mobile identity.
+    route_bounded_transit_special_room_vnums: tuple[str, ...] = ()
     # A source-ranked route may carry one exact plain aggressive mobile inside
     # the useful-XP band. Runtime still requires one isolated live VNUM,
     # source description, healthy player, and bounded source output before it
     # fights the interruption. These are route rooms, not endpoint rooms.
     route_allowed_plain_transit_mobile_vnums: tuple[int, ...] = ()
     route_allowed_plain_transit_room_vnums: tuple[str, ...] = ()
+    # A Sanctuary-backed route may carry one exact armed, special-free
+    # current-band mobile. Runtime requires active Sanctuary, exact live
+    # identity, a singleton source reset, and the same bounded output proof
+    # before it fights the interruption. These are route rooms, not endpoint
+    # rooms, and never grant objective XP.
+    route_allowed_armed_transit_mobile_vnums: tuple[int, ...] = ()
+    route_allowed_armed_transit_room_vnums: tuple[str, ...] = ()
     # Exact noncombat quest transit only; runtime rechecks the whole purse.
     route_economic_special_mobile_vnums: tuple[int, ...] = ()
     route_economic_quest_identity: tuple[int, int, int] | None = None

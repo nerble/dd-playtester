@@ -291,7 +291,8 @@ def crowded_combat_loss_target(
             str(snapshot.get("room_vnum")) != "3054" or snapshot.get("dead") is not False
             or snapshot.get("in_combat") is not False or snapshot.get("enemies") not in (None, [])
             or not isinstance(snapshot.get("hp"), int) or snapshot["hp"] <= 0
-            or snapshot["hp"] != snapshot.get("max_hp")
+            or not isinstance(snapshot.get("max_hp"), int)
+            or snapshot["hp"] < snapshot["max_hp"]
         ):
             return None
     if (
@@ -311,9 +312,32 @@ def crowded_combat_loss_target(
               and record.get("boot_id") == state.get("world_boot_id")]
     if (
         len(losses) != 1 or losses[0].get("level") != state["level"]
-        or losses[0].get("loss_count") != 1 or losses[0].get("loss_event_id") != segment.get("id")
+        or type(losses[0].get("loss_count")) is not int
+        or losses[0].get("loss_count") < 1
+        or losses[0].get("loss_event_id") != segment.get("id")
     ):
         return None
+    # A campaign can reach this exact target after earlier losses on the
+    # same parent hunt. Accept the newest linked event only when the start
+    # checkpoint proves the immediately preceding cumulative count; a loose
+    # higher count in an old snapshot is not enough to reopen siblings.
+    current_loss_count = losses[0]["loss_count"]
+    if current_loss_count > 1:
+        prior_losses = [
+            record
+            for record in start.get("campaign_registered_research_xp_loss_policies")
+            or ()
+            if isinstance(record, Mapping)
+            and record.get("policy_id") == policy_id
+            and record.get("boot_id") == state.get("world_boot_id")
+        ]
+        if (
+            len(prior_losses) != 1
+            or prior_losses[0].get("level") != state["level"]
+            or prior_losses[0].get("loss_count") != current_loss_count - 1
+            or prior_losses[0].get("loss_event_id") in {None, segment.get("id")}
+        ):
+            return None
     considerations = end.get("campaign_fastwalk_source_consider_outcomes")
     if not isinstance(considerations, Mapping) or len(considerations) != 1:
         return None
