@@ -3,26 +3,65 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 19, 2026
+## Current Status: October 20, 2026
 
-Latest durable campaign checkpoint **55734** (campaign **35**, latest completed
-segment run **18688**): Dorrik is a level **39 Knight** with **1,312,170 XP**, **64,280 XP**
-to level 40, and **18 quest points**. He is alive, fully recovered, and logged
-out in the Midgaard healer room **3054**. No current level-up quest shortfall
-is present. HERO remains unproved, and Dorrik remains the sole progression
-pilot; campaign 36 is a separate stale run that exhausted its 100-segment
-budget and is not the active track.
+Latest durable campaign checkpoint **57349** (campaign **35**; latest completed
+live segment run **18929**): Dorrik is a level **39 Knight** with **1,291,940
+XP**, **84,510 XP** to level 40, and **18 quest points**. Run **18927** safely
+completed a current-band Kaladim hunt and killed a black bat for **330 net XP**,
+then returned to healer room **3054**. Run **18928** safely closed a second
+Kaladim attempt without a kill, and run **18929** bought a flight potion at
+the live shop price. Run **18926** had already recovered Dorrik from Purgatory
+after the arena death recorded by run **18924**: the bot found and looted the
+corpse, entered the portal, restored its gear, slept at healer room **3054**,
+and logged out there. No XP was gained or lost in the recovery or later safe
+maintenance runs.
+No current level-up quest shortfall is present. HERO remains unproved, and
+Dorrik remains the sole progression pilot; campaign 36 is a separate stale run
+that exhausted its 100-segment budget and is not the active track.
 
-The source mirror is **a4052a7702148a4d72b96a84a43128566059d725**, clean and
+The source mirror is **21c6c947e328b5b5c2ab6b07e62c5830672c0cac**, clean and
 aligned with `origin/master`.
 The current DD4 boot is **Wed Oct 14 09:25:18 2026**. Campaign 35's latest
-frontier diagnosis has **541 candidates**, **61 current-band** candidates, and
-**38 autonomous-safe** candidates, but no executable plain route on this boot:
-the remaining options are closed by the current protection and same-boot
-evidence ledger. Run **18688** reached Hephaestus after the alignment-crowd
-correction and recorded a real, safe withdrawal with an XP loss; that target
-is closed rather than retried. Continue the same pilot after genuinely fresh
-area/boot evidence rather than creating roster breadth.
+frontier diagnosis has **491 candidates**, **54 current-band** candidates, and
+**40 autonomous-safe** candidates, but **0 plain-executable** candidates. The
+remaining no-Sanctuary options are closed by current protection and same-boot
+evidence, while the selected Sanctuary recovery route is on its current-boot
+area-reset cooldown. The selector will continue with fresh candidates or that
+audited recovery route and will not replay closed targets or choose a psionic
+with energy-drain/disintegrate exposure.
+`--retry-stalled` rotates the frontier without reopening static route hazards.
+Continue the same pilot after genuinely fresh area/boot evidence rather than
+creating roster breadth.
+
+Checkpoints **57082-57086** reconciled the exact Caerlin Sanctuary attempt:
+the live combat abort is closed as no acquisition, with no locator retry spent.
+The campaign still needs fresh progression evidence before another live hunt.
+The bounded cycles ending at checkpoints **57292** and **57302** opened one
+gameplay socket each for Moria, returned safely, and preserved the protection
+ledger; the latter acquired the second Sanctuary reserve from room **4071**.
+Checkpoint **57307** records the safe Daycare maintenance route, and checkpoint
+**57312** records the see-invisible supply route. Runs **18924-18929** then
+proved the bounded death-recovery path, one productive hunt, a safe no-progress
+retry, and flight preparation. Checkpoint **57349** records the current wait
+for the area-reset-dependent Sanctuary route. The source gate continues to
+exclude level-40+ psionics unless an actual disintegration-protection receipt
+is present.
+
+The fallback selector now honors the existing source audit for a route whose
+only special is a bounded passive economic `spec_thief`: it requires the exact
+economic-transit receipt and a purse of at most **1,250 copper-equivalent**.
+This permits transit research only; it never permits fighting the thief or
+crossing another unverified special.
+
+Ota'ar Dar is a captive five-favour circuit: the gladiators do not release a
+character until all five distinct current-reboot favour receipts are confirmed.
+An interrupted arena segment must resume its remaining favour circuit rather
+than treating recall, logout, or ordinary arena completion as an exit.
+The source gate says freedom requires one favour from every gladiator type; the
+gatekeeper then checks objects **27481-27485** before transferring the player
+out. Run **18823** reached and fought Kaer'l but died before collecting its
+first favour, so that loss is not evidence that the exit logic was wrong.
 
 The verified Catacombs spiked key (object **9565**) is deliberately dropped in
 room **3007**. Its world-cache receipt is tied to the current boot; the recorded
@@ -30,18 +69,29 @@ source revision is provenance only, so a later source-mirror refresh does not
 invalidate it. It is expected to remain available until the next DD4 reboot and
 must be rechecked afterward.
 
-The October 18 target-admission update widens ordinary source-ranked scouting
+The October 20 retry-guard update keeps ordinary source-ranked scouting
 through the source-supported **+5** level band. Exact source identity, route
 hazards, isolation and live `consider` decide whether a fight is attempted;
 target HP, predicted output, Sanctuary and damage-window estimates remain
-observation/report evidence rather than ordinary admission gates. Focused
-campaign and candidate tests pass; the full regression batch remains on its
-daily schedule.
+observation/report evidence rather than ordinary admission gates. A route
+program can reopen only through its exact persisted source-audited
+revalidation; stalled-frontier rotation is not a route retry. Focused route,
+arena, campaign, and candidate tests pass; the full regression batch remains
+on its daily schedule.
+
+When an upstream source revision changes the audited route/loadout for a plain,
+unarmed singleton that has old same-boot losses, the campaign may create one
+explicit source-refresh receipt. It preserves the old loss ledger, requires a
+fresh current-source audit and live gates, and closes after that one attempt.
 
 The optional Daycare pink-ring retry now keeps its three positive-XP,
 non-maintenance segment cooldown across reboots. Live carrier and route
 evidence is rechecked when that cooldown expires; maintenance XP does not age
 it.
+
+The Sanctuary reserve audit protects exact source resource descriptions during
+catalog-free liquidation and parses ANSI-wrapped, nested GMCP inventory data.
+This prevents a recovered Staff of the Bard from being sold as ordinary loot.
 
 ### Earlier Checkpoint: October 12
 

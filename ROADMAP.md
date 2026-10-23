@@ -13,23 +13,57 @@ character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 19, 2026
+### Current campaign status: October 20, 2026
 
-Campaign **35**, checkpoint **55734**, keeps Dorrik as the only progression
-pilot. The latest completed segment is run **18688**; the saved character state
-is at healer room
-**3054**: level **39 Knight**, **1,312,170 XP**, **18 QP**, and no current
-level-up shortfall. The current DD4 boot remains **Wed Oct 14 09:25:18 2026**.
+Campaign **35**, checkpoint **57349**, keeps Dorrik as the only progression
+pilot. The latest completed live segment is run **18929**: it bought a flight
+potion after run **18927** killed a black bat in Kaladim for **330 net XP**, and
+run **18928** safely closed a second attempt without a kill. Run **18926** had
+already recovered Dorrik from the arena death in run **18924**, looted the
+corpse, entered the portal, restored equipment, slept at the healer, and logged
+out safely. Dorrik is at healer room **3054**, level **39 Knight**, **1,291,940
+XP**, **84,510 XP** to level 40, **18 QP**, and no current level-up shortfall.
+There is no current carried Sanctuary reserve; the selector is waiting on the
+audited area-reset-dependent recovery route. The current DD4 boot remains **Wed Oct 14
+09:25:18 2026**.
 
-The latest checkpoint records **541** source candidates, **61** current-band
-candidates, and **38** autonomous-safe candidates, but no executable plain
-route on this boot. Current protection and same-boot evidence close the
-remaining options; campaign 36 is a separate stale run that exhausted its
-100-segment budget and is not the active track. Run **18688** reached
-Hephaestus after the source-alignment crowd correction and recorded a real
-own-health withdrawal with an XP loss, so that exact target remains closed.
-Keep the same pilot and wait for genuinely fresh area/boot evidence; do not
-create roster breadth.
+The latest offline frontier audit records **491** source candidates, **54**
+current-band candidates, and **40** autonomous-safe candidates, with **0**
+plain-executable candidates. Current protection and same-boot evidence close the
+remaining no-Sanctuary options after the handball loss, while the Sanctuary
+recovery route is on its current-boot area-reset cooldown; its source-refresh
+receipt is consumed and closed targets cannot be replayed. Campaign 36 is a separate stale run that exhausted its 100-segment
+budget and is not the active track. Keep the same pilot, rotate only to fresh
+or newly audited routes, and do not create roster breadth.
+
+Startup checkpoints **57082-57086** also reconcile the exact Caerlin Sanctuary
+attempt as a closed combat-abort/no-acquisition result; the one locator retry
+remains available only for a genuine locator miss. The bounded cycles ending at
+checkpoints **57292** and **57302** opened one gameplay socket each and returned
+safely. The latter closed the one-shot room-4071 source-refresh receipt as
+`required_object_acquired`; Moria is now a completed reserve step, not an XP or
+combat retry. Checkpoints **57307** and **57312** then record safe Daycare and
+see-invisible maintenance. Runs **18924-18929** proved the bounded death-
+recovery path, a productive hunt, a safe no-progress retry, and flight
+preparation. Checkpoint **57349** records the current wait for the
+area-reset-dependent recovery route. The source gate continues to exclude
+level-40+ psionics unless actual disintegration protection is verified.
+
+The protection fallback also reuses the existing source audit for a route whose
+only special is a bounded passive economic `spec_thief`. It requires the exact
+economic-transit receipt and a purse no greater than **1,250
+copper-equivalent**; this is transit permission only, never permission to fight
+the thief or cross another unverified special.
+
+Ota'ar Dar remains a captive five-favour circuit: gladiators do not release the
+character until all five distinct current-reboot favour receipts are collected.
+An interrupted arena segment must resume its remaining favour circuit rather
+than treating recall, logout, or an ordinary arena completion as an exit.
+The source gate explicitly requires one favour from every gladiator type, and
+the gatekeeper checks favour objects **27481-27485** before transferring the
+player out. Run **18823** reached and fought Kaer'l after a live Sanctuary
+check, then died before the first favour was collected; it did not demonstrate
+an invalid arena exit.
 The campaign and HERO result paths now distinguish bounded execution,
 segment-objective, safety, and overall target outcomes. `show-campaign` reports
 the target outcome from the latest checkpoint, so a safe segment is not
@@ -55,6 +89,19 @@ starter checks pass; the correction was confirmed live by run **18688**.
 The optional Daycare ring retry preserves its three positive-XP,
 non-maintenance segment cooldown across reboot. Maintenance XP does not age
 that cooldown, and live carrier/route evidence is rechecked before retry.
+
+The Sanctuary reserve audit now protects an exact source resource description
+even when standalone liquidation has no loaded source catalog. It also walks
+ANSI-wrapped, nested GMCP inventory data, so a recovered Staff of the Bard is
+recognized and retained rather than sold. Focused arena/resource tests pass;
+one older stacked-collar liquidation test remains unrelated and separate from
+this fix.
+
+When a newer DD4 source revision changes a plain unarmed singleton's audited
+route or loadout, campaign selection may issue one exact source-refresh receipt
+for an old same-boot loss. The receipt preserves the loss ledger and all live
+gates, and closes permanently after that one retry; it is not a general loss
+waiver.
 
 The active-flight handoff is now repaired in `StarterPolicy`: a source-ranked
 hunt that requests flight reacquisition continues into the fastwalk when DD4

@@ -2048,7 +2048,9 @@ def main(argv: list[str] | None = None) -> int:
                         max_reset_waits=args.max_reset_waits,
                     )
                 else:
-                    hero_options["segments"] = args.segments
+                    # ``--single-segment`` is an explicit runtime boundary;
+                    # do not let the parser's autonomous default reopen it.
+                    hero_options["segments"] = 1
                 preparation, result = asyncio.run(
                     hero_runner(
                         request,

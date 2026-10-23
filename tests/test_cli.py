@@ -1366,6 +1366,7 @@ def test_hero_command_accepts_reset_gated_ready_campaign(tmp_path, capsys, monke
     assert captured_request["options"]["max_segment_runtime"] == 300.0
     assert captured_request["options"]["target_level"] == 30
     assert captured_request["options"]["retry_stalled"] is True
+    assert captured_request["options"]["segments"] == 1
     assert captured_request["options"]["password"] == "command-line-secret"
     assert captured_request["options"]["remember_password"] is True
     captured = capsys.readouterr()

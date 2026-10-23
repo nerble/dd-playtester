@@ -1800,6 +1800,53 @@ _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-olympus-37-100",
+    minimum_level=37,
+    maximum_level=100,
+    status="research",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire a source-verified Sanctuary staff from the Olympus Alchemist "
+        "after earlier recovery identities have closed for this reboot."
+    ),
+    evidence=(
+        "olympus.are resets mobile 916, the Alchemist, in room 927 with "
+        "object 905, an ivory staff that activates Sanctuary.",
+        "The Alchemist is a singleton, unarmed level-37-to-41 source reset; "
+        "its route and bounded output are checked by the live carrier gates.",
+        "This policy is scoped to the exact mobile, room, object, source "
+        "revision, level and reboot, so an unrelated Moria or Dwarven failure "
+        "cannot close the Olympus recovery route.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_SOURCE_RANKED_SANCTUARY_GROUND_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-ground-31-100",
+    minimum_level=31,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-ground-resource-reserve",
+    summary=(
+        "Acquire the source-verified Vamp Vale ground pill that provides "
+        "Sanctuary, after the carrier routes have closed for this reboot."
+    ),
+    evidence=(
+        "Vamp Vale object 20645 is a level-31-to-35 ground-reset pill in "
+        "room 20679 and its source values activate Sanctuary when eaten.",
+        "The route crosses the great-wolf population, so both source "
+        "prototypes (20604 and 20605) are a hard preflight hazard; a live "
+        "where check and bounded room scan must clear the path before entry.",
+        "This is required-loot maintenance, not progression XP permission; "
+        "the current reboot, source revision, exact room and object receipt "
+        "remain part of the evidence.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=0,
+)
+
 _SOURCE_RANKED_DWARVEN_SANCTUARY_POLICY = ProgressionPolicy(
     policy_id="source-ranked-sanctuary-dwarven-catacombs-25-100",
     minimum_level=25,
@@ -2830,8 +2877,11 @@ _VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
         "reached by north, north, north, west, west, open north, north. His "
         "brainbiter and complete reset loadout are audited with spec_warrior; "
         "his sanctuary is source-confirmed and the hunt requires Dorrik's own "
-        "sanctuary reserve and at least 90-percent entry health. The other "
-        "deeper targets still need a verified key route.",
+        "sanctuary reserve and at least 90-percent entry health. Mavralyn "
+        "(9523), Augus (9541), and Grieb (9542) are additional "
+        "exact, non-special singleton targets at source levels 41-42. Their "
+        "rooms are reachable through the verified spiked-key door, while the "
+        "deeper Wamphyri branch remains closed pending a separate transit audit.",
         "Target eligibility follows source level and fresh live consider, not "
         "target HP. Keep exact identity, route, isolation, incoming-damage, "
         "and Dorrik's own 20-percent withdrawal checks; wandering targets use "
@@ -2839,7 +2889,10 @@ _VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=3,
-    source_mobile_vnums=(9501, 9510, 9524, 9525, 9545, 9546, 9547),
+    source_mobile_vnums=(
+        9501, 9510, 9524, 9525, 9545, 9546, 9547,
+        9523, 9541, 9542,
+    ),
 )
 
 _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(

@@ -64,6 +64,65 @@ def noncombat_echo_programs_only(programs: Collection[MobileProgram]) -> bool:
     )
 
 
+def source_reviewed_noncombat_programs_only(
+    programs: Collection[MobileProgram],
+) -> bool:
+    """Prove the narrow, source-reviewed speech-and-give script shape.
+
+    This is intentionally separate from the general idle/greeting proof. It
+    admits only bounded speech triggers plus the exact ``give_prog ruby eye``
+    handoff used by the reviewed passive prototype; no movement, combat,
+    spell, force, or arbitrary object commands are accepted.
+    """
+    if not 1 <= len(programs) <= 3:
+        return False
+
+    def echo_command(command: str) -> bool:
+        verb, separator, body = " ".join(command.split()).partition(" ")
+        return bool(
+            separator
+            and body
+            and verb.casefold() in {"say", "mpasound", "mpecho"}
+        )
+
+    for program in programs:
+        trigger = program.trigger.casefold()
+        condition = " ".join(program.condition.split()).casefold()
+        commands = tuple(" ".join(command.split()) for command in program.commands)
+        if trigger == "rand_prog":
+            if (
+                not program.condition.isdecimal()
+                or not 0 <= int(program.condition) <= 100
+                or len(commands) != 1
+                or not echo_command(commands[0])
+            ):
+                return False
+            continue
+        if trigger in {"greet_prog", "all_greet_prog"}:
+            if (
+                not program.condition.isdecimal()
+                or not 0 <= int(program.condition) <= 100
+                or not 1 <= len(commands) <= 8
+                or not all(echo_command(command) for command in commands)
+            ):
+                return False
+            continue
+        if trigger == "give_prog":
+            if (
+                condition != "ruby eye"
+                or not 1 <= len(commands) <= 8
+                or commands[-1].casefold() != "mpjunk ruby"
+                or not all(
+                    echo_command(command)
+                    for command in commands[:-1]
+                )
+            ):
+                return False
+            continue
+        return False
+    return True
+
+
 def idle_echo_programs_only(programs: Collection[MobileProgram]) -> bool:
     """Accept only random scripts that stop in combat and otherwise echo once."""
     for program in programs:

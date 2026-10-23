@@ -6,10 +6,12 @@ from dd4tester.campaign import (
     _SOURCE_RANKED_CONSIDER_RESET_WAIT_KEY,
     _SOURCE_RANKED_CONSIDER_FUZZ_REVALIDATION_HISTORY_KEY,
     _arm_source_ranked_consider_revalidation_after_reset,
+    _close_source_ranked_consider_fuzz_revalidation,
     _consume_source_ranked_consider_fuzz_revalidation,
     _repair_source_ranked_consider_fuzz_revalidation_history,
     _source_ranked_candidate_excluded_by_below_band_evidence,
     _source_ranked_consider_fuzz_revalidation_pending,
+    _source_ranked_consider_fuzz_revalidation_should_defer,
     _source_ranked_policy_id,
 )
 from dd4tester.hunt_candidates import HuntCandidate
@@ -184,6 +186,29 @@ def test_area_reset_recheck_does_not_repeat_an_attempted_negative() -> None:
     ] == 77
 
 
+def test_pending_consider_recheck_can_close_before_unrelated_rotation() -> None:
+    state, candidate, world = _fixture()
+    armed = _arm_source_ranked_consider_revalidation_after_reset(
+        state,
+        [candidate],
+        character_level=39,
+        source_world=world,
+    )
+
+    assert _close_source_ranked_consider_fuzz_revalidation(
+        armed,
+        reason="exact candidate failed ordinary selector gates",
+    )
+    marker = armed["campaign_source_ranked_consider_fuzz_revalidation"]
+    assert marker["status"] == "closed"
+    assert marker["reason"] == "exact candidate failed ordinary selector gates"
+    assert not _source_ranked_consider_fuzz_revalidation_pending(
+        armed,
+        candidate,
+        character_level=39,
+    )
+
+
 def test_area_reset_recheck_history_blocks_an_older_attempted_negative() -> None:
     state, candidate, world = _fixture()
     policy_id = _source_ranked_policy_id(candidate, character_level=39)
@@ -213,6 +238,76 @@ def test_area_reset_recheck_history_blocks_an_older_attempted_negative() -> None
         "policy_id"
     ] == policy_id
     assert "campaign_source_ranked_consider_fuzz_revalidation" not in armed
+
+
+def test_weak_reset_recheck_defers_to_a_likely_current_hunt() -> None:
+    _, candidate, _ = _fixture()
+    weak = replace(
+        candidate,
+        mobile_vnum=9308,
+        room_vnum=9308,
+        target="a weak reset target",
+        target_keyword="weak",
+        target_identity="a weak reset target",
+        estimated_level_range=(32, 36),
+    )
+    likely_current = replace(
+        candidate,
+        mobile_vnum=9309,
+        room_vnum=9309,
+        target="a likely current target",
+        target_keyword="likely",
+        target_identity="a likely current target",
+        estimated_level_range=(40, 44),
+    )
+
+    assert _source_ranked_consider_fuzz_revalidation_should_defer(
+        weak,
+        likely_current,
+        "fresh",
+        character_level=39,
+    )
+
+
+def test_reset_recheck_remains_available_without_a_likely_current_hunt() -> None:
+    _, candidate, _ = _fixture()
+    weak = replace(
+        candidate,
+        mobile_vnum=9310,
+        room_vnum=9310,
+        estimated_level_range=(32, 36),
+    )
+
+    assert not _source_ranked_consider_fuzz_revalidation_should_defer(
+        weak,
+        None,
+        None,
+        character_level=39,
+    )
+
+
+def test_other_revalidation_keeps_priority_over_reset_deferral() -> None:
+    _, candidate, _ = _fixture()
+    weak = replace(
+        candidate,
+        mobile_vnum=9311,
+        room_vnum=9311,
+        estimated_level_range=(32, 36),
+    )
+    likely_current = replace(
+        candidate,
+        mobile_vnum=9312,
+        room_vnum=9312,
+        estimated_level_range=(40, 44),
+    )
+
+    assert not _source_ranked_consider_fuzz_revalidation_should_defer(
+        weak,
+        likely_current,
+        "fresh",
+        character_level=39,
+        other_revalidation_selected=True,
+    )
 
 
 def test_repair_recovers_multiple_current_boot_attempts_from_segment_tail() -> None:

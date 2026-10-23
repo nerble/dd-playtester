@@ -36,6 +36,57 @@ def test_escape_does_not_mistake_a_distant_mobile_for_an_adjacent_one():
     assert session.pending_room == "27132"
 
 
+def test_escape_accepts_a_verified_active_light_without_buying_the_pie():
+    session = AreaRecallEscape()
+    state = CharacterState(
+        room_vnum="27347", hp=702, max_hp=702, move=230, level=30,
+        exits={"u": "27647"},
+    )
+    assert session.next_command(
+        state, now=1.0, inventory=(), coins=104, flight=True,
+        infrared=False, sanctuary=True, purple_available=True,
+        water_breathing=True, light_available=True,
+    ) == "up"
+    assert session.purchase.stage == "new"
+
+
+def test_escape_resumes_from_the_bakery_by_backtracking_to_local_recall():
+    session = AreaRecallEscape.from_room("27331")
+    state = CharacterState(
+        room_vnum="27331", hp=702, max_hp=702, move=230, level=30,
+        exits={"e": "27332"},
+    )
+    assert session.next_command(
+        state, now=1.0, inventory=(), coins=104, flight=True,
+        infrared=False, sanctuary=True, purple_available=True,
+        water_breathing=True, light_available=True,
+    ) == "east"
+    assert session.pending_room == "27332"
+
+
+def test_water_loss_at_a_local_shop_route_recalls_before_preparation():
+    session = AreaRecallEscape.from_room("27331")
+    state = CharacterState(
+        room_vnum="27331", hp=702, max_hp=702, move=230, level=30,
+        exits={"e": "27332"},
+    )
+    assert session.next_command(
+        state, now=1.0, inventory=(), coins=104, flight=True,
+        infrared=True, sanctuary=True, purple_available=True,
+        water_breathing=False,
+    ) == "recall"
+    assert session.water_prep_stage == "water-await-recall"
+    session.observe(PROMPT)
+    state.room_vnum = "27347"
+    state.exits = {"s": "27341"}
+    assert session.next_command(
+        state, now=2.0, inventory=(), coins=104, flight=True,
+        infrared=True, sanctuary=True, purple_available=True,
+        water_breathing=False, gear_catalog=object(),
+    ) == "south"
+    assert session.water_prep_stage == "water-outbound"
+
+
 @pytest.mark.parametrize("options", [dict(flight=False), dict(infrared=False),
                                      dict(water_breathing=False),
                                      dict(sanctuary=False, purple_available=False)])

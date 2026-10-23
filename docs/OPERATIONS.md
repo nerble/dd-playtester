@@ -14,6 +14,34 @@ Historical rejection records remain evidence for their exact target and boot;
 they are not permission to reject an otherwise valid current target merely
 because an old predicted output estimate was unfavorable.
 
+`spec_cast_psionicist` is a hard protection gate. DD4's source spell table
+opens energy drain at mobile level 14 and disintegrate at level 35. Do not
+engage a candidate in either band without a fresh source- and live-verified
+protection receipt. Sanctuary, Globe, energy containment, Illithid psychic
+resistance, and the Crysomer item's prose description do not prove immunity.
+This keeps level-40+ psionics out of the live target set until a real protection
+path is evidenced.
+
+An already-productive, current-boot, loss-free plain route may receive one
+`campaign_source_ranked_productive_transit_revalidation` when its only
+remembered crossing is a source-bounded below-band aggressor. The marker
+requires a safe healer checkpoint, unchanged source/level/boot, a useful
+completed kill, an exact singleton target, and a fresh live route, identity,
+consider, health, and recovery audit. Consume it before dispatch. This repairs
+one repeat route only; it does not clear a target failure or waive another
+route hazard.
+
+When Sanctuary recovery is terminal and no ordinary current-band route remains,
+the separate `campaign_source_ranked_fresh_transit_probe` may admit one fresh
+unarmed target at one exact fixed-sentinel reset whose source cap is at most four
+and whose only remembered route interruption is a source-bounded borderline
+aggressor. The marker is bound to the current boot, level, source revision,
+target identity, room and complete route; it is consumed before dispatch and
+closes as `no_kill` unless that exact segment records an objective kill for the
+marked source mobile. An incidental transit kill does not count. Live identity,
+consider, crowd, health-floor, output, return and recovery checks remain
+authoritative, and the probe never reopens an old target loss.
+
 ## Commentary And Discord
 
 At the start of every assistant turn, before commentary or other tool work,
@@ -301,11 +329,12 @@ this is neither a field sleep location nor relaxed combat/travel admission.
 
 Automatic source absence/no-progress fallback is not a route-program retry.
 Do not derive `allow_route_program_retry` from a cooldown-rotation flag; doing
-so offered an obstructed productive route only for the final dynamic-hazard
-guard to stop it before connection. Preserve the saved route result and useful
+so can reopen an obstructed productive route before the final dynamic-hazard
+guard has enough context to stop it. Preserve the saved route result and useful
 kill history, select other candidates normally, and retain the final guard.
-Only an existing exact revalidation or explicit `--retry-stalled` can reopen
-that source-validated preflight. New focused cases await October 11.
+Only an existing exact, source-audited revalidation may reopen that
+source-validated preflight. `--retry-stalled` rotates the frontier but does not
+grant route-program retry permission.
 
 For a recently productive plain hunt, a completed clear city observation may
 arm one exact-policy/level/boot clearance even when a different policy spent
@@ -435,9 +464,59 @@ live success remains unproved until an observed healer return.
 The Ota'ar Dar gladiators hold a character in the arena until all five distinct
 favours have been collected. Treat this as a hard live gate, not a normal
 arena completion condition: retain arena control through the remaining
-gladiator sequence, verify each current-reboot favour receipt, and do not
-issue the exit route, generic recall, logout, or maintenance detour while any
-favour is missing. A saved receipt from an earlier DD4 reboot is not valid.
+gladiator sequence and do not issue the exit route, generic recall, logout, or
+maintenance detour while any favour is missing. Source objects **27481-27485**
+are `ITEM_TREASURE`, so carried copies are written to the character save file
+and may survive a graceful logout or reboot. After reconnect, revalidate each
+older receipt with a fresh inventory listing whose description uniquely maps
+to the source VNUM and confirms the treasure item type; receipt-only evidence
+from an earlier boot remains invalid. The source gatekeeper still requires
+one favour from every gladiator type before transferring the character to the
+staging zone. A live fight that ends in death before a favour is saved is not
+evidence that the character was released or that the exit route is valid.
+
+### Bounded Economic Route Specials
+
+During protection recovery, an ordinary fallback may retain a route whose only
+special is a source-audited passive economic `spec_thief`. Require the exact
+`route_economic_hunt_mobile_vnums` receipt, the complete source reset audit,
+and no more than **1,250 copper-equivalent** carried at runtime. Recheck the
+source identity and purse before dispatch. This permits bounded transit only;
+it never authorizes combat with the thief or crossing another special, script,
+or attacker.
+
+### Source-Refresh Plain-Target Retry
+
+An upstream source revision does not reopen old combat losses by itself. After a
+complete current-source audit, selection may create one explicit
+`campaign_source_ranked_source_refresh_revalidation` receipt for a fixed-room,
+unarmed, unprogrammed singleton with one or two same-boot losses recorded under
+an older source revision. The receipt records the exact target, route and
+source reset, preserves the historical loss, and still requires fresh live
+identity, isolation, `consider`, output, health and recovery checks. It is
+consumed before connection and closes after the attempt, whether or not a kill
+is achieved; it must never become a retry loop.
+
+The same source-refresh distinction applies to the exact Moria Sanctuary
+resource route. When the old fixed-reset attempt is tied to a different source
+revision, the current source must still prove mobile **4055**, purple potion
+object **4050**, reset room **4064**, and the existing route/loadout contract.
+The runner may then consume one
+`campaign_moria_sanctuary_source_refresh_revalidation` receipt before a
+required-loot attempt. The old failed attempt and all protection-loss evidence
+remain intact; a missing potion closes this recheck and does not create a
+combat retry or a loop. When that exact current-source receipt closes as
+`no_object`, the source-confirmed second Moria reset at room **4071** may be
+used once as the distinct
+`source-ranked-sanctuary-moria-fixed-reset-4071-2-100` handoff, even if an
+older area-reset marker is unavailable. Consume that attempt before dispatch,
+retain both receipts, and keep it strictly required-loot-only.
+If room **4071** already has an older attempted or acquired receipt under a
+different source revision, do not replay it. A fresh current-source audit may
+consume one `campaign_moria_sanctuary_second_source_refresh_revalidation`
+marker, bound to the closed room-**4064** `no_object` receipt, before the same
+required-loot-only handoff. Close the marker on absence or acquisition and
+preserve the older room-4071 evidence unchanged.
 
 Trainer visits record `subclass_selection` independently from execution and
 safety. A requested subclass in the profile is not proof: require the final
@@ -2777,6 +2856,24 @@ not the Mage's Laboratory. Wake to eat/drink during sleep when needed; never
 change equipment asleep. Never log out in Purgatory: recover the corpse, loot,
 restore gear, leave the portal, then hand off once to healer recovery.
 
+Checkpoint 57331 confirms this recovery path live. After the unsafe arena run
+18924, run 18925 exposed a crawler stall: it kept issuing `look` at room 401
+after returning from room 410 even though room 410 still had unvisited exits.
+The crawler now stores each room's observed exits, reuses a parent edge only
+when that parent has remaining work, and ends with a bounded failure instead of
+repeating `look`. Run 18926 then found and looted Dorrik's corpse, entered the
+portal, restored gear, slept at healer room 3054, and logged out safely. This
+is recovery evidence, not XP or HERO completion.
+
+Checkpoint 57349 records the next safe selection boundary: run 18927 earned
+330 net XP from a Kaladim black bat, run 18928 closed a duplicate attempt
+without a kill, and run 18929 bought a flight potion. The current source audit
+has no plain-executable candidate while the Sanctuary recovery route waits for
+its area reset. `spec_cast_psionicist` remains a hard gate: energy drain begins
+at source level 14 and disintegrate at 35, so a level-40+ psionic is excluded
+unless a fresh disintegration-protection receipt is present. Sanctuary alone,
+Globe, energy containment, Illithid resistance, and item lore do not qualify.
+
 For urgent source-food routes, wake from healer sleep only to use carried food
 or water, or when the registered route's movement threshold is met. If starving
 without supplies and still below that threshold, keep sleeping until the route
@@ -4009,8 +4106,12 @@ by Redbeard in room 17218, but the 99-command route crosses audited aggressive
 and special hazards. The sanctuary scroll (#13345) is nested in chests in the
 disconnected Catacombs, while the reachable ground pill (#20645) has minimum
 load level 31 and a source hazard on its route. Checkpoint 49500 has no pending
-capacity-reset entitlement, and the one post-reset recheck is already marked
-attempted. Do not retry Moria or wait again on this evidence alone.
+capacity-reset entitlement, and the ordinary post-reset recheck is already
+marked attempted. A later, separately recorded automatic-reset entitlement may
+still authorize one exact room-4071 mobile-4055/object-4050 refill after the
+prior refill was consumed. Consume that entitlement before dispatch; its
+failure closes the same-boot refill and does not reopen general sanctuary
+recovery.
 
 For the exact level-20 generic protection-recovery transition, a source-backed
 fallback may use up to eight bounded locator relocations after positive carrier
@@ -4491,6 +4592,12 @@ stop now permits one outbound interception at VNUM 19002 only; it still requires
 the live source identity, isolation, consider, output, required staff receipt,
 and healer-return checks. The current boot's retry is already closed, so this
 evidence will be used on the next eligible recovery attempt rather than looped.
+
+If an exact Caerlin dispatch reaches field combat and aborts without acquiring
+the staff, startup reconciliation closes that attempt as
+`combat_aborted_no_acquisition`. It does not classify the result as a locator
+miss or spend the one safe locator retry; only the documented positive-where
+miss can open that retry.
 
 The next source-ranked Sanctuary fallback is recorded as
 `source-ranked-sanctuary-alternate-2-100`. Its first eligible carrier is the

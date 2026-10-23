@@ -3925,6 +3925,47 @@ def source_mobile_route_aggressor_is_bounded(
     )
 
 
+def source_mobile_is_ordinary_below_level_aggressor(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+) -> bool:
+    """Return whether a near-band route aggressor is source-ordinary.
+
+    A plain, unarmed aggressive mobile whose fuzzed source maximum is below
+    the character's level is a live combat possibility, not an automatic
+    route failure. Keep this exception limited to the useful source band and
+    to mobiles without scripts, specials, weapons, or other unmodelled
+    behavior; live identity, consider, crowd, and health checks still decide
+    what happens. Armed near-band mobiles must pass the stricter damage-bound
+    proof instead of becoming incidental transit noise.
+    """
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if not (
+        mobile.aggressive
+        and character_level - 5 < maximum_level < character_level
+        and not mobile.programs
+        and not mobile.attack_programs
+        and not mobile.fear_aura
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and not mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+        and not world.mobile_specials.get(mobile.vnum)
+    ):
+        return False
+    for reset in world.mob_resets:
+        if reset.mobile_vnum != mobile.vnum:
+            continue
+        for wear_location, object_vnum in reset.equipment:
+            if wear_location in {WEAR_WIELD, WEAR_DUAL}:
+                return False
+            item = world.objects.get(object_vnum)
+            if item is None or item.item_type != ITEM_ARMOR:
+                return False
+    return True
+
+
 def source_mobile_route_program_attacker_is_bounded(
     world: WorldSource,
     mobile: MobileSource,
@@ -4736,6 +4777,15 @@ def rank_hunt_candidates(
                     autonomy_rejections.append(
                         f"route crosses a higher-level {hazard_noun}"
                     )
+                elif source_mobile_is_ordinary_below_level_aggressor(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                ):
+                    hazards.append(
+                        "source-level-below route aggressor remains a live "
+                        "combat possibility"
+                    )
                 elif (
                     hazard.attack_programs
                     and not hazard.aggressive
@@ -4937,6 +4987,15 @@ def rank_hunt_candidates(
                 dangerous = True
                 autonomy_rejections.append(
                     f"a higher-level {hazard_noun} can reach the route"
+                )
+            elif source_mobile_is_ordinary_below_level_aggressor(
+                world,
+                hazard,
+                character_level=character_level,
+            ):
+                hazards.append(
+                    "source-level-below wandering aggressor remains a live "
+                    "combat possibility"
                 )
             elif (
                 hazard.aggressive

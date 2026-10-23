@@ -8,7 +8,11 @@ share one route and identity definition.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
+
+from .equipment import normalize_item_name
 
 
 OTA_ARENA_AREA = "sahuagin_arena_jail.are"
@@ -17,6 +21,7 @@ OTA_ARENA_FORCED_ENTRY_ROOM_VNUM = 27227
 OTA_ARENA_WIZINVIS_ROOM_VNUM = 27239
 OTA_ARENA_STAGING_ROOM_VNUM = 27278
 OTA_ARENA_EXIT_ROOM_VNUM = 27307
+OTA_ARENA_FAVOUR_ITEM_TYPE = 8  # DD4's ITEM_TREASURE
 
 # This is the source route from Midgaard recall through the canals to the
 # cityguard.  The final south command triggers the forced arena transfer.
@@ -45,6 +50,7 @@ class OtaArenaTarget:
     token_vnum: int
     token_terms: tuple[str, ...]
     route_from_previous: tuple[str, ...]
+    token_item_type: int = OTA_ARENA_FAVOUR_ITEM_TYPE
     requires_sanctuary: bool = True
 
 
@@ -120,3 +126,67 @@ def ota_arena_token_terms_present(
         if "favour" in folded and any(term.casefold() in folded for term in target.token_terms[1:]):
             return True
     return False
+
+
+def ota_arena_inventory_token_vnums(
+    inventory: Any,
+    source_objects: Mapping[int, Any] | None,
+) -> set[int]:
+    """Return exact favour prototypes confirmed by a live inventory listing.
+
+    A receipt from an earlier boot is not enough on its own.  The character's
+    current inventory must contain a uniquely named source object of the
+    expected type.  This mirrors DD4's ``carrying($n)`` gate without treating
+    an old campaign receipt as proof that the object still exists.
+    """
+    if not source_objects:
+        return set()
+
+    def direct_descriptions(value: Any) -> list[str]:
+        if isinstance(value, Mapping):
+            description = value.get("short_desc")
+            if isinstance(description, str):
+                # DD4's carrying() test does not descend into containers.
+                return [description]
+            return [
+                description
+                for key, nested in value.items()
+                if key not in {"contents", "container_contents"}
+                for description in direct_descriptions(nested)
+            ]
+        if isinstance(value, (list, tuple)):
+            return [
+                description
+                for nested in value
+                for description in direct_descriptions(nested)
+            ]
+        return []
+
+    observed_names = {
+        normalize_item_name(str(description))
+        for description in direct_descriptions(inventory)
+        if str(description).strip()
+    }
+    if not observed_names:
+        return set()
+
+    received: set[int] = set()
+    for target in OTA_ARENA_TARGETS:
+        token = source_objects.get(target.token_vnum)
+        if token is None or int(getattr(token, "item_type", -1)) != target.token_item_type:
+            continue
+        expected_name = normalize_item_name(
+            str(getattr(token, "short_description", ""))
+        )
+        if not expected_name or expected_name not in observed_names:
+            continue
+        matching_vnums = {
+            int(vnum)
+            for vnum, candidate in source_objects.items()
+            if normalize_item_name(
+                str(getattr(candidate, "short_description", ""))
+            ) == expected_name
+        }
+        if matching_vnums == {target.token_vnum}:
+            received.add(target.token_vnum)
+    return received

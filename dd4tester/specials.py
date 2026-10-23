@@ -15,6 +15,12 @@ from dataclasses import dataclass
 # visible to evidence and reporting code.
 SOURCE_SPECIAL_AUDIT_REVISION = "e85c085a9113c2b789211333f9a17d0d6d04d0be"
 
+# ``special.c`` reaches these entries in the psionicist spell table at the
+# corresponding mobile levels. Keep the thresholds named so target-selection
+# policy and source-evidence tests cannot silently drift apart.
+PSIONICIST_ENERGY_DRAIN_LEVEL = 14
+PSIONICIST_DISINTEGRATE_LEVEL = 35
+
 
 @dataclass(frozen=True)
 class SourceSpecialProfile:
@@ -428,9 +434,9 @@ def source_special_status_effects(
         return tuple(effects)
     if normalized == "spec_cast_psionicist":
         effects: list[str] = []
-        if caster_level >= 14:
+        if caster_level >= PSIONICIST_ENERGY_DRAIN_LEVEL:
             effects.append("energy drain")
-        if caster_level >= 35:
+        if caster_level >= PSIONICIST_DISINTEGRATE_LEVEL:
             effects.append("disintegrate")
         return tuple(effects)
     if normalized == "spec_demon":

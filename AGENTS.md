@@ -29,6 +29,13 @@ Keep pursuing the best executable current-band XP whether or not the MUD has
 rebooted recently. Reboots may improve particular XP or loot opportunities, but
 never pause progression; wait for a reset only when the selected objective
 actually depends on one, and otherwise move to the next eligible policy.
+Treat `spec_cast_psionicist` as a hard protection gate. Source `special.c`
+opens energy drain at mobile level 14 and disintegrate at level 35, so do not
+engage a psionicist in either band without a fresh source- and live-verified
+protection receipt. Sanctuary, Globe, energy containment, Illithid psychic
+resistance, and the Crysomer sword's descriptive lore are not disintegrate
+immunity. A level-40+ psionic is therefore out of bounds for Dorrik unless
+that evidence is actually present; do not infer it from a damage estimate.
 Favor productive, risk-adjusted fights: when fresh live `consider`, source
 damage/output bounds, current gear, and practiced skills support a bounded kill,
 take the useful-XP opportunity instead of detouring merely to avoid ordinary
@@ -309,6 +316,41 @@ and follow a positive live `where` result to any exact safe room outside that
 short search. Retain audited relocation origins at those positive-locator
 destinations too, so the next refresh can leave them without inventing a route.
 Keep named research and resource routes on their own bounds.
+For the exact Moria Sanctuary carrier, a changed source revision may authorize
+one `campaign_moria_sanctuary_source_refresh_revalidation` only after the
+current source still proves mobile 4055, purple potion object 4050, reset room
+4064, and the existing safe route/loadout contract. Consume it before the
+required-loot run, retain the old failed attempt and protection ledger, and
+close it on a missing potion; it never reopens combat or creates a retry loop.
+If that exact receipt closes as `no_object`, and the source still proves the
+distinct room-4071 reset for the same carrier/object, allow one separate
+`source-ranked-sanctuary-moria-fixed-reset-4071-2-100` handoff even when the
+legacy area-reset marker is absent. Consume the second-reset attempt before
+dispatch, retain both receipts, and never use it to reopen an XP fight.
+If room 4071 already has an older attempted or acquired receipt from a prior
+source revision, do not replay that history. A fresh current-source audit may
+instead consume one
+`campaign_moria_sanctuary_second_source_refresh_revalidation` marker, bound to
+the closed room-4064 `no_object` receipt, before the same required-loot-only
+handoff. Close it on absence or acquisition and preserve the older room-4071
+evidence unchanged.
+An already-productive, current-boot, loss-free plain route may receive one
+persisted `campaign_source_ranked_productive_transit_revalidation` when its
+only remembered crossing is a source-bounded below-band aggressor. Require a
+safe healer checkpoint, unchanged source/level/boot, a useful completed kill,
+an exact singleton target, and the full fresh live route, identity, consider,
+health, and recovery checks. Consume the marker before dispatch; it repairs
+one repeat route only and never clears target failures or generic hazards.
+When Sanctuary recovery is terminal and no ordinary current-band route remains,
+one separate `campaign_source_ranked_fresh_transit_probe` may admit a fresh,
+unarmed target at one exact fixed-sentinel reset whose source cap is at most four
+and whose only remembered route interruption is one source-bounded borderline
+aggressor. It is reboot-, level-, source-, target-, and route-bound, requires no
+prior target loss or special, is consumed before dispatch, and closes as
+`no_kill` unless that exact segment records an objective kill for the marked
+source mobile; an incidental transit kill does not count. This widens one fresh
+probe only; it never waives live identity, consider, crowd, health-floor,
+output, return, or recovery checks and never reopens an old target failure.
 Source hunt preparation has a 60-second checked deadline, independent of the
 live worker budget. Reuse static reset, special, and wanderer-range analysis
 only within one unchanged source plan via `SourceRouteHazardIndex`; never cache
@@ -342,10 +384,18 @@ An arena route stays in control unless same-level, same-boot below-band
 evidence closes its target set; then the campaign may try the independent
 source-ranked fallback instead of replaying that arena or waiting for a reboot.
 Ota'ar Dar is a hard five-favour circuit: its gladiators do not release the
-character until all five distinct current-reboot favour receipts are confirmed.
-Never issue the exit route, generic recall, logout, or a maintenance detour
-from inside that arena while any favour is missing; resume the exact remaining
-gladiator circuit instead.
+character until all five distinct favour objects are carried. The source gate
+checks VNUMs 27481, 27482, 27483, 27484, and 27485, one for each gladiator
+type. They are `ITEM_TREASURE` objects, not keys, and DD4 writes carried
+treasure to the character save file; a graceful logout or reboot therefore
+can preserve them. After reconnect, require a fresh exact inventory audit
+against the unique source descriptions and item type before accepting an
+older receipt. A receipt without that live inventory confirmation remains
+boot-scoped evidence. A death or disconnect before the objects are saved is
+unfinished circuit evidence, not proof that the exit is usable. Never issue
+the exit route, generic recall, logout, or a maintenance detour from inside
+the arena while any favour is missing; resume the exact remaining gladiator
+circuit instead.
 Names and credentials identify history, never behavior. Distinguish source
 estimates, offline replays, live observations, and sustained progression.
 Keep `runs/dd4-source` current with `origin/master`. Finish live workers first,
@@ -1474,8 +1524,10 @@ do not repeat an unchanged same-boot route. Keep unrelated regression cleanup
 behind the next substantive implementation or campaign batch.
 Automatic absence/no-progress rotation must not enable route-program cooldown
 retries. Keep those routes excluded while selecting other candidates; only an
-existing exact revalidation contract or explicit `--retry-stalled` may offer
-its source-validated preflight again. Preserve the final dynamic-hazard guard.
+existing exact, source-audited revalidation contract may offer its
+source-validated preflight again. `--retry-stalled` rotates the frontier but
+does not grant route-program retry permission. Preserve the final
+dynamic-hazard guard.
 For ordinary live hunts, keep the standard 300-second segment bound unless a
 named short probe has a specific reason to use less. Do not shorten hunts for
 rotation speed; verify kills and XP rather than treating a ready status as

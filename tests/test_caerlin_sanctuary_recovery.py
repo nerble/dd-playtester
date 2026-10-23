@@ -8,18 +8,28 @@ from dd4tester.campaign import (
     _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY,
     _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY,
     _FLIGHT_FUNDING_REQUIRED_KEY,
+    _MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY,
+    _MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID,
+    _MORIA_SANCTUARY_SECOND_FIXED_RESET_REACQUISITION_KEY,
     _SOURCE_REVISION_KEY,
     _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
+    _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
     CampaignRunner,
+    _campaign_has_caerlin_staff,
     _campaign_segment_end_state,
+    _repair_caerlin_staff_attempt_metadata,
     _repair_stale_caerlin_staff_reserve,
     _caerlin_staff_handoff_repair_allowed,
     _caerlin_staff_locator_revalidation_allowed,
     _caerlin_staff_locator_retry_allowed,
     _caerlin_staff_reserve_reacquisition_allowed,
+    _caerlin_staff_source_revision_retry_allowed,
     _caerlin_staff_retry_open,
+    _moria_sanctuary_second_fixed_reset_reacquisition_allowed,
     _select_source_ranked_alternate_sanctuary_candidate,
+    _select_source_ranked_moria_4071_reacquisition_candidate,
+    _select_source_ranked_olympus_sanctuary_candidate,
     _select_source_consumable_candidate,
     _source_caerlin_staff_candidate_shape_allowed,
     _source_ranked_healer_blindness_recovery_allowed,
@@ -90,6 +100,17 @@ def _level_39_healer_state() -> dict[str, object]:
         },
         "world_boot_id": "test-boot",
     }
+
+
+def test_campaign_staff_detection_parses_ansi_nested_char_items() -> None:
+    state = {
+        "inventory": (
+            '[[{"quan":"1","short_desc":"\\u001b[38;5;121m(Glowing)'
+            '\\u001b[0m Staff of the Bard"}]]'
+        )
+    }
+
+    assert _campaign_has_caerlin_staff(state)
 
 
 def test_caerlin_is_selected_as_exact_staff_recovery_carrier() -> None:
@@ -201,6 +222,58 @@ def test_alternate_sanctuary_carrier_reopens_after_reboot() -> None:
     assert object_vnums == (905, 926)
     assert _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.execution == (
         "moria-sanctuary-hunt"
+    )
+
+
+def test_olympus_sanctuary_policy_selects_exact_staff_reset() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.policy_id: {
+            "boot_id": "test-boot",
+            "level": 39,
+            "fatal_failure": True,
+            "completed_kill": False,
+        }
+    }
+
+    selection = _select_source_ranked_olympus_sanctuary_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (916, 927)
+    assert candidate.area_file.casefold() == "olympus.are"
+    assert object_vnums == (905,)
+    assert _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id not in (
+        state["campaign_research_results"]
+    )
+
+
+def test_olympus_sanctuary_policy_closes_after_its_own_fatal_result() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id: {
+            "boot_id": "test-boot",
+            "level": 39,
+            "fatal_failure": True,
+            "completed_kill": False,
+        }
+    }
+
+    assert (
+        _select_source_ranked_olympus_sanctuary_candidate(
+            state,
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+        )
+        is None
     )
 
 
@@ -423,6 +496,101 @@ def test_caerlin_locator_retry_closes_after_second_miss() -> None:
     assert not _caerlin_staff_locator_retry_allowed(merged)
 
 
+def test_caerlin_combat_abort_closes_attempt_without_locator_retry() -> None:
+    previous = _level_39_healer_state()
+    previous.update(
+        {
+            "campaign_source_revision": "test-source",
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "attempted",
+                "retry_count": 0,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+    current = {
+        **previous,
+        "fastwalk_route": "source sanctuary reserve caerlin 19068",
+        "campaign_fastwalk_abort_reason": (
+            "field combat aborted for safety: health at or below 34%"
+        ),
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_consider_outcomes": {"caerlin": True},
+        "campaign_fastwalk_source_consider_outcomes": {
+            "source-ranked-hunt-mirror-realm-19004-19068-39": True
+        },
+        "campaign_objective_kills": [],
+        "campaign_completed_kills": [],
+    }
+
+    merged = _campaign_segment_end_state(
+        previous,
+        current,
+        execution="moria-sanctuary-hunt",
+        policy_id=_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+    )
+
+    marker = merged[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY]
+    assert marker["status"] == "closed"
+    assert marker["outcome"] == "combat_aborted_no_acquisition"
+    assert marker["retry_count"] == 0
+
+
+def test_stale_caerlin_combat_abort_marker_is_reconciled_from_history() -> None:
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "campaign_source_revision": "test-source",
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "attempted",
+                "retry_count": 0,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+    end_state = {
+        **state,
+        "fastwalk_route": "source sanctuary reserve caerlin 19068",
+        "campaign_fastwalk_abort_reason": (
+            "field combat aborted for safety: health at or below 34%"
+        ),
+        "campaign_fastwalk_target_present_observed": True,
+        "campaign_fastwalk_target_absent": False,
+        "campaign_fastwalk_consider_outcomes": {"caerlin": True},
+        "campaign_fastwalk_source_consider_outcomes": {
+            "source-ranked-hunt-mirror-realm-19004-19068-39": True
+        },
+        "campaign_objective_kills": [],
+        "campaign_completed_kills": [],
+    }
+    segments = [
+        {
+            "id": 18290,
+            "phase": _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+            "status": "success",
+            "end_state_json": json.dumps(end_state),
+        }
+    ]
+
+    repaired = _repair_caerlin_staff_attempt_metadata(state, segments)
+
+    marker = repaired[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY]
+    assert marker["status"] == "closed"
+    assert marker["outcome"] == "combat_aborted_no_acquisition"
+    assert marker["closed_segment_id"] == 18290
+
+
 def test_closed_caerlin_attempt_stays_closed_for_same_boot_and_source() -> None:
     state = _level_39_healer_state()
     attempt = {
@@ -474,6 +642,108 @@ def test_caerlin_staff_can_be_reacquired_once_after_liquidation_loss() -> None:
     assert not _caerlin_staff_reserve_reacquisition_allowed(state)
 
 
+def test_moria_4071_reserve_reacquisition_is_one_shot() -> None:
+    state = _level_39_healer_state()
+    state.update(
+        {
+            _SOURCE_REVISION_KEY: "current-source",
+            "campaign_source_resource_reserves": {},
+            _MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "old-source",
+                "status": "attempted",
+                "source_mobile_vnum": 4055,
+                "source_reset_room_vnum": 4071,
+                "source_object_vnum": 4050,
+            },
+            "campaign_research_results": {
+                _MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "observed": True,
+                    "completed_kill": False,
+                    "required_object_acquired": True,
+                    "required_object_vnums": [4050],
+                    "viable": True,
+                }
+            },
+        }
+    )
+
+    assert _moria_sanctuary_second_fixed_reset_reacquisition_allowed(state)
+    state[_MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY][
+        _MORIA_SANCTUARY_SECOND_FIXED_RESET_REACQUISITION_KEY
+    ] = True
+    assert not _moria_sanctuary_second_fixed_reset_reacquisition_allowed(state)
+
+
+def test_moria_4071_reacquisition_selects_exact_potion_reset() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state[_SOURCE_REVISION_KEY] = "current-source"
+
+    selection = _select_source_ranked_moria_4071_reacquisition_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (4055, 4071)
+    assert candidate.area_file.casefold() == "moria.are"
+    assert object_vnums == (4050,)
+
+
+def test_caerlin_source_revision_retry_preempts_exhausted_alternate_policy() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = None
+    runner._selected_source_consumable_object_vnums = ()
+    runner._policy_without_learned_flight = (
+        lambda _state: _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY
+    )
+    runner._catacombs_key_recovery_policy_if_ready = lambda _state: None
+    runner.spec = SimpleNamespace(
+        character=SimpleNamespace(character_class="warrior")
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "new-source",
+            "campaign_source_resource_reserves": {},
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "old-source",
+                "status": "closed",
+                "outcome": "reserve_reacquisition_missed",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+                _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY: True,
+            },
+        }
+    )
+
+    assert _caerlin_staff_source_revision_retry_allowed(state)
+    selected = runner._policy_for_state(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert runner._selected_source_consumable_candidate is not None
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 19004
+    assert runner._selected_source_consumable_object_vnums == (19173,)
+    assert state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY][
+        _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
+    ] is True
+
+
 def test_newer_live_liquidation_loss_reopens_caerlin_reacquisition() -> None:
     state = _level_39_healer_state()
     state.update(
@@ -518,6 +788,35 @@ def test_newer_live_liquidation_loss_reopens_caerlin_reacquisition() -> None:
         _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
     ] is False
     assert _caerlin_staff_reserve_reacquisition_allowed(repaired)
+
+
+def test_live_nested_staff_inventory_keeps_caerlin_reserve() -> None:
+    state = _level_39_healer_state()
+    reserve = {
+        "effect": "sanctuary",
+        "object_vnum": 19173,
+        "object_description": "staff of the bard",
+        "mode": "staff",
+        "charges_remaining": 9,
+    }
+    state.update({"campaign_source_resource_reserves": {"sanctuary": reserve}})
+    live_state = {
+        **state,
+        "inventory": (
+            '[[{"quan":"1","short_desc":"\\u001b[38;5;121m(Glowing)'
+            '\\u001b[0m Staff of the Bard"}]]'
+        ),
+    }
+
+    repaired = _repair_stale_caerlin_staff_reserve(
+        state,
+        live_state,
+        source_revision="test-source",
+    )
+
+    assert repaired["campaign_source_resource_reserves"] == {
+        "sanctuary": reserve
+    }
 
 
 def test_caerlin_reacquisition_preempts_optional_rearming() -> None:

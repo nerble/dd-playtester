@@ -86,6 +86,7 @@ from dd4tester.hunt_candidates import (
     source_class_teacher_skill,
     source_mobile_can_join_player_fight,
     source_mobile_can_join_target_fight,
+    source_mobile_is_ordinary_below_level_aggressor,
     source_mobile_route_aggressor_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
     _bounded_borderline_route_aggressor,
@@ -3612,6 +3613,101 @@ def test_candidate_keeps_bounded_below_band_aggressor_as_transit_only() -> None:
         world.mobiles[200],
         character_level=18,
         character_max_hp=218,
+    )
+
+
+def test_candidate_allows_plain_near_band_aggressor_below_player_level() -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "target",
+                "a plain current-band target",
+                42,
+                ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+            200: MobileSource(
+                200,
+                "crewman",
+                "a below-level crewman",
+                35,
+                ACT_AGGRESSIVE,
+                0,
+                "transit.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(
+                7001,
+                "Transit",
+                "transit.are",
+                exits={"north": ExitSource("north", 7002, 0, -1)},
+            ),
+            7002: RoomSource(7002, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+    )
+
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_max_hp=937,
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+    )
+    candidate = next(candidate for candidate in candidates if candidate.mobile_vnum == 100)
+
+    assert candidate.target == "a plain current-band target"
+    assert candidate.target_selection_safe
+    assert candidate.autonomous_safe
+    assert not candidate.autonomy_rejections
+    assert any(
+        "source-level-below route aggressor" in hazard
+        for hazard in candidate.hazards
+    )
+
+
+def test_armed_near_band_aggressor_needs_damage_bound_proof() -> None:
+    weapon = ObjectSource(
+        9001,
+        "sabre",
+        "a sabre",
+        ITEM_WEAPON,
+        (0, 2, 6, 3),
+        100,
+    )
+    mobile = MobileSource(
+        200,
+        "crewman",
+        "a below-level crewman",
+        35,
+        ACT_AGGRESSIVE,
+        0,
+        "transit.are",
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        objects={9001: weapon},
+        mob_resets=[MobReset(200, 7001, 1, (), ((WEAR_WIELD, 9001),))],
+    )
+
+    assert not source_mobile_is_ordinary_below_level_aggressor(
+        world,
+        mobile,
+        character_level=39,
     )
 
 

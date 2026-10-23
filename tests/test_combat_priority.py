@@ -230,6 +230,32 @@ def test_purgatory_movement_still_waits_for_a_response() -> None:
     assert policy.next_decision(state) is None
 
 
+def test_purgatory_does_not_repeat_an_exhausted_parent_edge() -> None:
+    policy = field_policy()
+    policy.purgatory_visited_rooms.update({"413", "425"})
+    policy.purgatory_parent_rooms["425"] = "413"
+    policy.purgatory_parent_directions["425"] = "up"
+    policy.purgatory_tried_exits["425"] = {"n", "s", "w", "u", "d"}
+    state = CharacterState(
+        dead=True,
+        area="Purgatory",
+        room_vnum="425",
+        exits={
+            "north": "417",
+            "south": "421",
+            "west": "424",
+            "up": "413",
+            "down": "413",
+        },
+    )
+
+    decision = policy._purgatory_recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert "refresh randomized Purgatory exits" in decision.reason
+
+
 def test_corpse_recovery_restores_gear_before_resuming_fastwalk_state() -> None:
     policy = field_policy()
     state = CharacterState(

@@ -5,9 +5,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
-from .equipment import normalize_item_name
+from .equipment import (
+    GearCatalog,
+    STANCE_COMBAT,
+    STANCE_RECOVERY,
+    is_capacity_infrastructure,
+    is_releasable_funding_item,
+    item_category,
+    normalize_item_name,
+    stance_score,
+)
 from .hunt_candidates import (
     WorldSource, _wanderer_reachable_rooms, _wandering_aggressors,
     source_room_level_rejection, source_route_hazard_rejections,
@@ -18,7 +27,10 @@ from .specials import SAFE_NONCOMBAT_SPECIALS, TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
 from .state import CharacterState
 
 
-LOCAL_RECALL_ROOMS = frozenset({"27347", "27647", "27132", "27071"})
+LOCAL_RECALL_ROOMS = frozenset({
+    "27331", "27332", "27336", "27337", "27341",
+    "27347", "27647", "27132", "27071",
+})
 SHOP_STEPS = (
     (27347, "south", 27341), (27341, "south", 27336),
     (27336, "east", 27337), (27337, "south", 27332),
@@ -28,6 +40,91 @@ ESCAPE_STEPS = (
     (27347, "up", 27647), (27647, "up", 27132),
     (27132, "up", 27071),
 )
+SHOP_RETURN_STEPS = (
+    (27331, "east", 27332), (27332, "north", 27337),
+    (27337, "west", 27336), (27336, "north", 27341),
+    (27341, "north", 27347),
+)
+LOCAL_WATER_SHOP_STEPS = {
+    "27331": (
+        (27331, "east", 27332), (27332, "north", 27337),
+        (27337, "north", 27342), (27342, "east", 27343),
+        (27343, "east", 27344), (27344, "south", 27339),
+        (27339, "east", 27340),
+    ),
+    "27332": (
+        (27332, "north", 27337), (27337, "north", 27342),
+        (27342, "east", 27343), (27343, "east", 27344),
+        (27344, "south", 27339), (27339, "east", 27340),
+    ),
+    "27336": (
+        (27336, "east", 27337), (27337, "north", 27342),
+        (27342, "east", 27343), (27343, "east", 27344),
+        (27344, "south", 27339), (27339, "east", 27340),
+    ),
+    "27337": (
+        (27337, "north", 27342), (27342, "east", 27343),
+        (27343, "east", 27344), (27344, "south", 27339),
+        (27339, "east", 27340),
+    ),
+    "27341": (
+        (27341, "east", 27342), (27342, "east", 27343),
+        (27343, "east", 27344), (27344, "south", 27339),
+        (27339, "east", 27340),
+    ),
+    "27347": (
+        (27347, "south", 27341), (27341, "east", 27342),
+        (27342, "east", 27343), (27343, "east", 27344),
+        (27344, "south", 27339), (27339, "east", 27340),
+    ),
+}
+LOCAL_WATER_POTION_VNUM = 27333
+LOCAL_WATER_POTION_DESCRIPTION = "shark's wine"
+LOCAL_WATER_POTION_KEYWORD = "shark"
+LOCAL_WATER_POTION_SHOPKEEPER_VNUM = 27235
+LOCAL_WATER_POTION_SHOP_ROOM = 27340
+LOCAL_VALUE_OFFER = re.compile(
+    r"tells you 'I'll give you (?P<coins>\d+) coins? for (?P<item>.+?)'\.",
+    re.IGNORECASE,
+)
+LOCAL_SALE_COMPLETED = re.compile(
+    r"You sell (?P<item>.+?) for (?P<coins>\d+) coins?\.",
+    re.IGNORECASE,
+)
+_OPPOSITE_DIRECTIONS = {
+    "north": "south", "south": "north", "east": "west", "west": "east",
+}
+
+
+def _reverse_route(
+    steps: Sequence[tuple[int, str, int]],
+) -> tuple[tuple[int, str, int], ...]:
+    return tuple(
+        (destination, _OPPOSITE_DIRECTIONS[direction], origin)
+        for origin, direction, destination in reversed(steps)
+    )
+
+
+def _inventory_count(
+    inventory: Sequence[tuple[str, str | None]], description: str,
+) -> int:
+    target = normalize_item_name(description)
+    return sum(normalize_item_name(name) == target for name, _ in inventory)
+
+
+def _equipment_names(equipment: Any) -> set[str]:
+    if isinstance(equipment, Mapping):
+        equipment = equipment.values()
+    if not isinstance(equipment, (list, tuple)):
+        return set()
+    names = set()
+    for record in equipment:
+        if not isinstance(record, Mapping):
+            continue
+        name = record.get("name") or record.get("short_desc")
+        if name:
+            names.add(normalize_item_name(str(name)))
+    return names
 
 
 def source_allows_failed_local_recall_logout(world: WorldSource | None, state: CharacterState) -> bool:
@@ -55,7 +152,15 @@ def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int
         match = re.search(r"(?m)^#RECALL\s+(\d+)", text)
         if (int(match[1]) if match else 3001) != expected:
             return "the audited area's recall destination changed"
-    for origin, direction, destination in (*SHOP_STEPS, *ESCAPE_STEPS):
+    for origin, direction, destination in (
+        *SHOP_STEPS,
+        *ESCAPE_STEPS,
+        *{
+            step
+            for route in LOCAL_WATER_SHOP_STEPS.values()
+            for step in route
+        },
+    ):
         room = world.rooms.get(origin)
         target = world.rooms.get(destination)
         exit_source = room.exits.get(direction) if room else None
@@ -89,6 +194,37 @@ def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int
     if any(reason != "a non-safe special mobile can reach the route: a sahuagin thief"
            for reason in shop_hazards):
         return "the night-vision shop route has an additional source hazard"
+    water_item = world.objects.get(LOCAL_WATER_POTION_VNUM)
+    water_stock = [
+        reset
+        for reset in world.mob_resets
+        if reset.mobile_vnum == LOCAL_WATER_POTION_SHOPKEEPER_VNUM
+        and reset.room_vnum == LOCAL_WATER_POTION_SHOP_ROOM
+    ]
+    if (
+        water_item is None
+        or water_item.item_type != 10
+        or water_item.level > level
+        or water_item.value_strings != ("60", "breathe water", "", "")
+        or len(water_stock) != 1
+        or LOCAL_WATER_POTION_VNUM not in water_stock[0].object_vnums
+        or LOCAL_WATER_POTION_SHOPKEEPER_VNUM not in world.shopkeepers
+    ):
+        return "the exact local water-breathing potion is not source-usable"
+    local_water_hazards = source_route_hazard_rejections(
+        world,
+        tuple(
+            step[0]
+            for step in LOCAL_WATER_SHOP_STEPS["27347"]
+        ) + (LOCAL_WATER_POTION_SHOP_ROOM,),
+        character_level=level,
+        combat_at_destination=False,
+    )
+    if any(
+        reason != "a non-safe special mobile can reach the route: a sahuagin thief"
+        for reason in local_water_hazards
+    ):
+        return "the local water-breathing shop route has an additional source hazard"
     # Only visible pre-combat threats can be excluded by the infrared scan.
     # Passive invisible combat-only casters cannot start this noncombat route.
     dangerous = set()
@@ -116,7 +252,15 @@ def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int
 
 @dataclass
 class AreaRecallEscape:
-    """Own one local supply purchase and three scanned escape steps."""
+    """Own bounded local preparation and three scanned escape steps.
+
+    The local pie is a source-audited way to obtain infravision, but it is
+    not the only valid illumination source. DD4's active light-slot object
+    also makes the escape usable, so a verified permanent light can avoid an
+    unnecessary reboot-priced purchase. A reconnect that clears water
+    breathing can also buy the source-verified local potion, funding it with
+    one redundant source armour item when necessary.
+    """
 
     stage: str = "new"
     shop_index: int = 0
@@ -130,15 +274,54 @@ class AreaRecallEscape:
     ))
     scans: list[dict[str, str]] = field(default_factory=list)
     commands_sent: int = 0
+    backtrack_index: int = 0
+    water_purchase: SourcePurchaseSession = field(default_factory=lambda: SourcePurchaseSession(
+        SourcePurchase(
+            LOCAL_WATER_POTION_VNUM,
+            LOCAL_WATER_POTION_SHOPKEEPER_VNUM,
+            LOCAL_WATER_POTION_SHOP_ROOM,
+            LOCAL_WATER_POTION_DESCRIPTION,
+            LOCAL_WATER_POTION_KEYWORD,
+            5000,
+            0,
+        ),
+    ))
+    water_prep_stage: str | None = None
+    water_prep_origin: str | None = None
+    water_route_index: int = 0
+    water_return_index: int = 0
+    water_funding_attempted: bool = False
+    water_sale_description: str | None = None
+    water_sale_keyword: str | None = None
+    water_sale_selector: str | None = None
+    water_sale_vnum: int | None = None
+    water_sale_offer: int | None = None
+    water_sale_initial_count: int = 0
+
+    @classmethod
+    def from_room(cls, room_vnum: str | None) -> "AreaRecallEscape":
+        """Resume at an audited shop-route room after a partial escape."""
+        session = cls()
+        room = str(room_vnum or "")
+        for index, (origin, _direction, _destination) in enumerate(SHOP_RETURN_STEPS):
+            if room == str(origin):
+                session.stage = "backtrack"
+                session.backtrack_index = index
+                break
+        return session
 
     def observe(self, text: str) -> None:
         self.purchase.observe(text)
+        self.water_purchase.observe(text)
         if self.pending_kind:
             self.response = (self.response + text)[-8000:]
 
     def expire(self, now: float) -> bool:
         if self.purchase.expire(now):
             self.failure = self.purchase.failure
+            return True
+        if self.water_purchase.expire(now):
+            self.failure = self.water_purchase.failure
             return True
         if self.deadline is not None and now >= self.deadline:
             if not _DD4_PROMPT.search(self.response):
@@ -152,10 +335,221 @@ class AreaRecallEscape:
         self.response, self.deadline = "", now + 5
         return command
 
+    def _funding_item(
+        self,
+        inventory: Sequence[tuple[str, str | None]],
+        equipment: Any,
+        gear_catalog: GearCatalog | None,
+    ) -> tuple[str, str | None, Any] | None:
+        """Choose one redundant, source-safe armour item for the local quote."""
+        if gear_catalog is None:
+            return None
+        worn_names = _equipment_names(equipment)
+        source_items: list[tuple[str, str | None, Any]] = []
+        for description, selector in inventory:
+            if normalize_item_name(description) in worn_names:
+                continue
+            candidates = gear_catalog.candidates(description)
+            if len(candidates) != 1:
+                continue
+            item = candidates[0]
+            if (
+                item.item_type != 9
+                or not is_releasable_funding_item(item)
+                or is_capacity_infrastructure(item)
+                or item_category(item) is None
+            ):
+                continue
+            source_items.append((description, selector, item))
+        if not source_items:
+            return None
+        all_items = [item for _description, _selector, item in source_items]
+        for name in worn_names:
+            candidates = gear_catalog.candidates(name)
+            if len(candidates) == 1:
+                all_items.append(candidates[0])
+        ranked: list[tuple[int, tuple[int, ...], str, str, int, Any]] = []
+        for description, selector, item in source_items:
+            category = item_category(item)
+            peers = [
+                peer for peer in all_items
+                if peer.vnum != item.vnum and item_category(peer) == category
+            ]
+            if not peers:
+                continue
+            recovery = stance_score(item, STANCE_RECOVERY)
+            combat = stance_score(item, STANCE_COMBAT)
+            if not any(
+                stance_score(peer, STANCE_RECOVERY) > recovery
+                or stance_score(peer, STANCE_COMBAT) > combat
+                for peer in peers
+            ):
+                continue
+            words = {
+                word.casefold()
+                for word in normalize_item_name(description).split()
+            }
+            keyword = next(
+                (
+                    word for word in item.keywords.split()
+                    if word.casefold() in words
+                ),
+                None,
+            )
+            if keyword is None:
+                continue
+            ranked.append(
+                (
+                    int(item.source_cost),
+                    recovery,
+                    normalize_item_name(description),
+                    selector or "",
+                    int(item.vnum),
+                    item,
+                )
+            )
+        if not ranked:
+            return None
+        _cost, _score, description, selector, _vnum, item = max(ranked)
+        return description, selector or None, item
+
+    def _water_preparation_command(
+        self,
+        state: CharacterState,
+        *,
+        inventory: Sequence[tuple[str, str | None]],
+        coins: int,
+        gear_catalog: GearCatalog | None,
+        equipment: Any,
+        now: float,
+        invisible: bool,
+    ) -> str | None:
+        """Buy and consume local water breathing before the air-sector exit."""
+        origin = self.water_prep_origin
+        route = LOCAL_WATER_SHOP_STEPS.get(str(origin or ""), ())
+        if not route:
+            self.failure = "no source-registered local water-breathing route from this room"
+            return None
+        if self.water_prep_stage == "water-await-recall":
+            self.failure = "local water-breathing recall did not complete"
+            return None
+        if self.water_prep_stage == "water-outbound":
+            if self.water_route_index < len(route):
+                source_origin, direction, destination = route[self.water_route_index]
+                if (
+                    str(state.room_vnum) != str(source_origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live local water-breathing route differs from source"
+                    return None
+                self.water_route_index += 1
+                return self._send(direction, now, room=destination)
+            self.water_prep_stage = "water-purchase"
+
+        if self.water_prep_stage == "water-purchase":
+            command = self.water_purchase.next_command(
+                room_vnum=state.room_vnum,
+                level=state.level or 0,
+                coins=coins,
+                inventory=inventory,
+                now=now,
+                invisible=invisible,
+            )
+            if self.water_purchase.failure:
+                quote_failure = self.water_purchase.failure == (
+                    "quoted price exceeds the reserved purchase balance"
+                )
+                if quote_failure and not self.water_funding_attempted:
+                    funding = self._funding_item(inventory, equipment, gear_catalog)
+                    if funding is None:
+                        self.failure = (
+                            "the local water-breathing potion is unaffordable and no "
+                            "redundant source armour item is available for funding"
+                        )
+                        return None
+                    description, selector, item = funding
+                    self.water_funding_attempted = True
+                    self.water_sale_description = description
+                    self.water_sale_selector = selector
+                    self.water_sale_vnum = item.vnum
+                    self.water_sale_keyword = next(
+                        word for word in item.keywords.split()
+                        if word.casefold() in {
+                            word.casefold()
+                            for word in normalize_item_name(description).split()
+                        }
+                    )
+                    self.water_sale_initial_count = _inventory_count(
+                        inventory, description
+                    )
+                    self.water_prep_stage = "water-sale-value"
+                    self.water_purchase = SourcePurchaseSession(
+                        self.water_purchase.plan,
+                    )
+                    return self._send(
+                        f"value {selector or self.water_sale_keyword}",
+                        now,
+                        kind="water-sale-value",
+                    )
+                self.failure = self.water_purchase.failure
+                return None
+            if command:
+                return command
+            if self.water_purchase.stage != "complete":
+                return None
+            potions = [
+                (name, selector)
+                for name, selector in inventory
+                if normalize_item_name(name)
+                == normalize_item_name(LOCAL_WATER_POTION_DESCRIPTION)
+            ]
+            if len(potions) != 1 or not potions[0][1]:
+                self.failure = "the purchased local water-breathing potion has no unique selector"
+                return None
+            self.water_prep_stage = "water-quaff"
+            return self._send(
+                f"quaff {potions[0][1]}",
+                now,
+                kind="water-consumed",
+            )
+
+        if self.water_prep_stage == "water-return":
+            reverse_route = _reverse_route(route)
+            if self.water_return_index < len(reverse_route):
+                source_origin, direction, destination = reverse_route[self.water_return_index]
+                if (
+                    str(state.room_vnum) != str(source_origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live local water-breathing return route differs from source"
+                    return None
+                self.water_return_index += 1
+                return self._send(direction, now, room=destination)
+            self.water_prep_stage = None
+            if origin == "27347":
+                self.stage = "new"
+            else:
+                self.stage = "backtrack"
+                self.backtrack_index = next(
+                    (
+                        index for index, (source_origin, _direction, _destination)
+                        in enumerate(SHOP_RETURN_STEPS)
+                        if str(source_origin) == str(origin)
+                    ),
+                    0,
+                )
+            return None
+        return None
+
     def next_command(
         self, state: CharacterState, *, now: float, inventory: Sequence[tuple[str, str | None]],
         coins: int, flight: bool, infrared: bool, sanctuary: bool, purple_available: bool,
-        water_breathing: bool,
+        water_breathing: bool, light_available: bool = False,
+        gear_catalog: GearCatalog | None = None,
+        equipment: Any = None,
+        invisible: bool = False,
     ) -> str | None:
         self.expire(now)
         if self.failure or self.stage == "complete":
@@ -165,15 +559,6 @@ class AreaRecallEscape:
             return None
         if state.dead or state.in_combat or state.combat_target:
             self.failure = "local-recall escape observed combat; no attack is authorized"
-            return None
-        if not water_breathing:
-            self.failure = "underwater escape requires water breathing independently of flight"
-            return None
-        if not flight or not state.hp or not state.max_hp or state.hp < state.max_hp * 0.95:
-            self.failure = "local-recall escape requires fresh flight and full recovery"
-            return None
-        if not state.move or state.move < 30:
-            self.failure = "local-recall escape has insufficient movement"
             return None
         room = state.room_vnum
         if self.pending_kind:
@@ -198,18 +583,154 @@ class AreaRecallEscape:
                 return self._send("affects", now, kind="vision")
             elif kind == "sanctuary-consumed":
                 return self._send("affects", now, kind="sanctuary")
+            elif kind == "water-direct-recall":
+                if room != "27347":
+                    self.failure = "local water-breathing preparation did not return to recall"
+                    return None
+                self.water_prep_origin = "27347"
+                self.water_prep_stage = "water-outbound"
+                self.water_route_index = 0
+                return self._water_preparation_command(
+                    state,
+                    inventory=inventory,
+                    coins=coins,
+                    gear_catalog=gear_catalog,
+                    equipment=equipment,
+                    now=now,
+                    invisible=invisible,
+                )
+            elif kind == "water-consumed":
+                if not re.search(r"\byou\s+quaff\b", response, re.IGNORECASE):
+                    self.failure = "the local water-breathing potion was not acknowledged"
+                    return None
+                return self._send("affects", now, kind="water-affects")
+            elif kind == "water-affects":
+                if not water_breathing:
+                    self.failure = "the local potion did not establish water breathing"
+                    return None
+                self.water_prep_stage = "water-return"
+                self.water_return_index = 0
+                return self._water_preparation_command(
+                    state,
+                    inventory=inventory,
+                    coins=coins,
+                    gear_catalog=gear_catalog,
+                    equipment=equipment,
+                    now=now,
+                    invisible=invisible,
+                )
+            elif kind == "water-sale-value":
+                offer = LOCAL_VALUE_OFFER.search(response)
+                if offer is None or normalize_item_name(offer.group("item")) != normalize_item_name(
+                    self.water_sale_description or ""
+                ):
+                    self.failure = "the local funding shop did not quote the exact source item"
+                    return None
+                self.water_sale_offer = int(offer.group("coins"))
+                if self.water_sale_offer <= 0:
+                    self.failure = "the local funding shop offered no coins for the source item"
+                    return None
+                self.water_prep_stage = "water-sale-sell"
+                return self._send(
+                    f"sell {self.water_sale_selector or self.water_sale_keyword}",
+                    now,
+                    kind="water-sale-sell",
+                )
+            elif kind == "water-sale-sell":
+                sold = LOCAL_SALE_COMPLETED.search(response)
+                if sold is None or normalize_item_name(sold.group("item")) != normalize_item_name(
+                    self.water_sale_description or ""
+                ):
+                    self.failure = "the local funding shop did not confirm the exact sale"
+                    return None
+                self.water_prep_stage = "water-sale-inventory"
+                return self._send("inventory", now, kind="water-sale-inventory")
+            elif kind == "water-sale-inventory":
+                if _inventory_count(inventory, self.water_sale_description or "") >= self.water_sale_initial_count:
+                    self.failure = "the source funding item remained in inventory after sale"
+                    return None
+                self.water_purchase = SourcePurchaseSession(
+                    self.water_purchase.plan,
+                )
+                self.water_prep_stage = "water-purchase"
+                return self._water_preparation_command(
+                    state,
+                    inventory=inventory,
+                    coins=coins,
+                    gear_catalog=gear_catalog,
+                    equipment=equipment,
+                    now=now,
+                    invisible=invisible,
+                )
             elif kind == "vision" and not infrared:
                 self.failure = "the purchased pie did not produce observed infrared vision"
                 return None
             elif kind == "sanctuary" and not sanctuary:
                 self.failure = "the escape sanctuary potion was not confirmed"
                 return None
+        if self.water_prep_stage is not None:
+            return self._water_preparation_command(
+                state,
+                inventory=inventory,
+                coins=coins,
+                gear_catalog=gear_catalog,
+                equipment=equipment,
+                now=now,
+                invisible=invisible,
+            )
+        if not water_breathing:
+            if room != "27347":
+                if str(room or "") not in LOCAL_WATER_SHOP_STEPS:
+                    self.failure = "underwater escape requires water breathing independently of flight"
+                    return None
+                self.water_prep_origin = "27347"
+                self.water_prep_stage = "water-await-recall"
+                return self._send("recall", now, kind="water-direct-recall", room=27347)
+            if gear_catalog is None:
+                self.failure = "local water-breathing preparation requires the source item catalog"
+                return None
+            self.water_prep_origin = "27347"
+            self.water_prep_stage = "water-outbound"
+            self.water_route_index = 0
+            return self._water_preparation_command(
+                state,
+                inventory=inventory,
+                coins=coins,
+                gear_catalog=gear_catalog,
+                equipment=equipment,
+                now=now,
+                invisible=invisible,
+            )
+        if not flight or not state.hp or not state.max_hp or state.hp < state.max_hp * 0.95:
+            self.failure = "local-recall escape requires fresh flight and full recovery"
+            return None
+        if not state.move or state.move < 30:
+            self.failure = "local-recall escape has insufficient movement"
+            return None
         if room == "3001":
             self.stage = "complete"
             return None
+        if self.stage == "backtrack":
+            if room == "27347":
+                self.stage = "new"
+            else:
+                if self.backtrack_index >= len(SHOP_RETURN_STEPS):
+                    self.failure = "local-recall shop-route backtrack reached an unexpected room"
+                    return None
+                origin, direction, destination = SHOP_RETURN_STEPS[self.backtrack_index]
+                if (
+                    room != str(origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live local-recall shop backtrack differs from source"
+                    return None
+                self.backtrack_index += 1
+                return self._send(direction, now, room=destination)
         if self.stage == "new":
-            self.stage = "escape" if infrared else "shop"
-            if not infrared and room != "27347":
+            illuminated = infrared or light_available
+            self.stage = "escape" if illuminated else "shop"
+            if not illuminated and room != "27347":
                 self.failure = "night-vision supply must start at the audited local recall room"
                 return None
         if self.stage == "shop":
@@ -241,7 +762,7 @@ class AreaRecallEscape:
         if self.stage == "supplied":
             self.stage = "escape"
             return self._send("recall", now, room=27347)
-        if not infrared:
+        if not infrared and not light_available:
             self.failure = "infrared vision expired before the dark-room escape"
             return None
         if not sanctuary:
@@ -266,4 +787,16 @@ class AreaRecallEscape:
 
     def evidence(self) -> dict:
         return {"stage": self.stage, "commands_sent": self.commands_sent,
-                "failure": self.failure, "purchase": self.purchase.evidence(), "scans": self.scans}
+                "failure": self.failure, "purchase": self.purchase.evidence(),
+                "scans": self.scans, "backtrack_index": self.backtrack_index,
+                "water_prep_stage": self.water_prep_stage,
+                "water_prep_origin": self.water_prep_origin,
+                "water_purchase": self.water_purchase.evidence(),
+                "water_sale": {
+                    "description": self.water_sale_description,
+                    "vnum": self.water_sale_vnum,
+                    "offer": self.water_sale_offer,
+                    "initial_count": self.water_sale_initial_count,
+                },
+                "water_funding_attempted": self.water_funding_attempted,
+                }

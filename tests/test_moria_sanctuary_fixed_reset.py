@@ -394,6 +394,151 @@ def test_moria_sanctuary_fallback_requires_complete_exact_absence_evidence(
     )
 
 
+def test_moria_source_refresh_revalidation_is_one_shot_and_keeps_old_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, _storage = _fallback_evidence(monkeypatch)
+    prior_attempt = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "previous-source-revision",
+        "status": "attempted",
+        "prior_run_id": 100,
+        "prior_segment_id": 18,
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_reset_room_vnum": 4064,
+    }
+    state[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY] = prior_attempt
+    monkeypatch.setattr(
+        campaign,
+        "_moria_sanctuary_fixed_reset_current_source_audit",
+        lambda _state, *, source_world: True,
+    )
+
+    receipt = campaign._moria_sanctuary_source_refresh_revalidation_evidence(
+        state,
+        policy,
+        source_world=object(),
+    )
+
+    assert receipt is not None
+    assert receipt["source_refresh"] is True
+    assert receipt["prior_source_revision"] == "previous-source-revision"
+    assert receipt["source_revision"] == "current-source-revision"
+    assert receipt["status"] == "pending"
+    assert state[campaign._MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY] == prior_attempt
+
+    attempted = {
+        **receipt,
+        "status": "attempted",
+        "consumed_before_dispatch": True,
+    }
+    state[campaign._MORIA_SANCTUARY_SOURCE_REFRESH_REVALIDATION_KEY] = attempted
+    assert (
+        campaign._moria_sanctuary_source_refresh_revalidation_evidence(
+            state,
+            policy,
+            source_world=object(),
+        )
+        is None
+    )
+
+
+def test_moria_second_reset_can_follow_source_refresh_miss_without_reset_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, storage = _fallback_evidence(monkeypatch)
+    state.pop(campaign._SANCTUARY_AREA_RESET_RECHECK_KEY, None)
+    state[campaign._SANCTUARY_RESOURCE_ATTEMPTS_KEY][
+        campaign._MORIA_SANCTUARY_FIXED_RESET_POLICY_ID
+    ] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "count": 1,
+    }
+    state[campaign._MORIA_SANCTUARY_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        "attempted": False,
+        "boot_id": "boot-1",
+        "consumed_before_dispatch": True,
+        "level": 39,
+        "outcome": "no_object",
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_refresh": True,
+        "source_reset_room_vnum": 4064,
+        "source_revision": "current-source-revision",
+        "status": "closed",
+    }
+
+    assert campaign._moria_sanctuary_second_fixed_reset_fallback_ready(
+        state,
+        policy,
+        storage=storage,
+        campaign_id=7,
+    )
+
+
+def test_moria_second_source_refresh_revalidation_is_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, policy, _storage = _fallback_evidence(monkeypatch)
+    state[campaign._MORIA_SANCTUARY_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        "attempted": False,
+        "boot_id": "boot-1",
+        "consumed_before_dispatch": True,
+        "level": 39,
+        "outcome": "no_object",
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_refresh": True,
+        "source_reset_room_vnum": 4064,
+        "source_revision": "current-source-revision",
+        "status": "closed",
+    }
+    state[campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "prior_run_id": 201,
+        "prior_segment_id": 21,
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "source_reset_room_vnum": 4071,
+        "source_revision": "previous-source-revision",
+        "status": "attempted",
+    }
+    monkeypatch.setattr(
+        campaign,
+        "_moria_sanctuary_second_fixed_reset_current_source_audit",
+        lambda _state, *, source_world: True,
+    )
+
+    receipt = campaign._moria_sanctuary_second_source_refresh_revalidation_evidence(
+        state,
+        policy,
+        source_world=object(),
+    )
+
+    assert receipt is not None
+    assert receipt["source_reset_room_vnum"] == 4071
+    assert receipt["prior_source_revision"] == "previous-source-revision"
+    assert receipt["status"] == "pending"
+
+    state[campaign._MORIA_SANCTUARY_SECOND_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        **receipt,
+        "consumed_before_dispatch": True,
+        "status": "attempted",
+    }
+    assert (
+        campaign._moria_sanctuary_second_source_refresh_revalidation_evidence(
+            state,
+            policy,
+            source_world=object(),
+        )
+        is None
+    )
+
+
 def test_moria_no_flight_abort_can_be_revalidated_once_after_flight_is_repaired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1024,6 +1169,122 @@ def test_moria_second_reset_requires_exhausted_first_reset_and_fresh_state(
     assert not campaign._moria_sanctuary_second_fixed_reset_fallback_ready(
         state, policy, storage=storage, campaign_id=7
     )
+
+
+def test_moria_room_4071_refill_can_use_one_later_reset_entitlement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, _policy, _storage = _fallback_evidence(monkeypatch)
+    state[campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "source_revision": "current-source-revision",
+        "source_mobile_vnum": campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        "source_reset_room_vnum": 4071,
+        "source_object_vnum": campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+        "status": "attempted",
+        campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_REACQUISITION_KEY: True,
+    }
+    state["campaign_research_results"][
+        campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID
+    ] = {
+        "boot_id": "boot-1",
+        "level": 39,
+        "observed": True,
+        "required_object_acquired": True,
+        "completed_kill": False,
+        "viable": True,
+        "required_object_vnums": [campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM],
+    }
+    state[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": "boot-1",
+        "consumed": False,
+        "reason": "automatic area reset wait completed",
+    }
+
+    assert not campaign._moria_sanctuary_second_fixed_reset_reacquisition_allowed(
+        state
+    )
+    assert campaign._moria_sanctuary_second_fixed_reset_reacquisition_allowed(
+        state,
+        allow_post_reset=True,
+    )
+
+    state[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY]["consumed"] = True
+    assert not campaign._moria_sanctuary_second_fixed_reset_reacquisition_allowed(
+        state,
+        allow_post_reset=True,
+    )
+
+
+def test_moria_post_reset_dispatch_consumes_capacity_entitlement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, _policy, _storage = _fallback_evidence(monkeypatch)
+    state[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": "boot-1",
+        "consumed": False,
+        "reason": "automatic area reset wait completed",
+    }
+    candidate = SimpleNamespace(
+        area_file="moria.are",
+        mobile_vnum=campaign._MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+        room_vnum=4071,
+        route_origin_recall_index=0,
+        source_spawn_limit=2,
+        room_spawn_count=1,
+        autonomy_rejections=("target reset capacity exceeds one",),
+        specials=(),
+    )
+
+    campaign._consume_source_capacity_reset_wait(
+        state,
+        candidate,
+        character_level=39,
+        source_object_vnums=(campaign._MORIA_SANCTUARY_POTION_OBJECT_VNUM,),
+        allow_exact_moria_capacity=True,
+    )
+
+    marker = state[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY]
+    assert marker["consumed"] is True
+    assert marker["policy_id"] == campaign._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+
+
+def test_moria_post_reset_capacity_repair_closes_legacy_unspent_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, _policy, _storage = _fallback_evidence(monkeypatch)
+    state[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY] = {
+        "boot_id": "boot-1",
+        "consumed": False,
+        "reason": "automatic area reset wait completed",
+    }
+    end_state = {
+        "world_boot_id": "boot-1",
+        campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_ATTEMPT_KEY: {
+            "reacquisition_after_area_reset": True,
+        },
+    }
+    repaired = campaign._repair_moria_post_reset_capacity_entitlement(
+        state,
+        [
+            {
+                "id": 99,
+                "run_id": 123,
+                "phase": campaign._MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID,
+                "status": "success",
+                "end_state_json": json.dumps(end_state),
+            }
+        ],
+    )
+
+    marker = repaired[campaign._SOURCE_CAPACITY_RESET_WAIT_KEY]
+    assert marker["consumed"] is True
+    assert marker["segment_id"] == 99
+    assert marker["run_id"] == 123
 
 
 def test_moria_second_reset_can_refill_a_verified_potion_spent_in_a_lost_hunt(
