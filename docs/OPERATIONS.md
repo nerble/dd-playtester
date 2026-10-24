@@ -2,6 +2,87 @@
 
 ## Current Target-Selection Policy
 
+The current durable checkpoint is **61960** (campaign **35**). Dorrik is level
+**40** with **1,447,976 XP**, 18 quest points, and a safe healer checkpoint.
+Run **19999** acquired the Staff of the Bard as an out-of-band Sanctuary
+maintenance objective; after four protected hunts, the persisted reserve has
+**6 charges**. Runs **20006-20007** safely tested an alternate reserve route
+and a world-time probe without claiming progression XP. Runs **20008-20011**
+then checked fresh source-ranked locations; each was safely below-band or
+absent, so the retry-stalled rotation also checkpointed without opening
+combat. Out-of-band kills remain allowed when acquiring or restoring
+Sanctuary, but their XP is recorded as maintenance rather than progression.
+When a safe healer checkpoint has a live reserve but no executable current-band
+route remains, the controller may top up that reserve from a fresh out-of-band
+carrier after gear and quest gates; this is still maintenance, never XP-band
+permission.
+Run **19955** closed a Smugglers Ship transit interception by armed Crewman
+mobile **17517** after a safe **1,060 XP** loss; the source audit now covers its
+paired **17503/17517** family. Run **19956** reached One-eye (mobile **17500**)
+and withdrew at **109/943 HP** for another **1,060 XP** loss because the
+verified Sanctuary staff was activated too late. Run **19957** confirmed the
+hold step but exposed a missing `brandish` follow-up; run **19958** reached the
+White Lotus guard safely and stopped before combat after a campaign handoff
+dropped the staff receipt. The handoff now recognizes structured GMCP equipment
+and preserves the 10-charge reserve. Ordinary armed hunts enable it at the
+opener while retaining live identity, consider, route, crowd, and health gates.
+Run **19176** deliberately tested the newly admitted, source-fixed Hercules
+route: live identity and `consider` passed, but Hercules' level-40 attacks
+forced a correct 20-percent health-floor withdrawal and a net **-115 XP**.
+That exact target is closed for this boot. The next source-ranked option is the
+singleton, unarmed Kaladim mirror (mobile **9934**, room **9943**), whose long
+route is bounded by source-identified lower-level transit hazards. Policy
+revision **360** treats target hitpoint affects as evidence only on bounded
+economic routes; it does not waive weapons, specials, crowd, route, consider,
+or Dorrik's own health and recovery gates.
+
+The latest durable checkpoint is **58486** (campaign **35**, latest live run
+**19116**). Dorrik is level **39** with **1,295,991 XP** and is back at the
+Midgaard healer after corpse recovery. Runs **19108-19114** claimed no XP;
+runs **19115-19116** safely added 80 and 90 XP through Moria recovery.
+Run **19112** safely reached the Ota'ar approach but an adjacent source hazard
+stopped it before the arena; the corrected campaign record is
+`execution=success`, `objective=not_achieved`, `safety=safe`. Run **19087** used
+the one-shot Sanctuary retry to kill Orion (mobile **9311**, room **9328**) for
+**3,103 XP**; run **19089** later re-tested that productive route and withdrew
+at the 20-percent health floor after **154 incoming damage**, losing a net
+**441 XP**. Preserve that exact same-boot loss and do not replay Orion. The
+current worker must find a different audited route or wait for fresh evidence.
+Level-40-plus psionics remain excluded unless disintegration protection is
+freshly verified from both source and live evidence.
+Run **19090** then completed the bounded reset wait and world-time probe safely;
+the DD4 boot was unchanged and no XP was claimed. The maintenance-only
+checkpoints **58346** and **58380** opened no gameplay connection and claimed no
+XP; both reports record `execution=success`, `objective=not_achieved`, and
+`safety=safe`. The current frontier remains closed by same-reboot evidence, not
+by permission to
+engage a level-40+ psionic. Run **19107** exposed an unsafe failure path:
+the previous water-shop funding failure left Dorrik in room **27340**, where a
+later reconnect found him at negative HP and DD4 killed him before the death
+transition was observed. The bot recovered the corpse and returned safely, but
+the segment is `safety=unsafe` and claimed no XP. The controller now funds the
+live water quote with at most four distinct redundant armour sales, returns to
+the source-verified no-mob room **27347** before surfacing an unrecoverable
+failure, and refuses to save or quit when a reconnect reports nonpositive HP.
+The linked run report for **19112** may still show a successful flight objective;
+that is preparation evidence only. Campaign source-hunt segments now require
+confirmed objective-kill evidence, so preparation cannot be reported as hunt
+progress.
+
+Run **19058** safely persisted the startup repair for the consumed two-potion
+Moria refill marker. The MUD had not rebooted, so the marker remains closed as
+`no_object` and no XP was claimed.
+
+Run **19060** is a closed live-loss record, not objective success. The Lotus
+Temple duplicate-population retry reached room **10820**, where four shrine
+attendants were present; the Golden Buddha joined the fight through DD4's
+generic same-room combat-assist loop despite its otherwise beneficial
+`spec_cast_adept`. Dorrik withdrew safely and lost a net **832 XP**. Keep that
+room closed for this boot and do not treat a noncombat special as permission
+to ignore room companions. Checkpoints **58113** and **58117** then found no
+executable ordinary current-band route without opening another gameplay
+connection.
+
 For ordinary source-ranked XP hunts, consider every source-supported target
 through the active character's `+5` level band. The live `consider` response,
 exact source identity, route, crowd state, and source hazards decide admission.
@@ -14,13 +95,119 @@ Historical rejection records remain evidence for their exact target and boot;
 they are not permission to reject an otherwise valid current target merely
 because an old predicted output estimate was unfavorable.
 
+Sanctuary acquisition is a maintenance objective rather than an XP-band hunt.
+When the fixed recovery sources are exhausted, the source-ranked maintenance
+rotation may select an exact carrier outside the ordinary useful-XP band. The
+same live `consider`, source identity, isolation, route, health-floor and
+required-loot checks still apply; source HP and damage estimates are evidence,
+not a pre-live admission veto. Record the kill as maintenance and exclude its
+XP from progression metrics. A same-boot absence closes only that carrier, so
+unrelated Sanctuary sources remain eligible without waiting for a reboot.
+If a safe healer checkpoint already has a Sanctuary reserve but the current-
+band selector is exhausted, the same rotation may make one fresh top-up
+attempt after source gear repair and quest gates have been considered. It must
+not pre-empt an executable current-band target or an active quest.
+During an admitted fight, one post-expiry refresh may come from the same
+source-verified charged Sanctuary staff after the live effect was observed.
+Keep exact target identity, health, and remaining-charge checks; pouch potions
+remain single-use in that fight.
+
 `spec_cast_psionicist` is a hard protection gate. DD4's source spell table
 opens energy drain at mobile level 14 and disintegrate at level 35. Do not
 engage a candidate in either band without a fresh source- and live-verified
-protection receipt. Sanctuary, Globe, energy containment, Illithid psychic
-resistance, and the Crysomer item's prose description do not prove immunity.
-This keeps level-40+ psionics out of the live target set until a real protection
-path is evidenced.
+protection receipt. The concrete player bypass in `spell_disintegrate` is
+Phoenix form (or a player-killer room); otherwise a failed save can destroy
+carried objects and the follow-up check can kill the player. Sanctuary, Globe,
+energy containment, Illithid psychic resistance, and the Crysomer item's prose
+description do not prove immunity. This keeps level-40+ psionics out of the
+live target set until a real protection path is evidenced.
+
+The Sanctuary recovery selector has one further exact fallback after the
+primary, alternate, Alchemist and Athena routes close: Hephaestus, mobile
+**908**, in Olympus room **937**, with nectar object **926**. Source review
+proves a singleton level-38 sentinel with only `spec_breath_lightning` and a
+non-weapon reset. The special exception is carried only on that exact stop;
+fresh live identity, isolation, `consider`, player-health, provisioning and
+return checks still apply. It is a required-loot recovery route, not XP credit,
+and it does not alter the psionic/disintegrate boundary above.
+
+The level-39 source-ranked XP frontier also has one deliberately risky,
+identity-bound exception: the Ancient Gold Dragon, mobile **631**, in Ofcol
+room **693**. The current source reset proves one level-37, non-aggressive
+sentinel with `spec_breath_any`, the Golden Claw and Dragon Orb, plus two level-
+21 attendants. The attendants' `spec_cast_mage` only selects victims already
+fighting the attendant; they are not aggressive or guard-assist mobiles, so
+this exact chamber shape does not create an automatic crowd fight. The
+exception accepts the dragon's random acid, fire, frost, gas, lightning and
+steam breath as real combat risk, and requires Sanctuary, fresh live identity,
+isolation, `consider`, route/recovery checks and the normal 20-percent health
+floor. It does not generalize to other breathers, endpoint casters or
+psionics, and it does not waive live target or abort checks.
+
+Policy revision **359** also opens a source-audited Mirror Realm transit
+exception for the level-39 frontier. The route from Midgaard recall crosses
+the exact wandering gardener (mobile **19036**), whose `spec_thief` code only
+handles coin theft; its wielded clippers do not turn that special into a
+combat hazard. The same route's low-level fido and known Midgaard guard
+resets remain recorded hazards, and the live runner still checks each room.
+The exception requires the exact gardener reset, fido population, route and
+target reset shape, known purse no larger than **1,250 copper-equivalent**,
+fresh identity and isolation, live `consider`, and the ordinary 20-percent
+health floor. Exact source-ranked singleton fights use that own-health floor
+without stacking observed incoming damage or target-output budgets; those
+measurements remain evidence for reports. It admits plain current-band targets
+and can admit the Grey Fox (mobile **19047**, room **19146**) as one aggressive,
+unarmed singleton with the source-safe `spec_fido` procedure only when its
+source lower-level bound remains above the useful-XP floor. At Dorrik's level
+39 that bound is not sufficient, so the live runner must close the Grey Fox
+after a level-34 observation rather than paying another pre-combat flee.
+For the exact plain armed Mirror Realm stops, the runner now proactively
+uses a verified Sanctuary reserve when one is already carried; an absent
+reserve does not close the plain target or override live `consider`.
+Revision **359** extends the same bounded no-Sanctuary fallback to any source-
+fixed singleton with exactly one ordinary weapon, no target special or script,
+one room reset, and no hard route hazard. This is a live probe, not a damage
+prediction: exact identity, current `consider`, crowd state, the character's
+own health floor, and the return route remain mandatory. Endpoint casters,
+psionics, extra weapons, and stale failed targets remain excluded.
+The source audit also treats a passive singleton reset in each of at most two
+distinct rooms as the same bounded target shape when every reset has the same
+ordinary loadout. This admits the Black Lord and the colour lords without
+requiring Sanctuary; their one ordinary weapon remains a real live-combat
+risk, so the character's own 20-percent floor, current `consider`, exact
+identity, isolation, route, and return checks still decide the fight. A route
+with an additional combat-joining special, such as the alternate Black Lord
+approach through the level-40 waiter, remains closed. It does not permit
+fighting the gardener,
+fido, guards, or any other special target, and does not weaken the psionic or
+energy-drain boundary. Once the checkpoint has a verified Sanctuary reserve,
+the older protection marker no longer forces another refill segment; ordinary
+current-band selection resumes and the reserve is available for the audited
+combat routes that need it. If the exact recovery policy is exhausted or on
+cooldown while no reserve exists, reserve-preserving selection is likewise
+released so an already-audited ordinary target can compete; this is not a
+blanket protection bypass.
+
+The first bounded Hephaestus selection exposed a dispatch mismatch: run
+**19055** executed the generic Moria route and reported object **4050** under
+the Hephaestus policy. Preserve that run as Moria evidence, but do not treat it
+as a Hephaestus acquisition. Startup repair checkpoint **58064** invalidates
+the mismatched receipt and records the expected nectar **926**; the executor
+now fails closed unless mobile **908**, room **937**, its lightning special, and
+object **926** are all bound together. Checkpoint **58117** confirms startup
+history reconstruction no longer recreates the invalidated **4050** result.
+This repair does not relax the hard
+`spec_cast_psionicist` protection gate.
+
+Runs **19056** and **19057** are valid Alchemist-carrier results. Their exact
+live identity and consider checks passed, but the player withdrew at the
+20-percent health floor, losing 1,000 XP on each run after 187 and 156
+observed damage respectively. Both runs finished safely at healer room
+**3054** and remain closed for this boot; run **19057** exposed that
+`--retry-stalled` could bypass the old policy result. The selector now closes
+the exact source mobile/room/level/boot loss across generic and named
+Sanctuary fallback paths. Do not treat a safe return as objective success or
+retry that carrier without fresh boot/source evidence.
 
 An already-productive, current-boot, loss-free plain route may receive one
 `campaign_source_ranked_productive_transit_revalidation` when its only
@@ -394,6 +581,11 @@ attack/transfer actions and malformed scripts remain closed. It is a source
 behavior proof, not route or combat permission. The sentinel retains the exact
 existing bouncer route and fresh source/loadout/identity/isolation/consider gates.
 Its independent contract was never part of the failed three-target parent.
+Programs containing `mptransfer`/`mptrans` for `$n`, `$t`, or `all`, including
+the nested `mpat ... mptransfer` form, are hard source target/route hazards:
+they can invalidate the planned room and target identity. Pure `mpgoto` moves
+the mobile itself and is not treated as a player transfer. The live runner also
+aborts and records the route if a forced relocation is observed.
 `completed_single_target_hunt` accepts only the exact current-version safe,
 achieved linked summary with one useful source-tagged kill, matching boot and
 recorded start/end source revisions, terminal level, and unchanged encounter
@@ -466,11 +658,14 @@ favours have been collected. Treat this as a hard live gate, not a normal
 arena completion condition: retain arena control through the remaining
 gladiator sequence and do not issue the exit route, generic recall, logout, or
 maintenance detour while any favour is missing. Source objects **27481-27485**
-are `ITEM_TREASURE`, so carried copies are written to the character save file
-and may survive a graceful logout or reboot. After reconnect, revalidate each
+are `ITEM_TREASURE` (type 8), not `ITEM_KEY` (type 18). DD4's save routine
+excludes keys but writes carried treasure, and both `quit` and a controlled
+reboot invoke that save routine, so a completed save preserves these level-30
+tokens. Keep them directly in inventory because the gatekeeper's `carrying()`
+check does not search inside containers. After reconnect, revalidate each
 older receipt with a fresh inventory listing whose description uniquely maps
-to the source VNUM and confirms the treasure item type; receipt-only evidence
-from an earlier boot remains invalid. The source gatekeeper still requires
+to the source VNUM and source item type; receipt-only evidence from an earlier
+boot remains invalid. The source gatekeeper still requires
 one favour from every gladiator type before transferring the character to the
 staging zone. A live fight that ends in death before a favour is saved is not
 evidence that the character was released or that the exit route is valid.
@@ -719,9 +914,11 @@ cooldown changes remain excluded. New replay cases compile but are unrun.
 Ordinary XP routes have a separate economic-only admission in
 `economic_hunts.py`. Require a passive, unarmed singleton sentinel target, an
 otherwise eligible source route, and a known whole purse no larger than 1,250
-copper-equivalent. Every economic actor must have exactly one global singleton
-reset, only `spec_thief`, no aggression or programs, and an audited ordinary
-loadout without spells, poison, positive damage bonuses or unsafe randomisers.
+copper-equivalent. Every economic actor must have either exactly one global
+singleton reset, or an independently audited two-to-four-reset, same-area
+singleton population with identical reset counts from 1-4. It must have only
+`spec_thief`, no aggression or programs, and an audited ordinary loadout
+without spells, poison, positive damage bonuses or unsafe randomisers.
 Its upper source level cannot exceed the player. DD4 steals 1-20% per attempt;
 250 is the maximum single attempt at this purse ceiling, not an aggregate loss
 cap. Retain the original economic rejection and actor identities in the saved
@@ -743,6 +940,9 @@ remain authoritative. Audit every target reset's objects. The bounded route-
 program preflight may accept only the explicitly audited economic actors, and
 noncombat locator paths receive their exact VNUMs through the existing source
 economic-transit audit. Unknown, armed or changed locator actors remain closed.
+The multi-reset economic form above is transit-only: it bounds reachable
+noncombat thieves and never turns them into targets or waives a target's
+isolation, output, consider, or loss gates.
 The live purse cap still applies before outbound actions, including after gold
 loot. Quake's four level-30 Westreen citizen resets pass source preparation
 without sanctuary. Run 16664 followed positive sightings, but source identity
@@ -2156,6 +2356,12 @@ combat. Offline coverage was added on 2026-09-30; it was not rerun because the
 daily regression batch was already used. Dorrik's live handoff and carried-potion
 activation remain unproved.
 
+The reconnect path keeps two facts separate: `checkpoint_has_flight` is live
+affect evidence, while `has_flight` may only mean that flight can be
+reacquired during the new connection. A current-band Catacombs candidate may
+therefore be discovered with the disposable snapshot even when the selected
+policy still has to buy and verify flight before departure.
+
 Run that same bounded snapshot before closing a frontier when its best ground
 candidate is removed by an exhausted sanctuary gate. For this handoff, require
 the hypothetical-flight selector to find a separate current-band candidate
@@ -2944,6 +3150,19 @@ rejected before combat; do not fight one member and flee the rest. Fixed routes,
 unregistered VNUMs, crowds, specials, programs, or useful-band live rolls remain
 withdrawal conditions.
 
+An ordinary source-ranked endpoint may be admitted behind a route containing
+only source-identified, strictly below-band aggressors when every one passes
+the existing bounded damage/equipment proof. The endpoint itself must be
+passive, special-free, script-free, source-identifiable, and in the current
+source band; the route must have no hard hazard or attack-program preflight.
+These transit mobiles are maintenance interruptions, never XP targets. The
+live runner still requires exact GMCP identity, one-mobile isolation, normal
+consider and health-floor checks, and the finite transit-fight/return rules.
+The Goblin Fortress visitor probe on 2026-10-20 (run 18966, guard VNUM 20315)
+failed that live health boundary and is closed for the current reboot. This
+exception never applies to `spec_cast_psionicist`; energy drain and
+disintegrate remain hard protection gates.
+
 A world-time probe may recheck a recorded city-shop obstruction once from healer
 3054. Only a complete, positive off-route locator from that successful run,
 with the same observed reboot, can release route cooldowns. Missing or absent
@@ -3162,8 +3381,10 @@ An automatic world-time probe must not preempt progression once the checkpoint
 already has an authoritative reboot identity and a same-boot source policy
 result. In that state, the next invocation must rotate to another executable
 current-band route or report the actual protection/output/route blocker. The
-single legacy probe remains available only when boot or policy evidence is
-missing, or when an explicit reset-wait/shared-boot revalidation requires it.
+periodic maintenance probe is available only from a blocked healer checkpoint
+after its six-hour marker interval, or when an explicit reset-wait/shared-boot
+revalidation requires it. It remains maintenance-only and cannot clear a
+same-boot hunt result.
 
 This is not a blanket reboot requirement for XP. DD4 assigns a mobile's fuzzy
 level when the area data loads, so a same-reboot live below-band observation
@@ -3233,7 +3454,14 @@ When source ranking finds no executable target, persist
 `campaign_source_ranked_frontier_diagnosis` in the checkpoint. This is an
 offline explanation only: it records the reboot, level, candidate counts,
 current-band and autonomous-safe counts, sanctuary requirements, and exact
-same-boot below-band exclusions. Inspect it with `show-campaign` or the
+same-boot below-band exclusions. It also reports
+`psionic_protection_gated_count` and the matching candidates separately, so a
+level-14-or-higher `spec_cast_psionicist` is visibly closed for its
+energy-drain/disintegrate exposure unless a fresh protection receipt exists.
+Each matching candidate now records `protection_effects`, so level-40-plus
+entries explicitly show the disintegrate exposure rather than hiding it inside
+a generic special-mobile rejection.
+Inspect it with `show-campaign` or the
 campaign state report before deciding whether a reset wait or source refresh
 is justified. Never use the diagnosis to bypass a sanctuary, route, identity,
 or live-consider gate.
@@ -3492,6 +3720,12 @@ HP/protection, saleability, and live-identity gates pass. Carry every audited
 transit mobile VNUM into the `Fastwalk`, mark the segment `funding_only`, and
 exclude its XP from progression. Armed ambush endpoints, rejected targets,
 scripted or unknown transit hazards, and same-boot repeats remain closed.
+When a live Magic Shop see-invisible quote is unaffordable, preserve that
+same-reboot price and create a bounded funding handoff. Reuse the audited coin
+stash/carrier selector until the quote is affordable, then allow the one-shot
+shop retry; never retry the purchase blindly or enter a detect-invisibility
+target without the required live affect. This handoff does not weaken the
+separate `spec_cast_psionicist` disintegrate-protection gate.
 Do not shorten specialised transit-recovery plans a second time. An early
 locator changes travel order, not candidate eligibility, movement admission,
 search limits, retries, or loss history.
@@ -4247,7 +4481,7 @@ floor, not a promise that a reboot's live shop price is identical; an actual
 purchase failure must checkpoint as evidence. Source replay and offline
 selection do not prove live purchase, door entry, combat, or loot acquisition.
 
-`show-resource-sources` exposes protection resources and may also expose a
+`show-resource-sources` exposes protection and energy-containment resources and may also expose a
 `source_analysis_route` for a source-only placement that is hidden behind a
 locked door. Its
 `route_key_objects` and `route_key_sources` columns identify the source key
@@ -4493,6 +4727,14 @@ from the pending list. If a live claim is rejected for weight, allow one
 healer-side equipment-relief pass and one retry; retain the normal recovery,
 funding, and bounded-retry gates.
 
+Required-loot routes must declare their missing objects before departure so the
+healer capacity controller can free a bounded number of slots safely. The
+Vampire Catacombs exhibition ticket is one such required object: its live
+purchase may fail for capacity even when the character can afford it. Record
+that outcome separately; only an exact live funds refusal may open the
+Catacombs funding handoff. A carrying refusal is never evidence of a money
+shortage.
+
 When a bounded worker is interrupted, preserve its evidence and let the next
 startup recover the prior run before opening new live work. Stop only the
 abandoned DD4 worker or diagnostic process after its deadline; leave the healthy
@@ -4631,6 +4873,25 @@ listing after an accepted lesson and continue high-value training when another
 source-supported gain is worthwhile; do not mistake an initial unlock for a
 finished skill. Preserve practices when no useful teacher-supported lesson
 remains.
+
+## Current Level-39 Frontier (October 21)
+
+Run **19086** was a bounded world-time probe and confirmed that the DD4 boot had
+not reset. Run **19087** then used the exact source-bounded, two-to-four-reset
+economic-transit exception to reach Orion, mobile **9311**, room **9328**. The
+fresh two-potion Sanctuary refill permitted one exact revalidation of the prior
+unprotected loss; live identity and `consider` passed, and Dorrik killed Orion
+for **3,103 XP** before returning to healer room **3054**. Run **19089** later
+re-tested that productive route, passed the same fresh identity and `consider`
+checks, then withdrew at the 20-percent floor after **154 incoming damage** for
+a net **441 XP** loss. Checkpoint **58334** preserves that exact same-boot loss
+and closes Orion for this reboot. Run **19090** completed the bounded reset wait
+and world-time probe safely; the DD4 boot was unchanged and no XP was claimed.
+Checkpoint **58343** preserves that result. The maintenance-only checkpoint
+**58346** opened no gameplay connection and claimed no XP. The selector will not dispatch Arthur the
+psionicist or any other level-40+ psionic without a fresh, source- and
+live-verified disintegration-protection receipt; Sanctuary, energy containment,
+or an ordinary saving throw is not enough.
 
 ## Documentation
 

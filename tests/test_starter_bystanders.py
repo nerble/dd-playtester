@@ -1,5 +1,6 @@
 from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -176,6 +177,127 @@ def test_sequential_duplicate_selection_still_rejects_extra_mobile():
     assert decision.command == "look"
     assert policy.fastwalk_crowded is True
     assert policy.consider_target is None
+
+
+def test_plain_four_copy_rotation_binds_all_considers_and_uses_single_enemy_controller():
+    policy, state = _sequential_duplicate_shadow()
+    mobile = policy.source_world.mobiles[39038]
+    policy.source_world.mobiles[39038] = replace(mobile, level=38)
+    policy.source_mobile_level_ranges_by_vnum[39038] = (36, 40)
+    policy.known_skills = {"kick"}
+    policy.known_skill_levels = {"kick": 100}
+    policy.in_world = True
+    policy.fastwalk_route = route_named("gnome mine")
+    state.hp = state.max_hp = 2000
+
+    first = policy._consider_fastwalk_target(state)
+    assert first is not None
+    assert first.command == "consider #19146"
+    policy.after_command(first)
+    policy.observe_text("A living shadow looks like an easy kill.\n")
+
+    second = policy._consider_fastwalk_target(state)
+    assert second is not None
+    assert second.command == "consider #20646"
+    policy.after_command(second)
+    policy.observe_text("A living shadow looks like an easy kill.\n")
+
+    opener = policy._consider_fastwalk_target(state)
+    assert opener is not None
+    assert policy.source_pair_encounter is not None
+    assert policy.source_pair_encounter.budget.source_only is True
+    assert set(policy.source_pair_encounter.selectors) == {"#20646", "#19146"}
+    assert opener.command.split(maxsplit=1)[0] in {"attack", "kill"}
+
+    policy.after_command(opener)
+    assert policy.source_pair_encounter.started_at is not None
+    state.in_combat = True
+    state.enemies = [{
+        "isnpc": "39038",
+        "name": "a living shadow",
+        "level": "38",
+    }]
+    handled, decision = policy._source_pair_combat_decision(state)
+    assert handled is True
+    assert decision is None or decision.command != "flee"
+
+
+def test_sequential_duplicate_rotation_skips_below_band_copy_but_keeps_viable_copy():
+    policy, state = _sequential_duplicate_shadow()
+    mobile = policy.source_world.mobiles[39038]
+    policy.source_world.mobiles[39038] = replace(mobile, level=38)
+    policy.source_mobile_level_ranges_by_vnum[39038] = (36, 40)
+    policy.known_skills = {"kick"}
+    policy.known_skill_levels = {"kick": 100}
+    policy.in_world = True
+    state.hp = state.max_hp = 2000
+
+    first = policy._consider_fastwalk_target(state)
+    assert first is not None
+    assert first.command == "consider #19146"
+    policy.after_command(first)
+    policy.observe_text("A living shadow looks like an easy kill.\n")
+
+    second = policy._consider_fastwalk_target(state)
+    assert second is not None
+    assert second.command == "consider #20646"
+    policy.after_command(second)
+    policy.observe_text("A living shadow is no match for you.\n")
+
+    opener = policy._consider_fastwalk_target(state)
+    assert opener is not None
+    assert opener.command.split(maxsplit=1)[0] in {"attack", "kill", "kick"}
+    assert policy.source_pair_encounter is None
+    assert policy.consider_target_selector == "#19146"
+    assert "a living shadow" in policy.fastwalk_below_band_targets
+    assert policy.fastwalk_crowded is False
+
+
+def test_plain_four_copy_rotation_attacks_viable_copies_after_mixed_considers():
+    policy, state = _sequential_duplicate_shadow()
+    mobile = policy.source_world.mobiles[39038]
+    policy.source_world.mobiles[39038] = replace(mobile, level=38)
+    policy.source_world.mob_resets = [replace(
+        policy.source_world.mob_resets[0], maximum_count=4,
+    )]
+    policy.source_mobile_level_ranges_by_vnum[39038] = (36, 40)
+    policy.known_skills = {"kick"}
+    policy.known_skill_levels = {"kick": 100}
+    policy.in_world = True
+    state.level = 40
+    state.hp = state.max_hp = 2000
+    selectors = ("#19146", "#20646", "#20647", "#20648")
+    policy.room_targets["39007"] = ["a living shadow"] * 4
+    policy.room_target_counts["39007"] = {"a living shadow": 4}
+    policy.room_target_selectors["39007"]["a living shadow"] = selectors
+    policy.room_target_selector_descriptions["39007"] = {
+        selector: f"{selector} a living shadow is here."
+        for selector in selectors
+    }
+    outcomes = {
+        "#19146": "A living shadow is no match for you.\n",
+        "#20646": "A living shadow looks like an easy kill.\n",
+        "#20647": "A living shadow is no match for you.\n",
+        "#20648": "A living shadow looks like an easy kill.\n",
+    }
+
+    for _ in selectors:
+        decision = policy._consider_fastwalk_target(state)
+        assert decision is not None
+        assert decision.command.startswith("consider #")
+        selector = decision.command.split(maxsplit=1)[1]
+        assert selector in outcomes
+        policy.after_command(decision)
+        policy.observe_text(outcomes[selector])
+
+    opener = policy._consider_fastwalk_target(state)
+
+    assert opener is not None
+    assert opener.command.split(maxsplit=1)[0] in {"attack", "kill", "kick"}
+    assert policy.source_pair_encounter is not None
+    assert set(policy.source_pair_encounter.selectors) == {"#20646", "#20648"}
+    assert policy.consider_target_selector in {"#20646", "#20648"}
+    assert policy.fastwalk_crowded is False
 
 
 def _inspect(policy: StarterPolicy, state: CharacterState) -> None:

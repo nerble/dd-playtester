@@ -1,14 +1,16 @@
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from dd4tester.economic_hunts import (
-    economic_hunt_candidate, economic_hunt_runtime_issue, known_purse,
+    economic_hunt_candidate, economic_hunt_runtime_issue,
+    known_purse, plain_bounded_economic_resets,
 )
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import (
     ExitSource, HuntCandidate, MobReset, MobileSource, ObjectSource, RoomSource, WorldSource,
-    source_route_hazard_rejections,
+    load_world_source, rank_hunt_candidates, source_route_hazard_rejections,
 )
 from dd4tester.locator_paths import source_locator_path_is_safe
 from dd4tester.populations import plain_bounded_population
@@ -51,6 +53,72 @@ def test_economic_only_travel_preserves_source_risk_and_quest_separation() -> No
     assert economic_hunt_runtime_issue(route, world, level=30, currencies=state["currencies"]) is None
 
 
+def test_source_bounded_singleton_thief_population_opens_plain_galaxy_targets() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidates = rank_hunt_candidates(
+        world,
+        character_level=39,
+        character_class="Warrior",
+        character_subclass="Knight",
+        include_xp_only=True,
+        include_level_ceiling_candidates=True,
+        level_ceiling_offset=5,
+        include_all_areas=True,
+        character_max_hp=919,
+        recall_origins={0: 0},
+        character_alignment=-8,
+    )
+    state = {
+        "level": 39,
+        "currencies": {"platinum": 1, "gold": 0, "silver": 0, "copper": 0},
+    }
+
+    assert plain_bounded_economic_resets(world, 9301)
+    candidate = next(item for item in candidates if item.target == "Orion the hunter")
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted.autonomous_safe
+    assert admitted.autonomy_rejections == ()
+    assert admitted.route_economic_hunt_mobile_vnums == (9301,)
+    assert admitted.route_economic_population is True
+    assert admitted.route_economic_source_rejections == (
+        "an economic special mobile can reach the route",
+    )
+
+    # Hercules shares the transit route and carries a positive hitpoint item.
+    # Target hitpoints are evidence only; they must not close a plain target.
+    hercules = next(item for item in candidates if item.target == "the mighty Hercules")
+    hercules_admitted = economic_hunt_candidate(hercules, state, world)
+    assert hercules_admitted.autonomous_safe
+    assert hercules_admitted.route_economic_hunt_mobile_vnums == (9301,)
+
+
+def test_bounded_economic_transit_does_not_waive_target_capacity() -> None:
+    candidate, world, state = economic_fixture()
+    world.mob_resets = [
+        world.mob_resets[0],
+        MobReset(102, 303, 1, ()),
+        MobReset(102, 304, 1, ()),
+    ]
+    world.rooms.update({
+        303: RoomSource(303, "field", "test.are"),
+        304: RoomSource(304, "field", "test.are"),
+    })
+    candidate = replace(
+        candidate,
+        autonomy_rejections=(
+            "an economic special mobile can reach the route",
+            "target reset capacity exceeds one",
+        ),
+    )
+
+    assert plain_bounded_economic_resets(world, 102)
+    assert economic_hunt_candidate(candidate, state, world) is candidate
+
+
 def test_known_passive_target_affects_do_not_close_economic_route() -> None:
     candidate, world, state = economic_fixture()
     world.mobiles[101] = replace(
@@ -88,6 +156,73 @@ def test_economic_route_preserves_a_separately_audited_target_special() -> None:
         "target has special procedure spec_cast_cleric",
     )
     assert not admitted.autonomous_safe
+
+
+def test_economic_route_allows_bounded_stay_area_target_locator() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobiles[101] = replace(world.mobiles[101], act_flags=1 << 6)
+    world.objects[202] = ObjectSource(
+        202, "plain wig", "a plain wig", 42, (0, 0, 0, 0), 0,
+        affects=((4, 3),),
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0], object_vnums=(202,), equipment=((6, 202),),
+    )
+    world.rooms = {
+        301: RoomSource(
+            301, "field", "test.are",
+            exits={"north": ExitSource("north", 303, 0, -1)},
+        ),
+        303: RoomSource(
+            303, "field", "test.are",
+            exits={"south": ExitSource("south", 301, 0, -1)},
+        ),
+    }
+    candidate = replace(candidate, sentinel=False, stay_area=True)
+
+    admitted = economic_hunt_candidate(candidate, state, world)
+
+    assert admitted is not candidate
+    assert admitted.status == "caution" and admitted.autonomous_safe
+    assert admitted.autonomy_rejections == ()
+    assert admitted.route_economic_hunt_mobile_vnums == (102,)
+
+
+def test_economic_route_rejects_strong_randomised_target_gear() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobiles[101] = replace(
+        world.mobiles[101], level=42, act_flags=1 << 6,
+    )
+    world.objects[202] = ObjectSource(
+        202, "plain wig", "a plain wig", 42, (0, 0, 0, 0), 0,
+        affects=((4, 3),),
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0], object_vnums=(202,), equipment=((6, 202),),
+    )
+    world.rooms = {
+        301: RoomSource(301, "field", "test.are"),
+    }
+    candidate = replace(candidate, sentinel=False, stay_area=True)
+
+    assert economic_hunt_candidate(candidate, state, world) is candidate
+
+
+def test_economic_route_rejects_an_unbounded_stay_area_locator() -> None:
+    candidate, world, state = economic_fixture()
+    world.mobiles[101] = replace(world.mobiles[101], act_flags=1 << 6)
+    rooms = {}
+    for room_vnum in range(301, 814):
+        exits = {}
+        if room_vnum < 813:
+            exits["north"] = ExitSource("north", room_vnum + 1, 0, -1)
+        if room_vnum > 301:
+            exits["south"] = ExitSource("south", room_vnum - 1, 0, -1)
+        rooms[room_vnum] = RoomSource(room_vnum, "field", "test.are", exits=exits)
+    world.rooms = rooms
+    candidate = replace(candidate, sentinel=False, stay_area=True)
+
+    assert economic_hunt_candidate(candidate, state, world) is candidate
 
 
 def test_economic_route_allows_source_verified_adept_and_sanctuary_target() -> None:

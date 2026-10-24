@@ -1414,7 +1414,17 @@ class RunStorage:
         execution_status: str | None = None,
         objective_outcome: str | None = None,
         safety_outcome: str | None = None,
+        build_summary: bool | None = None,
     ) -> None:
+        """Close a run without making live workers wait on a full report.
+
+        The shared campaign database can be very large.  On that database a
+        full report is deliberately deferred until an inspection command asks
+        for it; small test databases retain the eager summary behavior.
+        Callers may override this with ``build_summary`` when needed.
+        """
+        if build_summary is None:
+            build_summary = not _campaign_database_is_large(self.path)
         self.flush()
         finished_at = finished_at or _now()
         self.connection.execute(
@@ -1491,6 +1501,8 @@ class RunStorage:
                     timestamp=finished_at,
                 )
         self.connection.commit()
+        if not build_summary:
+            return
         try:
             from .report import _build_run_report_uncached
 
@@ -1687,6 +1699,7 @@ class RunStorage:
         bound = self._bind_unique_running_campaign_runs(
             running_segments,
             character_name=character_name,
+            include_finished=True,
         )
         if bound:
             segment_ids = [int(segment["id"]) for segment in running_segments]
@@ -1780,7 +1793,15 @@ class RunStorage:
         segment: Mapping[str, Any],
         *,
         character_name: str,
+        include_finished: bool = False,
     ) -> list[int]:
+        """Return uniquely attributable runs for an interrupted segment.
+
+        A worker can finish the live run and then be interrupted while the
+        campaign layer reconciles it. Finished runs are considered only by an
+        explicit recovery path and must still match the character, profile,
+        phase, and segment time window.
+        """
         suffixes = (
             f":{character_name.casefold()}",
             f"-{character_name.casefold()}",
@@ -1797,10 +1818,18 @@ class RunStorage:
             else ""
         )
         phase = str(segment["phase"] or "").casefold()
+        allowed_statuses = {"running"}
+        if include_finished:
+            allowed_statuses.update({"failed", "ready", "success"})
+        try:
+            segment_finished_at = segment["finished_at"]
+        except (KeyError, IndexError):
+            segment_finished_at = None
         matches: list[int] = []
         for run in self.connection.execute(
             """
-            SELECT id, scenario_name, scenario_path, started_at, status
+            SELECT id, scenario_name, scenario_path, started_at,
+                   finished_at, status
             FROM runs
             ORDER BY id DESC
             LIMIT 1024
@@ -1808,10 +1837,16 @@ class RunStorage:
         ):
             scenario_name = str(run["scenario_name"] or "").casefold()
             if (
-                run["status"] != "running"
+                run["status"] not in allowed_statuses
                 or str(run["started_at"]) < str(segment["started_at"])
+                or (
+                    segment_finished_at is not None
+                    and str(run["started_at"]) > str(segment_finished_at)
+                )
                 or not scenario_name.endswith(suffixes)
             ):
+                continue
+            if include_finished and run["status"] != "running" and not run["finished_at"]:
                 continue
             run_path = (
                 str(run["scenario_path"] or "")
@@ -1843,8 +1878,9 @@ class RunStorage:
         segments: Collection[Any],
         *,
         character_name: str | None,
+        include_finished: bool = False,
     ) -> int:
-        """Link only a unique, time-bounded run to an unlinked live segment."""
+        """Link only a unique, time-bounded run to an unlinked segment."""
         if not character_name:
             return 0
         bound = 0
@@ -1854,6 +1890,7 @@ class RunStorage:
             matches = self._matching_running_campaign_runs(
                 segment,
                 character_name=character_name,
+                include_finished=include_finished,
             )
             if len(matches) != 1:
                 continue
@@ -1946,6 +1983,44 @@ class RunStorage:
             character_name=character_name,
         )
 
+        # A bounded worker may have completed its live run before it was
+        # interrupted while reconciling the segment. Reclassify that exact
+        # orphan as failed for the normal campaign reconciliation path; the
+        # campaign layer will preserve the run's observed state and outcome.
+        completed_segment = self.connection.execute(
+            """
+            SELECT id, campaign_id, run_id, started_at, finished_at,
+                   status, command_count, phase, execution_status
+            FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
+            WHERE campaign_id = ? AND status = 'ready' AND run_id IS NULL
+              AND execution_status = 'interrupted'
+              AND command_count IS NULL
+            ORDER BY sequence DESC
+            LIMIT 1
+            """,
+            (campaign_id,),
+        ).fetchone()
+        if completed_segment is not None and character_name:
+            matches = self._matching_running_campaign_runs(
+                completed_segment,
+                character_name=character_name,
+                include_finished=True,
+            )
+            if len(matches) == 1:
+                run_id = matches[0]
+                self.repair_run_events_from_transcript(run_id)
+                self.connection.execute(
+                    """
+                    UPDATE campaign_segments
+                    SET run_id = ?, status = 'failed', error = ?
+                    WHERE id = ? AND status = 'ready' AND run_id IS NULL
+                    """,
+                    (run_id, reason, int(completed_segment["id"])),
+                )
+                self.connection.commit()
+                self._invalidate_campaign_history(campaign_id)
+                return 0, 1, 1
+
         running_segments = list(
             self.connection.execute(
                 """
@@ -1962,6 +2037,7 @@ class RunStorage:
         bound = self._bind_unique_running_campaign_runs(
             running_segments,
             character_name=character_name,
+            include_finished=True,
         )
         if bound:
             segment_ids = [int(segment["id"]) for segment in running_segments]
@@ -2090,6 +2166,7 @@ class RunStorage:
         bound = self._bind_unique_running_campaign_runs(
             running_segments,
             character_name=character_name,
+            include_finished=True,
         )
         if bound:
             segment_ids = [int(segment["id"]) for segment in running_segments]
@@ -3909,7 +3986,6 @@ class RunStorage:
                 objective_outcome = str(
                     linked_outcomes.get("objective") or "unknown"
                 )
-            safety_outcome = str(linked_outcomes.get("safety") or "unknown")
         try:
             start_state = json.loads(campaign_row["start_state_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
@@ -3919,12 +3995,30 @@ class RunStorage:
                 safety_outcome = "unsafe"
             else:
                 try:
-                    before_loss = int(start_state["xp_loss_total"])
-                    after_loss = int(end_state["xp_loss_total"])
+                    before_campaign_loss = start_state.get(
+                        "campaign_xp_loss_total"
+                    )
+                    after_campaign_loss = end_state.get(
+                        "campaign_xp_loss_total"
+                    )
+                    if (
+                        before_campaign_loss is not None
+                        and after_campaign_loss is not None
+                    ):
+                        before_loss = int(before_campaign_loss)
+                        after_loss = int(after_campaign_loss)
+                    else:
+                        # Legacy checkpoints only stored the last connection's
+                        # loss amount. Use that fallback when cumulative
+                        # campaign evidence is unavailable.
+                        before_loss = int(start_state["xp_loss_total"])
+                        after_loss = int(end_state["xp_loss_total"])
                 except (KeyError, TypeError, ValueError):
                     safety_outcome = "unknown"
                 else:
                     safety_outcome = "loss" if after_loss > before_loss else "safe"
+        if safety_outcome is None and linked_outcomes is not None:
+            safety_outcome = str(linked_outcomes.get("safety") or "unknown")
         if objective_outcome is None and end_state is not None:
             objective_kills = end_state.get("campaign_objective_kills")
             if isinstance(objective_kills, (list, tuple)) and objective_kills:
@@ -4398,11 +4492,36 @@ class RunStorage:
         """Return compact ordered progress fields for campaign history.
 
         Runtime policy recovery sometimes needs to inspect more than the
-        large-database eight-segment tail, but it does not need each segment's
-        full state snapshot. Keep that scan on level, XP, and boot identity.
+        normal recent-segment tail, but it does not need each segment's full
+        state snapshot. On the shared large database, first use the campaign
+        sequence index to select the bounded tail, then project JSON only for
+        those rows. Full-history analysis belongs in an explicit report job;
+        it must never delay a live resume.
         """
+        if _campaign_database_is_large(self.path):
+            id_rows = self.connection.execute(
+                """
+                SELECT id
+                FROM campaign_segments
+                WHERE campaign_id = ?
+                ORDER BY sequence DESC
+                LIMIT ?
+                """,
+                (campaign_id, _CAMPAIGN_LARGE_DATABASE_HISTORY_LIMIT),
+            ).fetchall()
+            if not id_rows:
+                return []
+            ids = tuple(int(row["id"]) for row in id_rows)
+            placeholders = ", ".join("?" for _ in ids)
+            scope = (
+                f"campaign_id = ? AND id IN ({placeholders})"
+            )
+            scope_parameters: tuple[Any, ...] = (campaign_id, *ids)
+        else:
+            scope = "campaign_id = ?"
+            scope_parameters = (campaign_id,)
         cursor = self.connection.execute(
-            """
+            f"""
             SELECT id, sequence, phase, status, run_id,
                    json_object(
                        'level', json_extract(start_state_json, '$.level'),
@@ -4419,10 +4538,10 @@ class RunStorage:
                        )
                    ) AS end_state_json
             FROM campaign_segments
-            WHERE campaign_id = ?
+            WHERE {scope}
             ORDER BY sequence
             """,
-            (campaign_id,),
+            scope_parameters,
         )
         return list(cursor.fetchall())
 

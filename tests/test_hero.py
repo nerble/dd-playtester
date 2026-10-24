@@ -46,6 +46,81 @@ const struct race_struct race_table[MAX_RACE] =
 '''
 
 
+def test_hero_writes_final_reports_when_target_is_reached(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    prepared = type(
+        "Prepared",
+        (),
+        {
+            "campaign_path": tmp_path / "campaign.yaml",
+            "directory": tmp_path / "hero",
+            "resumed": True,
+            "character": type(
+                "Character",
+                (),
+                {
+                    "password_env": "DD4_VALORA_PASSWORD",
+                    "database": tmp_path / "runs.sqlite3",
+                },
+            )(),
+        },
+    )()
+
+    async def fake_campaign(path, **options):
+        return CampaignResult(
+            7,
+            "success",
+            9,
+            "target reached",
+            {"level": 100, "xp": 999999},
+            target_outcome="achieved",
+        )
+
+    class FakeStorage:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+    def fake_write(storage, campaign_id, *, directory):
+        captured["campaign_id"] = campaign_id
+        captured["directory"] = directory
+        return directory / "hero-report.json", directory / "hero-report.md"
+
+    monkeypatch.setattr(
+        "dd4tester.hero.prepare_hero_request",
+        lambda request, **options: prepared,
+    )
+    monkeypatch.setattr("dd4tester.hero.run_campaign_file", fake_campaign)
+    monkeypatch.setattr("dd4tester.hero.RunStorage", lambda database: FakeStorage())
+    monkeypatch.setattr("dd4tester.hero.write_campaign_report", fake_write)
+
+    progress: list[str] = []
+    asyncio.run(
+        run_hero_request(
+            HeroRequest(
+                name="Valora",
+                race="human",
+                sex="female",
+                character_class="mage",
+            ),
+            workspace=tmp_path / "heroes",
+            password="test-password",
+            progress_callback=progress.append,
+        )
+    )
+
+    assert captured == {
+        "campaign_id": 7,
+        "directory": tmp_path / "hero",
+    }
+    assert any("Final HERO reports written" in message for message in progress)
+
+
 def test_hero_uses_bounded_segment_budget_and_no_default_reset_wait(
     tmp_path: Path,
     monkeypatch,

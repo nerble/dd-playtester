@@ -3,36 +3,161 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 20, 2026
+## Current Status: October 24, 2026
 
-Latest durable campaign checkpoint **57349** (campaign **35**; latest completed
-live segment run **18929**): Dorrik is a level **39 Knight** with **1,291,940
-XP**, **84,510 XP** to level 40, and **18 quest points**. Run **18927** safely
-completed a current-band Kaladim hunt and killed a black bat for **330 net XP**,
-then returned to healer room **3054**. Run **18928** safely closed a second
-Kaladim attempt without a kill, and run **18929** bought a flight potion at
-the live shop price. Run **18926** had already recovered Dorrik from Purgatory
-after the arena death recorded by run **18924**: the bot found and looted the
-corpse, entered the portal, restored its gear, slept at healer room **3054**,
-and logged out there. No XP was gained or lost in the recovery or later safe
-maintenance runs.
-No current level-up quest shortfall is present. HERO remains unproved, and
-Dorrik remains the sole progression pilot; campaign 36 is a separate stale run
-that exhausted its 100-segment budget and is not the active track.
+Latest durable campaign checkpoint **61960** (campaign **35**; latest completed
+campaign segment **19408**, live run **20014**): Dorrik is a level **40 Dwarf
+Knight** with **1,447,976 XP**, **18 quest points**, and is back at the Midgaard
+healer. HERO remains unproved, and Dorrik remains the sole progression pilot.
 
-The source mirror is **21c6c947e328b5b5c2ab6b07e62c5830672c0cac**, clean and
+Run **20013** safely closed before travel because Dorrik has only the default
+Midgaard recall point; source `quest.c` assigns Ota'ar Dar to recall slot **14**
+and requires **400 quest points**. No Sanctuary potion was acquired and there
+was no death or XP loss. The selector now requires a live slot-14 receipt, or a
+character already physically at the Ota'ar origin, so this inaccessible route
+cannot be retried as a generic progression loop.
+
+Run **20014** then completed a safe healer return-home segment and left the
+campaign at checkpoint **61959** without opening combat or changing XP. A
+subsequent bounded retry rotation completed safely at checkpoint **61960**
+after offline source ranking found no executable current-band route; it opened
+no socket and claimed no XP.
+
+Run **19999** acquired the source-verified Staff of the Bard from Caerlin as an
+out-of-band Sanctuary maintenance objective. Subsequent live hunts consumed
+four charges while recording one useful Cyclops kill and several safe losses;
+the current reserve is **6 charges**. Run **20006** tested an alternate reserve
+route without finding a new charge, and run **20007** performed a safe world-time
+probe. Runs **20008-20011** safely checked fresh source-ranked locations, but
+the observed targets were below-band or absent, so the retry-stalled rotation
+checkpointed without opening combat. Out-of-band kills remain allowed to
+acquire or restore Sanctuary; they are maintenance work and do not count as
+progression objectives. If the current-band frontier is exhausted at a safe
+healer checkpoint, the controller may make a fresh out-of-band Sanctuary
+top-up after gear and quest gates, even when a reserve is still carried.
+
+Run **19955** reached the Smugglers Ship route but was intercepted by source
+mobile **17517**, a second armed Crewman prototype that had been missing from
+the route's Sanctuary family audit. The segment withdrew safely and lost
+**1,060 XP** without engaging its selected target. The source route now covers
+the exact armed family **17503/17517**, including the bounded dark-room
+preflight fallback. Run **19956** then reached One-eye the lookout (mobile
+**17500**, room **17546**); the target was a valid same-band armed target, but
+the carried Sanctuary staff was activated too late. Dorrik withdrew at
+**109/943 HP**, losing another **1,060 XP**; the staff's **10 charges** remain.
+Run **19957** confirmed the staff could be held on an armed transit route but
+exposed a missing follow-up `brandish`; that opener is now dispatched after
+the hold is acknowledged. Run **19958** safely reached the White Lotus guard
+but did not fight because a campaign handoff had dropped the persisted staff
+receipt. The handoff now recognizes structured GMCP equipment, so the verified
+reserve survives into the next segment. Ordinary source-ranked armed hunts
+enable a verified Sanctuary reserve at the combat opener without turning
+Sanctuary into a target-admission veto.
+
+Policy revision **369** adds a source-ranked Sanctuary maintenance rotation.
+When the fixed recovery identities are exhausted, the campaign can select the
+next exact source carrier, including a mob outside the ordinary XP band. Its
+route, identity, isolation, live `consider`, health-floor, and required-loot
+checks still apply; source HP and damage estimates remain evidence rather than
+a pre-live admission veto. The kill is recorded as maintenance and never
+counted as progression XP. Each carrier has its own durable result, so one same-boot miss
+does not make unrelated Sanctuary sources wait for a reboot. A reserve does not
+force a reboot wait when the current-band frontier is exhausted: one fresh
+top-up carrier may be selected after gear repair and quest gates, with the same
+live safety checks and maintenance-only XP accounting.
+
+The latest live progression segment killed source mobile **17504** (Rolf the
+Cook) for **3,132 XP** with all 10 Sanctuary charges preserved. Before that,
+the maintenance segment killed source mobile **19004** (Caerlin) outside the
+XP band and acquired the 10-charge Sanctuary staff **19173** for **2,466
+maintenance XP**. Earlier, Dorrik acquired Moria object **4050**
+from the level-8-to-12 large hobgoblin at room **4071** for **110 maintenance
+XP**; the purple potion was consumed in the subsequent Grok combat loss,
+which is scoped to that armed `spec_warrior` target. Dorrik then killed Rolf
+the Cook for **3,268 XP**. A later Lotus attempt safely stopped before combat
+when its protection reserve was empty; persisted protected candidates now defer
+to Sanctuary maintenance instead of consuming a full hunt window. Independent
+Catacombs siblings remain eligible when protection is replenished. The active
+DD4 boot is **Fri Oct 23 07:05:19 2026** and the source mirror is
+**134bba170b762a19b3f8a7031ce3bac3071cdf77**, aligned with `origin/master`.
+
+The linked run report may still say `objective=achieved` for run 19112 because
+its narrower run objective was the flight purchase. Campaign reports now keep
+that preparation result separate from the source-hunt objective, which requires
+confirmed hunt evidence.
+
+The current DD4 boot is unchanged. The recovery implementation retries
+the live water quote with at most four distinct redundant armour sales, returns
+to the source-verified no-mob room 27347 before surfacing a failure, and never
+saves or quits after a reconnect reports nonpositive HP.
+
+Run **19087** consumed the one-shot, source-backed protection revalidation for
+Orion (mobile **9311**, room **9328**) after the fresh two-potion Sanctuary
+refill. Dorrik passed live identity and `consider`, killed Orion for **3,103
+XP**, recovered at the healer, and logged out cleanly. Run **19089** then
+exercised the repaired productive-repeat path, passed the fresh identity and
+`consider` checks, and withdrew at the 20-percent health floor after **154
+incoming damage**; the net result was **-441 XP**. That exact same-boot loss is
+now authoritative and closes Orion for this reboot. No psionic target was
+dispatched.
+
+Runs **19081-19082** exercised the new visibility-funding handoff. A persisted
+same-reboot Magic Shop quote of **254 copper** and Dorrik's **46-copper**
+shortfall selected the audited Gnome treasury stash, completed safely, and
+raised the purse to **1 platinum** before banking excess coins. The retry does
+not bypass source target selection, and level-40+ psionics remain closed unless
+fresh disintegrate protection is verified.
+Run **19055** safely killed the Moria large hobgoblin for
+**100 XP**. Its policy label was wrong: a dispatch bug selected the new
+Hephaestus fallback but executed the generic Moria route, so the recorded
+`[4050]` receipt is not Hephaestus evidence. Checkpoint **58064** preserves
+run 19055 and its transcript, invalidates that receipt, and records the
+expected Hephaestus object **926**. The repair is stable through checkpoint
+**58117**: startup history reconstruction no longer recreates the stale
+`[4050]` result. The executor is now bound to mobile **908** in room **937**
+and fails closed on any other object or route. No level-40+
+psionic was engaged; the three current psionic candidates remain protection-
+gated unless fresh disintegration protection is verified.
+
+Run **19056** selected the exact Alchemist carrier route, passed its live
+identity and consider checks, then withdrew at the health floor after taking
+187 observed damage. Run **19057** exposed a retry bug: `--retry-stalled`
+reopened that exact same-boot carrier and withdrew again after 156 observed
+damage. Both runs remain valid loss evidence, but the selector now closes the
+exact mobile/room/level/boot combination across generic and named Sanctuary
+fallbacks; a different carrier or a fresh reboot is required.
+
+The startup repair now reconstructs the consumed two-potion refill marker
+from a dispatched Moria segment when an older checkpoint dropped it. That
+marker closes as `no_object` when the required second purple is still absent,
+so a restart cannot reopen the same refill loop. Run **19058** persisted this
+repair through a safe world-time probe; the MUD had not rebooted, so no XP was
+claimed. Run **19060** then preserved the real Lotus crowd loss, and checkpoint
+**58117** recorded the subsequent no-connection, no-executable-route result.
+
+The source mirror is **134bba170b762a19b3f8a7031ce3bac3071cdf77**, clean and
 aligned with `origin/master`.
-The current DD4 boot is **Wed Oct 14 09:25:18 2026**. Campaign 35's latest
-frontier diagnosis has **491 candidates**, **54 current-band** candidates, and
-**40 autonomous-safe** candidates, but **0 plain-executable** candidates. The
-remaining no-Sanctuary options are closed by current protection and same-boot
-evidence, while the selected Sanctuary recovery route is on its current-boot
-area-reset cooldown. The selector will continue with fresh candidates or that
-audited recovery route and will not replay closed targets or choose a psionic
-with energy-drain/disintegrate exposure.
+The current DD4 boot is **Fri Oct 23 07:05:19 2026**. Frontier counts in the
+older dated sections below are historical snapshots; the selector rebuilds its
+current source frontier at each checkpoint. It must preserve exact losses and
+search for a different audited route after a real boot change. It must never
+choose a level-40-plus psionic without a fresh, source- and live-verified
+disintegration-protection receipt.
+`show-campaign 35` now lists those protection-gated candidates explicitly as
+never dispatched, including their source spell exposure.
 `--retry-stalled` rotates the frontier without reopening static route hazards.
 Continue the same pilot after genuinely fresh area/boot evidence rather than
 creating roster breadth.
+
+The source-ranked repeatability repair treats one exact, unprotected first loss
+with a carried Sanctuary reserve as a one-shot changed-protection retry, even
+when that mobile has reached the ordinary three-kill rotation cap. Run **19087**
+proved this handoff end to end; run **19089** proved that a later productive
+repeat is re-evaluated normally and that a new loss closes the exact target.
+The dispatch marker, current live identity, `consider`, crowd, route, and
+health gates still apply; second losses, Sanctuary-protected losses, and
+psionic protection gates remain closed. Focused campaign tests cover this
+handoff.
 
 Checkpoints **57082-57086** reconciled the exact Caerlin Sanctuary attempt:
 the live combat abort is closed as no acquisition, with no locator retry spent.
@@ -41,18 +166,27 @@ The bounded cycles ending at checkpoints **57292** and **57302** opened one
 gameplay socket each for Moria, returned safely, and preserved the protection
 ledger; the latter acquired the second Sanctuary reserve from room **4071**.
 Checkpoint **57307** records the safe Daycare maintenance route, and checkpoint
-**57312** records the see-invisible supply route. Runs **18924-18929** then
-proved the bounded death-recovery path, one productive hunt, a safe no-progress
-retry, and flight preparation. Checkpoint **57349** records the current wait
-for the area-reset-dependent Sanctuary route. The source gate continues to
-exclude level-40+ psionics unless an actual disintegration-protection receipt
-is present.
+**57312** records the see-invisible supply route. Runs **18924-19039** then
+proved the bounded death-recovery path, a productive hunt, a safe no-progress
+retry, flight preparation, and the current source-refresh/route evidence. The
+source gate continues to exclude level-40+ psionics unless an actual
+disintegration-protection receipt is present.
 
 The fallback selector now honors the existing source audit for a route whose
 only special is a bounded passive economic `spec_thief`: it requires the exact
 economic-transit receipt and a purse of at most **1,250 copper-equivalent**.
-This permits transit research only; it never permits fighting the thief or
-crossing another unverified special.
+The actor may be one source-bounded two-to-four-reset, same-area singleton
+population when every reset is plain and has the same count; this still permits
+transit research only. It never permits fighting the thief or crossing another
+unverified special.
+
+The level-39 Catacombs audit now admits Anton's source reset when the live
+evidence is fresh: the area parser preserves a trailing reserved wand value,
+so the audit compares the three source-defined fields instead of rejecting the
+valid four-field record. The focused Catacombs batch passes **29 tests**.
+Dorrik's current boot still has an exact below-band Anton receipt, so the bot
+will wait for fresh live evidence rather than override it or choose a
+level-40-plus psionic without verified disintegration protection.
 
 Ota'ar Dar is a captive five-favour circuit: the gladiators do not release a
 character until all five distinct current-reboot favour receipts are confirmed.
@@ -60,8 +194,11 @@ An interrupted arena segment must resume its remaining favour circuit rather
 than treating recall, logout, or ordinary arena completion as an exit.
 The source gate says freedom requires one favour from every gladiator type; the
 gatekeeper then checks objects **27481-27485** before transferring the player
-out. Run **18823** reached and fought Kaer'l but died before collecting its
-first favour, so that loss is not evidence that the exit logic was wrong.
+out. They are `ITEM_TREASURE` (type 8), not keys, and DD4 saves carried copies
+on a completed logout or controlled reboot. Keep them loose in inventory and
+re-audit them after reconnect. Run **18823** reached and fought Kaer'l but died
+before collecting its first favour, so that loss is not evidence that the exit
+logic was wrong.
 
 The verified Catacombs spiked key (object **9565**) is deliberately dropped in
 room **3007**. Its world-cache receipt is tied to the current boot; the recorded
@@ -92,6 +229,15 @@ it.
 The Sanctuary reserve audit protects exact source resource descriptions during
 catalog-free liquidation and parses ANSI-wrapped, nested GMCP inventory data.
 This prevents a recovered Staff of the Bard from being sold as ordinary loot.
+
+After the Athena recovery route is closed, the source-ranked Sanctuary fallback
+can now audit one further exact carrier: Hephaestus (mobile **908**) in Olympus
+room **937**, carrying nectar object **926**. His source level is 38 and his
+only special is `spec_breath_lightning`; that exception is opted in only for
+this exact singleton reset, after fresh live identity, isolation, `consider`,
+health and return checks. The offline selector and focused tests prove the
+handoff; live acquisition remains unproved. This route does not weaken the
+separate psionic/disintegrate protection gate.
 
 ### Earlier Checkpoint: October 12
 
@@ -2444,11 +2590,14 @@ read its message as well as its status. A new bounded invocation can use its
 own explicit retry budget; do not run duplicate workers.
 
 When a character is already safe in healer room 3054 and policy selection has
-no executable frontier, the runner performs one automatic maintenance-only
+no executable frontier, the runner performs a bounded maintenance-only
 world-time probe before returning the unavailable result. It issues `time`,
-saves, and quits within the normal bounded worker. A same-boot response is
-persisted as an area-reset wait; a failed or completed probe is not repeated
-until the reset-aware path supplies fresh evidence.
+saves, and quits within the normal bounded worker. The attempt is timestamped;
+from a blocked healer checkpoint it may repeat at most once per six hours to
+learn whether DD4 rebooted. A same-boot response is persisted as an area-reset
+wait, and the probe never reopens a failed hunt or makes a reboot a general XP
+requirement. Legacy markers without timestamps remain one-shot until durable
+probe history repairs them.
 
 Resume also reconciles losses first observed after a disconnect. A verified
 same-level XP decrease sets a lower bound on `campaign_xp_loss_total`, even
@@ -2881,13 +3030,18 @@ and hazard gates, a fitting live HP budget, and an exact post-kill loot/equip
 step. Source class-slot coverage and live carrier acquisition remain active
 proof gaps.
 
-`show-resource-sources` lists healing, food, sanctuary, protection, flight,
-and water-breathing resources while keeping executable routes separate from
+`show-resource-sources` lists healing, food, sanctuary, protection, energy
+containment, flight, and water-breathing resources while keeping executable routes separate from
 source-only analysis. For example:
 
 ```powershell
 python -m dd4tester show-resource-sources --level 30 --effect water-breathing --all-areas
 ```
+
+Use `--effect energy-containment` (or `--effect "disintegrate protection"`)
+to audit DD4's source spell and its carrier routes. Energy containment improves
+the disintegrate saving throw; it is not immunity and never clears the campaign
+psionic gate without fresh live protection evidence.
 
 This finds source objects such as the Magic Shop's turquoise philter. A listed
 purchase or placement is evidence only; live price, inventory, route, and

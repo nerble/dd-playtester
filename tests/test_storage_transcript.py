@@ -37,6 +37,38 @@ def test_large_database_campaign_history_limit_is_small_and_explicit(
     assert _bounded_campaign_history_limit(tmp_path / "runs.sqlite3", 256) == 8
 
 
+def test_large_database_progress_reads_only_the_indexed_tail(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    for sequence in range(12):
+        storage.start_campaign_segment(
+            campaign_id,
+            phase=f"phase-{sequence}",
+            start_state={
+                "level": 40,
+                "xp": sequence,
+                "world_boot_id": "boot-1",
+            },
+        )
+
+    monkeypatch.setattr(
+        "dd4tester.storage._campaign_database_is_large",
+        lambda _path: True,
+    )
+    progress = storage.list_campaign_segment_progress(campaign_id)
+    storage.close()
+
+    assert [row["sequence"] for row in progress] == list(range(5, 13))
+
+
 def test_large_database_game_event_history_uses_the_bounded_segment_tail(
     tmp_path,
     monkeypatch,
@@ -1294,6 +1326,63 @@ def test_scoped_recovery_finds_run_before_classifying_unlinked_segment_as_pre_ru
     assert segment["id"] == segment_id
     assert segment["run_id"] == run_id
     assert segment["status"] == "failed"
+
+
+def test_scoped_recovery_binds_unique_finished_run_after_reconciliation_interrupt(
+    tmp_path,
+) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    profile_path = tmp_path / "character.yaml"
+    campaign_id = storage.create_campaign(
+        name="Dorrik to HERO",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=profile_path,
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="source-ranked-hunt-ota-arena-27358-27278-39-route-3",
+        start_state={"name": "Dorrik", "level": 39},
+    )
+    run_id = storage.create_run(
+        scenario_name="ota-arena:Dorrik",
+        scenario_path=profile_path,
+    )
+    storage.record_state_snapshot(
+        run_id,
+        source_event_id=None,
+        reason="current_state",
+        state={"name": "Dorrik", "level": 39, "xp": 1},
+    )
+    storage.finish_run(run_id, status="success")
+    run_finished_at = datetime.fromisoformat(storage.get_run(run_id)["finished_at"])
+    storage.connection.execute(
+        """
+        UPDATE campaign_segments
+        SET status = 'ready', finished_at = ?,
+            execution_status = 'interrupted', command_count = NULL,
+            error = 'campaign worker stopped after segment watchdog exceeded'
+        WHERE id = ?
+        """,
+        ((run_finished_at + timedelta(seconds=1)).isoformat(), segment_id),
+    )
+    storage.connection.commit()
+
+    repaired_events, recovered_runs, closed_segments = storage.recover_campaign(
+        campaign_id,
+        reason="operator recovery",
+        character_name="Dorrik",
+    )
+    run = storage.get_run(run_id)
+    segment = storage.list_campaign_segments(campaign_id)[0]
+    storage.close()
+
+    assert (repaired_events, recovered_runs, closed_segments) == (0, 1, 1)
+    assert run is not None and run["status"] == "success"
+    assert segment["id"] == segment_id
+    assert segment["run_id"] == run_id
+    assert segment["status"] == "failed"
+    assert segment["error"] == "operator recovery"
 
 
 def test_scoped_recovery_restores_exact_misclassified_live_segment(tmp_path) -> None:

@@ -7,6 +7,7 @@ from typing import Any
 from .hunt_candidates import (
     ITEM_DONOT_RANDOMISE, ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF,
     ITEM_WAND, ITEM_WEAPON, HuntCandidate, WorldSource,
+    source_mobile_search_rooms,
 )
 from .populations import plain_bounded_population
 
@@ -21,6 +22,10 @@ _ECONOMIC_TARGET_NONTHREATENING_SPECIALS = frozenset({"spec_cast_adept"})
 _ECONOMIC_TARGET_PASSIVE_AFFECTS = (
     (1 << 3) | (1 << 5) | (1 << 7) | (1 << 13) | (1 << 20)
 )
+# The live source-ranked locator has its own eight-relocation action budget.
+# This larger source audit only proves that a stay-area wanderer has a finite,
+# source-defined search boundary before that runtime budget is used.
+_ECONOMIC_TARGET_LOCATOR_ROOM_LIMIT = 512
 
 
 def known_purse(currencies: object) -> int | None:
@@ -63,9 +68,11 @@ def passive_economic_hunt_mobile(
 
     if allow_bounded_population:
         # A target population may be capacity-research only while its
-        # economic transit actor remains the ordinary exact one-reset thief.
-        # The multi-reset allowance is an additional narrow proof, not a
-        # replacement for the original single-reset contract.
+        # economic transit actor remains source-bounded. A thief with two to
+        # four distinct, same-area singleton resets is safe for this
+        # noncombat transit audit as well: it has a finite source population,
+        # no loadout, and no combat permission. The multi-reset allowance is
+        # never used for selecting or fighting the thief.
         if not (
             (len(resets) == 1 and resets[0].maximum_count == 1)
             or plain_bounded_economic_resets(world, mobile.vnum)
@@ -90,17 +97,21 @@ def passive_economic_hunt_mobile(
             if any(location not in {0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23, 24}
                    for location, _amount in item.affects):
                 return False
-            if any(location == 19 and amount > 0 for location, amount in item.affects):
-                return False
+            # Positive hitpoint affects on the target are observation/report
+            # evidence, not a reason to close an otherwise plain economic
+            # route.  Live consider and the player's own health floor decide
+            # whether the encounter is worth continuing.
     return True
 
 
 def plain_bounded_economic_resets(world: WorldSource, vnum: int) -> bool:
-    """Audit a multi-reset thief only for a separate plain-population route.
+    """Audit a finite multi-reset thief for noncombat transit only.
 
     This deliberately does not call ``plain_bounded_mobile_population``:
     ``spec_thief`` is the one allowed economic special, while the target
     population still has to pass that independent plain-population proof.
+    Counts of one are accepted here because this helper bounds the number of
+    possible transit thieves, not the number of combat targets in a room.
     """
     mobile = world.mobiles.get(vnum)
     resets = tuple(reset for reset in world.mob_resets if reset.mobile_vnum == vnum)
@@ -110,7 +121,7 @@ def plain_bounded_economic_resets(world: WorldSource, vnum: int) -> bool:
         or len({reset.room_vnum for reset in resets}) != len(resets)
         or any(
             type(reset.maximum_count) is not int
-            or not 2 <= reset.maximum_count <= 4
+            or not 1 <= reset.maximum_count <= 4
             for reset in resets
         )
         or len({reset.maximum_count for reset in resets}) != 1
@@ -123,6 +134,30 @@ def plain_bounded_economic_resets(world: WorldSource, vnum: int) -> bool:
         if reset.object_vnums or reset.equipment:
             return False
     return True
+
+
+def _bounded_economic_target_locator(
+    candidate: HuntCandidate,
+    mobile: object,
+    world: WorldSource,
+) -> bool:
+    """Allow one plain stay-area target when its ``where`` search is bounded."""
+    if (
+        not getattr(mobile, "stay_area", False)
+        or not getattr(mobile, "wanders", False)
+        or not candidate.stay_area
+        or candidate.sentinel
+    ):
+        return False
+    reachable = source_mobile_search_rooms(
+        world,
+        candidate.mobile_vnum,
+        maximum_rooms=_ECONOMIC_TARGET_LOCATOR_ROOM_LIMIT + 1,
+    )
+    return (
+        0 < len(reachable) <= _ECONOMIC_TARGET_LOCATOR_ROOM_LIMIT
+        and candidate.room_vnum in reachable
+    )
 
 
 def economic_hunt_candidate(
@@ -147,6 +182,18 @@ def economic_hunt_candidate(
             candidate, status="reject", autonomy_rejections=(_CAPACITY_REJECTION,),
         ), world)
     )
+    economic_route_population = bool(
+        type(level) is int
+        and candidate.route_special_mobile_vnums
+        and all(
+            plain_bounded_economic_resets(world, vnum)
+            for vnum in candidate.route_special_mobile_vnums
+        )
+    )
+    bounded_target_locator = (
+        mobile is not None
+        and _bounded_economic_target_locator(candidate, mobile, world)
+    )
     if (
         type(level) is not int or purse is None or purse > ECONOMIC_HUNT_MAX_COPPER
         or _ECONOMIC_ROUTE_REJECTION not in candidate.autonomy_rejections
@@ -154,14 +201,15 @@ def economic_hunt_candidate(
         or not target_special_rejections.issubset(candidate.autonomy_rejections)
         or candidate_specials != source_specials
         or candidate.is_coin_stash or candidate.is_food_stash
-        or candidate.equipped_weapons or not (candidate.sentinel or population)
+        or candidate.equipped_weapons
+        or not (candidate.sentinel or population or bounded_target_locator)
         or not population and candidate.source_spawn_limit != 1
         or candidate.room_spawn_count != 1
         or candidate.route_hard_hazard_targets
         or mobile is None or mobile.aggressive or mobile.fear_aura or mobile.confused
         or mobile.non_corporeal or mobile.programs
         or mobile.affected_flags & ~_ECONOMIC_TARGET_PASSIVE_AFFECTS
-        or not (mobile.sentinel or population)
+        or not (mobile.sentinel or population or bounded_target_locator)
         or not mobile.damage_modifier_known or not mobile.hp_modifier_known
         or candidate.source_damage_modifier != mobile.damage_modifier
         or not candidate.route_special_mobile_vnums
@@ -170,7 +218,7 @@ def economic_hunt_candidate(
                 world,
                 vnum,
                 level=level,
-                allow_bounded_population=population,
+                allow_bounded_population=(population or economic_route_population),
             )
             for vnum in candidate.route_special_mobile_vnums
         )
@@ -189,8 +237,13 @@ def economic_hunt_candidate(
         item = world.objects.get(vnum)
         if (
             item is None or item.item_type in _SPELL_ITEMS | {ITEM_WEAPON}
-            or any(location not in {0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 18, 20, 21, 22, 23, 24}
+            or any(location not in {0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23, 24}
                    for location, _amount in item.affects)
+            # DD4's strong randomiser can add damage, hit, crit, or
+            # swiftness affects to an equipped item. Keep that uncertainty
+            # out of an economic route until its incoming-output bound is
+            # modelled; weak randomisation below the source threshold is
+            # limited to the prototype's existing affects.
             or not item.extra_flags & ITEM_DONOT_RANDOMISE and (
                 item.extra_flags & (1 << 39)
                 or mobile.level - 2 >= 40 and not item.extra_flags & (1 << 38)
@@ -201,7 +254,7 @@ def economic_hunt_candidate(
         candidate, status="reject" if population else "caution",
         autonomy_rejections=tuple(sorted(remaining_rejections)),
         route_economic_hunt_mobile_vnums=candidate.route_special_mobile_vnums,
-        route_economic_population=population,
+        route_economic_population=(population or economic_route_population),
         route_economic_source_rejections=tuple(
             rejection
             for rejection in candidate.autonomy_rejections

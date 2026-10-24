@@ -9,7 +9,8 @@ from dd4tester.hunt_candidates import (
     source_invisibility_blocks_mobile_aggression,
 )
 from dd4tester.source_purchases import (
-    TRAINING_TRAVEL_SUPPLY_KEY, SourcePurchase, SourcePurchaseSession,
+    TRAINING_TRAVEL_SUPPLY_KEY, SourceLiquidation, SourceLiquidationSession,
+    SourcePurchase, SourcePurchaseSession,
     training_travel_supply,
 )
 
@@ -38,6 +39,112 @@ def test_purchase_uses_live_price_selector_and_confirmed_inventory_gain():
     assert step(session, 5, inventory=(("anti-cyclops elixir", "#456"),)) is None
     assert session.stage == "complete"
     assert step(session, 6) is None
+
+
+def test_purchase_can_fund_one_live_price_with_confirmed_redundant_sale():
+    session = SourcePurchaseSession(PLAN)
+    funding = ("a spare cloak", "#777", 777)
+    assert step(session, coins=20, inventory=(("a spare cloak", "#777"),)) == "list elixir"
+    session.observe("[2 27] [#123] anti-cyclops elixir\n" + PROMPT)
+    assert step(
+        session,
+        now=2,
+        coins=20,
+        inventory=(("a spare cloak", "#777"),),
+        funding_item=funding,
+    ) == "value #777"
+    session.observe("The vendor tells you 'I'll give you 200 coins for a spare cloak'.\n" + PROMPT)
+    assert step(session, now=3, coins=20, inventory=(("a spare cloak", "#777"),)) == "sell #777"
+    session.observe("You sell a spare cloak for 200 coins.\n" + PROMPT)
+    assert step(session, now=4, coins=220, inventory=(("a spare cloak", "#777"),)) == "inventory"
+    session.observe("You are carrying:\n" + PROMPT)
+    assert step(session, now=5, coins=220, inventory=()) == "list elixir"
+    session.observe("[2 27] [#123] anti-cyclops elixir\n" + PROMPT)
+    assert step(session, now=6, coins=220, inventory=()) == "buy #123"
+    session.observe("You buy anti-cyclops elixir.\n" + PROMPT)
+    assert step(session, now=7, coins=193, inventory=()) == "inventory"
+    session.observe("You are carrying:\n[#456] anti-cyclops elixir\n" + PROMPT)
+    assert step(session, now=8, coins=193, inventory=(("anti-cyclops elixir", "#456"),)) is None
+    assert session.stage == "complete"
+    assert session.funding_attempts == 1
+
+
+def test_liquidation_requires_exact_value_sale_and_inventory_receipts():
+    session = SourceLiquidationSession(
+        SourceLiquidation(27233, 9203, (5,), maximum_items=1)
+    )
+    item = ("one-eyed whip", "#777", 777)
+    assert session.next_command(
+        room_vnum="9203", inventory=(item[:2],), now=1, funding_item=item
+    ) == "value #777"
+    session.observe(
+        "Ahomar tells you 'I'll give you 250 coins for one-eyed whip'.\n"
+        + PROMPT
+    )
+    assert session.next_command(
+        room_vnum="9203", inventory=(item[:2],), now=2
+    ) == "sell #777"
+    session.observe("You sell one-eyed whip for 250 coins.\n" + PROMPT)
+    assert session.next_command(
+        room_vnum="9203", inventory=(item[:2],), now=3
+    ) == "inventory"
+    session.observe("You are carrying:\n" + PROMPT)
+    assert session.next_command(room_vnum="9203", inventory=(), now=4) is None
+    assert session.stage == "complete"
+    assert session.funding_item_vnums == (777,)
+
+
+def test_liquidation_room_identity_and_sale_name_are_fail_closed():
+    session = SourceLiquidationSession(
+        SourceLiquidation(27233, 9203, (5,), maximum_items=1)
+    )
+    assert session.next_command(
+        room_vnum="9204", inventory=(), now=1,
+        funding_item=("one-eyed whip", "#777", 777),
+    ) is None
+    assert session.stage == "failed"
+
+    session = SourceLiquidationSession(
+        SourceLiquidation(27233, 9203, (5,), maximum_items=1)
+    )
+    item = ("one-eyed whip", "#777", 777)
+    assert session.next_command(
+        room_vnum="9203", inventory=(item[:2],), now=1, funding_item=item
+    ) == "value #777"
+    session.observe("Ahomar tells you 'I'll give you 250 coins for a different item'.\n" + PROMPT)
+    assert session.next_command(
+        room_vnum="9203", inventory=(item[:2],), now=2
+    ) is None
+    assert session.stage == "failed"
+
+
+def test_liquidation_can_start_the_next_item_after_inventory_confirmation():
+    session = SourceLiquidationSession(
+        SourceLiquidation(27233, 9203, (5,), maximum_items=2)
+    )
+    first = ("one-eyed whip", "#777", 777)
+    second = ("standard issue mace", "#778", 778)
+    assert session.next_command(
+        room_vnum="9203", inventory=(first[:2], second[:2]), now=1,
+        funding_item=first,
+    ) == "value #777"
+    session.observe("Ahomar tells you 'I'll give you 78 coins for one-eyed whip'.\n" + PROMPT)
+    assert session.next_command(
+        room_vnum="9203", inventory=(first[:2], second[:2]), now=2
+    ) == "sell #777"
+    session.observe("You sell one-eyed whip for 78 coins.\n" + PROMPT)
+    assert session.next_command(
+        room_vnum="9203", inventory=(first[:2], second[:2]), now=3
+    ) == "inventory"
+    session.observe("You are carrying:\nstandard issue mace\n" + PROMPT)
+    assert session.next_command(
+        room_vnum="9203", inventory=(second[:2],), now=4
+    ) is None
+    assert session.stage == "new"
+    assert session.next_command(
+        room_vnum="9203", inventory=(second[:2],), now=4,
+        funding_item=second,
+    ) == "value #778"
 
 
 @pytest.mark.parametrize("offer", [

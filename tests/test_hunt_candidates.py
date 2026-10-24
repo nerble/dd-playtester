@@ -53,6 +53,7 @@ from dd4tester.hunt_candidates import (
     potion_spell_names,
     resource_effects_for_object,
     resource_activation_for_object,
+    source_mobile_is_noncombat_resource_carrier,
     rank_resource_sources,
     source_combat_readiness,
     source_combat_output_estimate,
@@ -1545,6 +1546,55 @@ It reacts to intruders.~
     assert area.mobiles[100].attack_programs == (program,)
 
 
+def test_source_mobile_relocation_program_is_not_an_attack_program() -> None:
+    program = MobileProgram(
+        "greet_prog",
+        "100",
+        (
+            "mptransfer $n 28313",
+            "mpgoto 28313",
+        ),
+    )
+    mobile = MobileSource(
+        28303,
+        "centaur",
+        "a Powerful Centaur",
+        40,
+        ACT_SENTINEL,
+        0,
+        "arikasbab.are",
+        programs=(program,),
+    )
+
+    assert mobile.player_relocation_programs == (program,)
+    assert mobile.attack_programs == ()
+
+
+def test_source_player_relocation_program_is_a_candidate_hard_gate() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=45,
+            character_max_hp=2_000,
+            include_all_areas=True,
+            include_below_band=True,
+        )
+        if candidate.mobile_vnum == 28303 and candidate.room_vnum == 28315
+    )
+
+    assert candidate.status == "reject"
+    assert (
+        "source mobile program can forcibly relocate the player"
+        in candidate.autonomy_rejections
+    )
+
+
 def test_area_parser_captures_mobile_teaching_entries(tmp_path: Path) -> None:
     area_file = tmp_path / "teacher.are"
     area_file.write_text(
@@ -2448,6 +2498,92 @@ def test_protection_is_a_distinct_source_resource_effect() -> None:
     assert activation.spell == "protection"
     assert activation.command == "quaff"
     assert activation.consumes_object is True
+
+
+def test_energy_containment_is_a_distinct_disintegrate_protection_resource() -> None:
+    item = ObjectSource(
+        14074,
+        "potion indigo",
+        "an indigo potion",
+        ITEM_POTION,
+        (40, 1, 1),
+        0,
+        value_strings=("40", "shield", "energy containment", "inertial barrier"),
+    )
+
+    assert resource_effects_for_object(item) == ("energy-containment",)
+    for effect in (
+        "energy-containment",
+        "energy containment",
+        "disintegrate protection",
+        "disint protection",
+    ):
+        activation = resource_activation_for_object(item, effect=effect)
+        assert activation is not None
+        assert activation.spell == "energy containment"
+        assert activation.command == "quaff"
+        assert activation.consumes_object is True
+
+
+def test_source_audit_finds_energy_containment_carrier_without_admitting_route() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    placements = rank_resource_sources(
+        world,
+        character_level=39,
+        effect="disintegrate protection",
+        include_all_areas=True,
+    )
+
+    placement = next(
+        item for item in placements if item.object_vnum == 14074
+    )
+    assert placement.effect == "energy-containment"
+    assert placement.source_mobile_vnum == 14001
+    assert placement.room_vnum == 14041
+    assert placement.status == "source-only"
+    assert placement.activation is not None
+    assert placement.activation.spell == "energy containment"
+    assert any("aggressive mobile reset" in note for note in placement.autonomy_rejections)
+
+
+def test_source_audit_finds_bastion_energy_containment_vials_in_wardrobe() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    wardrobe = world.objects[30655]
+    assert wardrobe.item_type == 15
+    assert wardrobe.values == (0, 5, 0, 0)
+
+    placements = rank_resource_sources(
+        world,
+        character_level=39,
+        effect="energy-containment",
+        include_all_areas=True,
+    )
+
+    bastion = [
+        placement
+        for placement in placements
+        if placement.object_vnum in {30660, 30661}
+    ]
+    assert {(placement.object_vnum, placement.source_kind) for placement in bastion} == {
+        (30660, "ground-container"),
+        (30661, "ground-container"),
+    }
+    assert all(placement.room_vnum == 30744 for placement in bastion)
+    assert all(placement.status == "source-only" for placement in bastion)
+    assert all(placement.source_level_range == (75, 81) for placement in bastion)
+    assert all(placement.container_object_vnums == (30655,) for placement in bastion)
+    assert all(
+        any("source container is closed" in note for note in placement.hazards)
+        for placement in bastion
+    )
 
 
 def test_water_breathing_philter_is_a_distinct_source_resource_effect() -> None:
@@ -3711,6 +3847,35 @@ def test_armed_near_band_aggressor_needs_damage_bound_proof() -> None:
     )
 
 
+def test_safe_noncombat_special_keeps_plain_near_band_aggressor_ordinary() -> None:
+    mobile = MobileSource(
+        200,
+        "shark",
+        "the great white shark",
+        35,
+        ACT_AGGRESSIVE,
+        0,
+        "pirates_isles.are",
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        mob_resets=[MobReset(200, 17231, 1, ())],
+        mobile_specials={200: ("spec_fido",)},
+    )
+
+    assert source_mobile_is_ordinary_below_level_aggressor(
+        world,
+        mobile,
+        character_level=39,
+    )
+    world.mobile_specials[200] = ("spec_poison",)
+    assert not source_mobile_is_ordinary_below_level_aggressor(
+        world,
+        mobile,
+        character_level=39,
+    )
+
+
 def test_goblin_fortress_guard_does_not_close_current_band_target() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -4380,6 +4545,42 @@ def test_candidate_ranking_marks_source_shopkeepers_as_non_xp_targets() -> None:
     assert "source mobile is a shopkeeper" in candidate.autonomy_rejections
 
 
+def test_source_resource_carrier_is_not_an_ordinary_xp_target() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    reset = next(
+        reset
+        for reset in world.mob_resets
+        if (reset.mobile_vnum, reset.room_vnum) == (916, 927)
+    )
+    assert source_mobile_is_noncombat_resource_carrier(
+        world,
+        916,
+        reset=reset,
+    )
+
+    [candidate] = [
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=40,
+            include_xp_only=True,
+            include_all_areas=True,
+        )
+        if (candidate.mobile_vnum, candidate.room_vnum) == (916, 927)
+    ]
+
+    assert candidate.status == "reject"
+    assert candidate.autonomous_safe is False
+    assert (
+        "source mobile is a noncombat resource carrier"
+        in candidate.autonomy_rejections
+    )
+
+
 def test_candidate_ranking_rejects_source_fame_loss_targets() -> None:
     world = WorldSource(
         mobiles={
@@ -4698,6 +4899,56 @@ def test_candidate_ranking_rejects_same_vnum_assist_capacity(monkeypatch) -> Non
         "target reset permits up to 2 matching mobiles in the room"
         in candidate.hazards
     )
+
+
+def test_candidate_ranking_rejects_single_room_multi_copy_armed_target(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("fleshmonger.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            9405: MobileSource(
+                9405,
+                "guard duty",
+                "the on-duty guard",
+                10,
+                ACT_SENTINEL,
+                -500,
+                "fleshmonger.are",
+            ),
+        },
+        objects={
+            9401: ObjectSource(
+                9401,
+                "sabre",
+                "a guard sabre",
+                ITEM_WEAPON,
+                (0, 2, 6, 3),
+                100,
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            9406: RoomSource(9406, "A Guard Room", "fleshmonger.are"),
+        },
+        mob_resets=[
+            MobReset(9405, 9406, 2, (), ((WEAR_WIELD, 9401),)),
+        ],
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 9406, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=10,
+        include_xp_only=True,
+    )
+
+    assert candidate.source_spawn_limit == 2
+    assert candidate.room_spawn_count == 1
+    assert candidate.status == "reject"
+    assert "target reset capacity exceeds one" in candidate.autonomy_rejections
+    assert not candidate.target_selection_safe
 
 
 def test_stationary_global_population_cap_is_not_a_local_crowd(monkeypatch) -> None:
@@ -5169,6 +5420,52 @@ def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None
 
     assert not candidate.autonomous_safe
     assert "target has special procedure spec_poison" in candidate.autonomy_rejections
+
+
+def test_candidate_rejects_source_noncombat_special_room_companion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 37, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "buddha",
+                "the Golden Buddha",
+                44,
+                0,
+                1000,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Target room", "target.are"),
+        },
+        mob_resets=[
+            MobReset(100, 7001, 1, ()),
+            MobReset(200, 7001, 1, ()),
+        ],
+        mobile_specials={200: ("spec_cast_adept",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=39,
+            include_xp_only=True,
+        )
+        if candidate.mobile_vnum == 100
+    )
+
+    assert not candidate.autonomous_safe
+    assert "target room has a dangerous reset companion" in (
+        candidate.autonomy_rejections
+    )
 
 
 def test_candidate_allows_source_below_band_special_room_companion(monkeypatch) -> None:

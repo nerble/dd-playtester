@@ -25,6 +25,7 @@ from .specials import (
 )
 
 
+ACT_IS_NPC = 1 << 0
 ACT_SENTINEL = 1 << 1
 ACT_SCAVENGER = 1 << 2
 ACT_AGGRESSIVE = 1 << 5
@@ -42,6 +43,9 @@ ACT_FEAR_AURA = 1 << 31
 # Kept as an evidence label for older serialized candidates. It must never
 # close an ordinary target: source level and live ``consider`` own admission.
 _TARGET_OUTPUT_EVIDENCE_REJECTION = "source peak round can exceed character HP"
+_SOURCE_NONCOMBAT_RESOURCE_CARRIER_REJECTION = (
+    "source mobile is a noncombat resource carrier"
+)
 
 # ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
 # after the ordinary area-file hit-point roll.  Keep the source multiplier
@@ -1501,6 +1505,25 @@ class MobileProgram:
     commands: tuple[str, ...] = ()
 
 
+def _source_program_relocates_player(program: MobileProgram) -> bool:
+    """Return whether a source program can forcibly move the player.
+
+    ``mpgoto`` moves the mobile itself and is not enough to classify a route as
+    a player relocation.  ``mptransfer``/``mptrans`` explicitly move ``$n``
+    (or ``all``), including when nested under ``mpat``.
+    """
+    for raw_command in program.commands:
+        command = " ".join(str(raw_command).split()).casefold()
+        if re.search(r"\bmptrans(?:fer)?\s+(?:\$n|\$t|all)(?:\s|$)", command):
+            return True
+        if re.search(
+            r"\bmpat\s+(?:\$n|\$t)\s+mptrans(?:fer)?(?:\s|$)",
+            command,
+        ):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class MobileTemplateSource:
     """One resolved body-species/archetype layer from DD4's mob.c."""
@@ -1687,6 +1710,15 @@ class MobileSource:
                 re.search(r"\bmpkill\b", command, re.IGNORECASE)
                 for command in program.commands
             )
+        )
+
+    @property
+    def player_relocation_programs(self) -> tuple[MobileProgram, ...]:
+        """Return programs that can forcibly transfer the player."""
+        return tuple(
+            program
+            for program in self.programs
+            if _source_program_relocates_player(program)
         )
 
     def teaching_percent(self, skill: str) -> int:
@@ -2025,9 +2057,10 @@ class HuntCandidate:
 
     # State-admitted ordinary XP travel only; original source risk is retained.
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
-    # A plain bounded target population may carry the same source-audited
-    # economic special across multiple fixed resets. This never authorizes
-    # fighting the special or waives the target population gates.
+    # A plain bounded target population, or a source-bounded multi-reset
+    # economic transit actor, may carry the same source-audited special across
+    # fixed resets. This never authorizes fighting the special or waives the
+    # target population gates.
     route_economic_population: bool = False
     route_economic_source_rejections: tuple[str, ...] = ()
     route_key_object_vnums: tuple[int, ...] = ()
@@ -2223,6 +2256,10 @@ def _source_container_access_notes(
 _RESOURCE_EFFECT_SPELLS = {
     "sanctuary": frozenset({"sanctuary"}),
     "protection": frozenset({"protection"}),
+    # DD4's source spell that improves the saving throw used by
+    # ``spell_disintegrate``.  This is a discoverable resource, not an
+    # immunity claim; the campaign protection gate still needs live proof.
+    "energy-containment": frozenset({"energy containment"}),
     "healing": frozenset(
         {
             "cure blindness",
@@ -2247,6 +2284,9 @@ _RESOURCE_EFFECT_ALIASES = {
     "breathe water": "water-breathing",
     "underwater": "water-breathing",
     "water breathing": "water-breathing",
+    "energy containment": "energy-containment",
+    "disintegrate protection": "energy-containment",
+    "disint protection": "energy-containment",
 }
 
 
@@ -2259,6 +2299,7 @@ def normalize_resource_effect(effect: str) -> str:
 _RESOURCE_EFFECT_ORDER = (
     "sanctuary",
     "protection",
+    "energy-containment",
     "healing",
     "flight",
     "water-breathing",
@@ -2267,6 +2308,7 @@ _RESOURCE_EFFECT_ORDER = (
 _RESOURCE_EFFECT_SPELL_ORDER = {
     "sanctuary": ("sanctuary",),
     "protection": ("protection",),
+    "energy-containment": ("energy containment",),
     "healing": (
         "power heal",
         "heal",
@@ -2394,6 +2436,50 @@ def resource_effects_for_object(
         if spell_names.intersection(_RESOURCE_EFFECT_SPELLS[name]):
             effects.append(name)
     return tuple(effects)
+
+
+def source_mobile_is_noncombat_resource_carrier(
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    reset: MobReset | None = None,
+) -> bool:
+    """Identify a utility mobile whose reset carries a positive resource.
+
+    DD4 has sentinel scavengers that hold recovery objects in otherwise
+    ordinary rooms.  They are source-backed acquisition endpoints, not XP
+    targets.  Keep this classification narrow: aggressive, scripted, and
+    special-procedure mobiles remain ordinary combat-risk analysis and are not
+    reclassified by this helper.
+    """
+    mobile = world.mobiles.get(int(mobile_vnum))
+    if (
+        mobile is None
+        or not mobile.sentinel
+        or not (mobile.act_flags & ACT_SCAVENGER)
+        or mobile.aggressive
+        or mobile.vnum in world.shopkeepers
+        or world.mobile_specials.get(mobile.vnum)
+        or mobile.attack_programs
+        or mobile.player_relocation_programs
+    ):
+        return False
+    candidate_resets = (
+        (reset,)
+        if reset is not None
+        else tuple(
+            value for value in world.mob_resets
+            if value.mobile_vnum == mobile.vnum
+        )
+    )
+    return any(
+        any(
+            resource_effects_for_object(item)
+            for object_vnum in _reset_object_vnums(candidate_reset)
+            if (item := world.objects.get(object_vnum)) is not None
+        )
+        for candidate_reset in candidate_resets
+    )
 
 
 def resource_activation_for_object(
@@ -2601,6 +2687,8 @@ def rank_resource_sources(
             hazards.append(f"source special: {special}")
         if mobile.attack_programs:
             hazards.append("source mobile has a combat-triggering program")
+        if mobile.player_relocation_programs:
+            hazards.append("source mobile has a player-relocation program")
         return tuple(dict.fromkeys(hazards))
 
     def item_level_range(item: ObjectSource) -> tuple[int, int]:
@@ -2713,7 +2801,7 @@ def rank_resource_sources(
                         if (
                             identity in seen_route_mobiles
                             or mobile is None
-                            or not _source_mobile_is_combat_hazard(world, mobile)
+                            or not _source_mobile_is_route_hazard(world, mobile)
                         ):
                             continue
                         seen_route_mobiles.add(identity)
@@ -2745,7 +2833,12 @@ def rank_resource_sources(
                                 *autonomy_rejections,
                                 f"{location} contains an aggressive mobile reset",
                             )
-                        if mobile.attack_programs:
+                        if mobile.player_relocation_programs:
+                            autonomy_rejections = (
+                                *autonomy_rejections,
+                                f"{location} contains a player-relocation program",
+                            )
+                        elif mobile.attack_programs:
                             autonomy_rejections = (
                                 *autonomy_rejections,
                                 f"{location} contains a program-triggered attacker",
@@ -3936,12 +4029,17 @@ def source_mobile_is_ordinary_below_level_aggressor(
     A plain, unarmed aggressive mobile whose fuzzed source maximum is below
     the character's level is a live combat possibility, not an automatic
     route failure. Keep this exception limited to the useful source band and
-    to mobiles without scripts, specials, weapons, or other unmodelled
-    behavior; live identity, consider, crowd, and health checks still decide
-    what happens. Armed near-band mobiles must pass the stricter damage-bound
-    proof instead of becoming incidental transit noise.
+    to mobiles without scripts, unsafe specials, weapons, or other unmodelled
+    behavior; known safe noncombat specials such as ``spec_fido`` do not
+    change the combat profile. Live identity, consider, crowd, and health
+    checks still decide what happens. Armed near-band mobiles must pass the
+    stricter damage-bound proof instead of becoming incidental transit noise.
     """
     maximum_level = _mobile_level_range(mobile.level)[1]
+    specials = {
+        str(special).strip().casefold()
+        for special in world.mobile_specials.get(mobile.vnum, ())
+    }
     if not (
         mobile.aggressive
         and character_level - 5 < maximum_level < character_level
@@ -3951,7 +4049,7 @@ def source_mobile_is_ordinary_below_level_aggressor(
         and not mobile.non_corporeal
         and not mobile.costs_fame
         and not mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
-        and not world.mobile_specials.get(mobile.vnum)
+        and specials <= SAFE_NONCOMBAT_SPECIALS
     ):
         return False
     for reset in world.mob_resets:
@@ -4179,10 +4277,14 @@ def rank_hunt_candidates(
     }
     resets_by_room = _resets_by_room(world)
     prototype_population_limits: dict[int, int] = {}
+    reset_rooms_by_mobile: dict[int, set[int]] = {}
     for reset in world.mob_resets:
         prototype_population_limits[reset.mobile_vnum] = max(
             prototype_population_limits.get(reset.mobile_vnum, 0),
             reset.maximum_count,
+        )
+        reset_rooms_by_mobile.setdefault(reset.mobile_vnum, set()).add(
+            reset.room_vnum
         )
     candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
     wandering_aggressors = _wandering_aggressors(world)
@@ -4369,6 +4471,11 @@ def rank_hunt_candidates(
         if source_room_level_rejection(room, character_level) is not None:
             continue
         reset_object_vnums = _reset_object_vnums(reset)
+        noncombat_resource_carrier = source_mobile_is_noncombat_resource_carrier(
+            world,
+            mobile.vnum,
+            reset=reset,
+        )
         required_loot_objects = tuple(
             world.objects[object_vnum]
             for object_vnum in reset_object_vnums
@@ -4532,10 +4639,22 @@ def rank_hunt_candidates(
         # can co-locate only through repeated M resets here; copies of a
         # wandering prototype may converge from every reset room.
         matching_target_capacity = prototype_population_limits[mobile.vnum]
+        source_reset_rooms = reset_rooms_by_mobile.get(mobile.vnum, set())
+        # ``arg2`` in an M reset is a global prototype cap.  When the
+        # prototype has only one reset room, repeated area resets can refill
+        # that same room up to the cap, so it is a real local crowd risk.  If
+        # the prototype is reset in several rooms, keep the cap global and
+        # count only the matching reset entries for this room; the population
+        # may be distributed across those rooms instead.
+        local_reset_capacity = (
+            max(reset.maximum_count, room_spawn_count)
+            if len(source_reset_rooms) == 1
+            else room_spawn_count
+        )
         same_room_target_capacity = (
             matching_target_capacity
             if mobile.wanders
-            else min(room_spawn_count, matching_target_capacity)
+            else min(local_reset_capacity, matching_target_capacity)
         )
         if same_room_target_capacity > 1:
             hazards.append(
@@ -4569,7 +4688,11 @@ def rank_hunt_candidates(
             )
             companion_is_below_band = (
                 companion_level_range[1] <= character_level - 5
-                and (not companion.attack_programs or companion_is_bounded_drunk)
+                and (
+                    not companion.attack_programs
+                    and not companion.player_relocation_programs
+                    or companion_is_bounded_drunk
+                )
             )
             companion_can_join = source_mobile_can_join_player_fight(
                 world,
@@ -4618,6 +4741,7 @@ def rank_hunt_candidates(
                 not companion_can_join
                 and not companion.aggressive
                 and not companion.attack_programs
+                and not companion.player_relocation_programs
                 and set(companion_specials).issubset(
                     SAFE_NONCOMBAT_SPECIALS | TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
                 )
@@ -4639,6 +4763,7 @@ def rank_hunt_candidates(
                 not companion_can_join
                 and not companion_specials
                 and not companion.attack_programs
+                and not companion.player_relocation_programs
                 and (
                     not companion.aggressive
                     and companion_level_range[1] <= character_level
@@ -4659,9 +4784,18 @@ def rank_hunt_candidates(
                 companion.aggressive
                 or companion_specials
                 or companion.attack_programs
+                or companion.player_relocation_programs
             ):
                 dangerous = True
-                if companion.attack_programs:
+                if companion.player_relocation_programs:
+                    hazards.append(
+                        "source-backed companion player-relocation program: "
+                        f"{companion.short_description}"
+                    )
+                    autonomy_rejections.append(
+                        "target room has a player-relocation program"
+                    )
+                elif companion.attack_programs:
                     hazards.append(
                         "source-backed companion attack program: "
                         f"{companion.short_description}"
@@ -4703,7 +4837,7 @@ def rank_hunt_candidates(
                     character_level=character_level,
                 )
                 if not (
-                    _source_mobile_is_combat_hazard(world, hazard)
+                    _source_mobile_is_route_hazard(world, hazard)
                     or unsafe_special
                 ):
                     continue
@@ -4720,6 +4854,7 @@ def rank_hunt_candidates(
                 if (
                     not hazard.aggressive
                     and not hazard.attack_programs
+                    and not hazard.player_relocation_programs
                     and not unsafe_special
                 ):
                     continue
@@ -4734,6 +4869,9 @@ def rank_hunt_candidates(
                     )
                     continue
                 hazard_kind = (
+                    "route player-relocation program"
+                    if hazard.player_relocation_programs
+                    else
                     "route program attacker"
                     if hazard.attack_programs
                     else "route"
@@ -4744,6 +4882,12 @@ def rank_hunt_candidates(
                     f"{hazard_kind}: {hazard.short_description} "
                     f"L{hazard.level} in {path_room}"
                 )
+                if hazard.player_relocation_programs:
+                    dangerous = True
+                    autonomy_rejections.append(
+                        "route crosses a source player-relocation program"
+                    )
+                    continue
                 if unsafe_special:
                     dangerous = True
                     autonomy_rejections.append(
@@ -4763,6 +4907,9 @@ def rank_hunt_candidates(
                     )
                 hazard_level_max = _mobile_level_range(hazard.level)[1]
                 hazard_noun = (
+                    "player-relocation program"
+                    if hazard.player_relocation_programs
+                    else
                     "program-triggered attacker"
                     if hazard.attack_programs
                     else "aggressive reset"
@@ -4907,7 +5054,12 @@ def rank_hunt_candidates(
             )
             hazard_rooms = (
                 path_room_set
-                if hazard.aggressive or hazard.attack_programs or unsafe_special
+                if (
+                    hazard.aggressive
+                    or hazard.attack_programs
+                    or hazard.player_relocation_programs
+                    or unsafe_special
+                )
                 else {path_rooms[-1]}
             )
             if (
@@ -4932,6 +5084,9 @@ def rank_hunt_candidates(
             if unsafe_special:
                 route_special_mobile_vnums.add(hazard.vnum)
             hazard_kind = (
+                "reachable player-relocation program"
+                if hazard.player_relocation_programs
+                else
                 "reachable program attacker"
                 if hazard.attack_programs
                 else "reachable wanderer"
@@ -4944,6 +5099,12 @@ def rank_hunt_candidates(
             hazards.append(
                 f"{hazard_kind}: {hazard.short_description} L{hazard.level}"
             )
+            if hazard.player_relocation_programs:
+                dangerous = True
+                autonomy_rejections.append(
+                    "a player-relocation program can reach the route"
+                )
+                continue
             hazard_level_max = _mobile_level_range(hazard.level)[1]
             hazard_noun = (
                 "program-triggered attacker"
@@ -5106,6 +5267,14 @@ def rank_hunt_candidates(
             hazards.append("source mobile is a shopkeeper")
             dangerous = True
             autonomy_rejections.append("source mobile is a shopkeeper")
+        if noncombat_resource_carrier:
+            hazards.append(
+                "source mobile carries a source-backed recovery resource"
+            )
+            dangerous = True
+            autonomy_rejections.append(
+                _SOURCE_NONCOMBAT_RESOURCE_CARRIER_REJECTION
+            )
         if mobile.costs_fame:
             hazards.append("source mobile costs fame when killed")
             dangerous = True
@@ -5121,6 +5290,14 @@ def rank_hunt_candidates(
             dangerous = True
             autonomy_rejections.append(
                 "source mobile program can initiate an unmodeled attack"
+            )
+        if mobile.player_relocation_programs:
+            hazards.append(
+                "source mobile program can forcibly relocate the player"
+            )
+            dangerous = True
+            autonomy_rejections.append(
+                "source mobile program can forcibly relocate the player"
             )
         if mobile.fear_aura:
             hazards.append(
@@ -5668,23 +5845,22 @@ def _parse_objects(
             continue
         vnum = int(marker[1:])
         index += 1
-        keywords, index = _read_tilde(lines, index, end)
-        short_description, index = _read_tilde(lines, index, end)
-        room_description, index = _read_tilde(lines, index, end)
-        _, index = _read_tilde(lines, index, end)
+        description_fields, index = _read_tilde_fields(lines, index, end, 4)
+        if len(description_fields) != 4:
+            break
+        keywords, short_description, room_description, _ = description_fields
         if index + 2 >= end:
             break
         type_parts = lines[index].split()
         index += 1
-        value_line = lines[index]
+        value_fields, index = _read_tilde_fields(lines, index, end, 4)
+        if len(value_fields) != 4:
+            break
+        value_strings = tuple(_clean_text(value) for value in value_fields)
         values = tuple(
-            int(match.group(1)) for match in _TILDE_VALUE.finditer(value_line)
+            int(match.group(1)) if (match := _TILDE_VALUE.search(value)) else 0
+            for value in value_strings
         )
-        value_strings = tuple(
-            _clean_text(value)
-            for value in value_line.split("~")[:-1]
-        )
-        index += 1
         cost_parts = lines[index].split()
         index += 1
         if not type_parts:
@@ -6222,7 +6398,7 @@ def _route_hazard_rooms(
         for reset in resets:
             mobile = world.mobiles.get(reset.mobile_vnum)
             if mobile is None or not (
-                _source_mobile_is_combat_hazard(world, mobile)
+                _source_mobile_is_route_hazard(world, mobile)
                 or _source_mobile_has_unsafe_special(
                     world,
                     mobile.vnum,
@@ -6245,6 +6421,7 @@ def _route_hazard_rooms(
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
+                or mobile.player_relocation_programs
                 or unsafe_special
                 or _source_mobile_has_combat_joining_special(
                     world,
@@ -6279,6 +6456,7 @@ def _route_hazard_rooms(
                     and level_max > character_level - 5
                 )
                 or mobile.attack_programs
+                or mobile.player_relocation_programs
                 or reset.maximum_count > _MAX_BELOW_BAND_ROUTE_AGGRESSOR_CAPACITY
             ):
                 blocked.add(room_vnum)
@@ -6333,6 +6511,7 @@ def _source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    economic_transit_allow_equipped_mobile_vnums: Collection[int] = (),
     economic_hunt_mobile_vnums: Collection[int] = (),
     economic_hunt_allow_bounded_population: bool = False,
     hazard_index: SourceRouteHazardIndex | None = None,
@@ -6353,7 +6532,13 @@ def _source_route_hazard_rejections(
     economic_transit = {
         vnum for vnum in economic_special_mobile_vnums
         if not combat_at_destination
-        and source_mobile_has_only_economic_transit_risk(world, vnum)
+        and source_mobile_has_only_economic_transit_risk(
+            world,
+            vnum,
+            allow_equipped=vnum in set(
+                economic_transit_allow_equipped_mobile_vnums
+            ),
+        )
     }
     if not combat_at_destination and economic_hunt_mobile_vnums:
         from .economic_hunts import passive_economic_hunt_mobile
@@ -6425,6 +6610,7 @@ def _source_route_hazard_rejections(
             )
             if require_no_combat_hazards and (
                 mobile.attack_programs
+                or mobile.player_relocation_programs
                 or unsafe_special
                 or _source_mobile_has_combat_joining_special(
                     world,
@@ -6455,17 +6641,31 @@ def _source_route_hazard_rejections(
                     "route includes program-triggered attacker: "
                     f"{mobile.short_description} in room {room_vnum}"
                 )
-            if not _source_mobile_is_combat_hazard(world, mobile):
+            if mobile.player_relocation_programs:
+                rejections.append(
+                    "route includes player-relocation program: "
+                    f"{mobile.short_description} in room {room_vnum}"
+                )
+            if not _source_mobile_is_route_hazard(world, mobile):
                 continue
-            if not mobile.aggressive and room_vnum != target_room_vnum:
+            if (
+                not mobile.aggressive
+                and not mobile.player_relocation_programs
+                and room_vnum != target_room_vnum
+            ):
                 continue
             maximum_level = _mobile_level_range(mobile.level)[1]
             hazard_noun = (
+                "player-relocation program"
+                if mobile.player_relocation_programs
+                else
                 "aggressive reset"
                 if mobile.aggressive
                 else "combat-joining special"
             )
             hazard_article = "an" if mobile.aggressive else "a"
+            if mobile.player_relocation_programs:
+                continue
             if maximum_level > character_level:
                 rejections.append(
                     f"route crosses a higher-level {hazard_noun}: "
@@ -6717,6 +6917,7 @@ def source_route_hazard_rejections(
     invisible: bool = False,
     audit_invisible_equipment: bool = False,
     economic_special_mobile_vnums: Collection[int] = (),
+    economic_transit_allow_equipped_mobile_vnums: Collection[int] = (),
     economic_hunt_mobile_vnums: Collection[int] = (),
     economic_hunt_allow_bounded_population: bool = False,
     hazard_index: SourceRouteHazardIndex | None = None,
@@ -6731,6 +6932,9 @@ def source_route_hazard_rejections(
         invisible=invisible,
         audit_invisible_equipment=audit_invisible_equipment,
         economic_special_mobile_vnums=economic_special_mobile_vnums,
+        economic_transit_allow_equipped_mobile_vnums=(
+            economic_transit_allow_equipped_mobile_vnums
+        ),
         economic_hunt_mobile_vnums=economic_hunt_mobile_vnums,
         economic_hunt_allow_bounded_population=(
             economic_hunt_allow_bounded_population
@@ -6740,7 +6944,10 @@ def source_route_hazard_rejections(
 
 
 def source_mobile_has_only_economic_transit_risk(
-    world: WorldSource, mobile_vnum: int,
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    allow_equipped: bool = False,
 ) -> bool:
     """Audit spec_thief without declaring it globally safe for travel or combat."""
     mobile = world.mobiles.get(mobile_vnum)
@@ -6749,7 +6956,11 @@ def source_mobile_has_only_economic_transit_risk(
         mobile is not None and not mobile.aggressive and not mobile.fear_aura
         and not mobile.programs and not mobile.attack_programs
         and set(world.mobile_specials.get(mobile_vnum, ())) == {"spec_thief"}
-        and resets and not any(r.equipment for r in resets)
+        and resets
+        and (
+            allow_equipped
+            or not any(r.equipment for r in resets)
+        )
     )
 
 
@@ -6950,6 +7161,20 @@ def _source_mobile_is_combat_hazard(
     )
 
 
+def _source_mobile_is_route_hazard(
+    world: WorldSource,
+    mobile: MobileSource,
+) -> bool:
+    """Return whether source behavior can disrupt a traversed route.
+
+    A player-relocation program is not itself an attack, so keep it separate
+    from combat admission while still treating it as a hard route hazard.
+    """
+    return _source_mobile_is_combat_hazard(world, mobile) or bool(
+        mobile.player_relocation_programs
+    )
+
+
 def _source_aggressive_reset_can_reach_character(
     world: WorldSource,
     mobile: MobileSource,
@@ -6989,6 +7214,7 @@ def _source_mobile_safe_special_suppresses_route_hazard(
     if (
         not _source_mobile_has_safe_noncombat_special(world, mobile.vnum)
         or mobile.attack_programs
+        or mobile.player_relocation_programs
     ):
         return False
     if mobile.wimpy:
@@ -7986,7 +8212,7 @@ def _wandering_aggressors(
         for reset in world.mob_resets
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
         and (
-            _source_mobile_is_combat_hazard(world, mobile)
+            _source_mobile_is_route_hazard(world, mobile)
             or _source_mobile_has_unsafe_special(
                 world,
                 mobile.vnum,
@@ -8101,7 +8327,7 @@ def _rank_direct_ground_stashes(
         for path_room_vnum in path_rooms:
             for reset in resets_by_room.get(path_room_vnum, ()):
                 mobile = world.mobiles.get(reset.mobile_vnum)
-                if mobile is None or not _source_mobile_is_combat_hazard(
+                if mobile is None or not _source_mobile_is_route_hazard(
                     world,
                     mobile,
                 ):
@@ -8119,10 +8345,14 @@ def _rank_direct_ground_stashes(
                 if (
                     not mobile.aggressive
                     and not mobile.attack_programs
+                    and not mobile.player_relocation_programs
                     and path_room_vnum != room_vnum
                 ):
                     continue
                 hazard_kind = (
+                    "route player-relocation program"
+                    if mobile.player_relocation_programs
+                    else
                     "route program attacker"
                     if mobile.attack_programs
                     else "route"
@@ -8133,6 +8363,11 @@ def _rank_direct_ground_stashes(
                     f"{hazard_kind}: {mobile.short_description} L{mobile.level} "
                     f"in {path_room_vnum}"
                 )
+                if mobile.player_relocation_programs:
+                    rejections.append(
+                        "route crosses a source player-relocation program"
+                    )
+                    continue
                 hazard_level_max = _mobile_level_range(mobile.level)[1]
                 hazard_noun = (
                     "program-triggered attacker"
@@ -8203,11 +8438,15 @@ def _rank_direct_ground_stashes(
         # evidence: the runner can finish an unavoidable source-proven trivial
         # interruption without treating it as an XP target.
         for mobile_vnum, mobile in world.mobiles.items():
-            if not _source_mobile_is_combat_hazard(world, mobile) or not mobile.wanders:
+            if not _source_mobile_is_route_hazard(world, mobile) or not mobile.wanders:
                 continue
             hazard_rooms = (
                 path_room_set
-                if mobile.aggressive or mobile.attack_programs
+                if (
+                    mobile.aggressive
+                    or mobile.attack_programs
+                    or mobile.player_relocation_programs
+                )
                 else {room_vnum}
             )
             reachable = mobile_search_rooms_cache.get(mobile_vnum)
@@ -8227,6 +8466,9 @@ def _rank_direct_ground_stashes(
                 )
                 continue
             hazard_kind = (
+                "reachable player-relocation program"
+                if mobile.player_relocation_programs
+                else
                 "reachable program attacker"
                 if mobile.attack_programs
                 else "reachable wanderer"
@@ -8236,8 +8478,17 @@ def _rank_direct_ground_stashes(
             hazards.append(
                 f"{hazard_kind}: {mobile.short_description} L{mobile.level}"
             )
+            if mobile.player_relocation_programs:
+                dangerous = True
+                autonomy_rejections.append(
+                    "a player-relocation program can reach the route"
+                )
+                continue
             hazard_level_max = _mobile_level_range(mobile.level)[1]
             hazard_noun = (
+                "player-relocation program"
+                if mobile.player_relocation_programs
+                else
                 "program-triggered attacker"
                 if mobile.attack_programs
                 else "aggressive wanderer"
@@ -8274,7 +8525,7 @@ def _rank_direct_ground_stashes(
                 )
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or not _source_mobile_is_combat_hazard(
+            if mobile is None or not _source_mobile_is_route_hazard(
                 world,
                 mobile,
             ):
@@ -8289,7 +8540,13 @@ def _rank_direct_ground_stashes(
                     f"{mobile.short_description}"
                 )
                 continue
-            if mobile.aggressive:
+            if mobile.player_relocation_programs:
+                hazards.append(
+                    "stash room has a player-relocation program: "
+                    f"{mobile.short_description}"
+                )
+                rejections.append("stash room has a player-relocation program")
+            elif mobile.aggressive:
                 hazards.append(
                     f"stash room has aggressive reset: "
                     f"{mobile.short_description}"
@@ -8610,6 +8867,26 @@ def _read_tilde(
             break
         parts.append(line)
     return "\n".join(parts), index
+
+
+def _read_tilde_fields(
+    lines: list[str],
+    index: int,
+    end: int,
+    count: int,
+) -> tuple[list[str], int]:
+    """Read consecutive tilde fields even when a record wraps lines."""
+    fields: list[str] = []
+    remainder = ""
+    while index < end and len(fields) < count:
+        if remainder:
+            remainder += "\n"
+        remainder += lines[index]
+        index += 1
+        while "~" in remainder and len(fields) < count:
+            field, _, remainder = remainder.partition("~")
+            fields.append(field)
+    return fields, index
 
 
 def _next_vnum_marker(lines: list[str], index: int, end: int) -> int:

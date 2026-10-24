@@ -3,6 +3,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from dd4tester.campaign import (
     _BUY_FLIGHT_POLICY,
     _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY,
@@ -12,14 +14,21 @@ from dd4tester.campaign import (
     _MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID,
     _MORIA_SANCTUARY_SECOND_FIXED_RESET_REACQUISITION_KEY,
     _SOURCE_REVISION_KEY,
+    _SOURCE_RANKED_HUNT_POLICY,
     _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
     _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY,
+    _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY,
+    _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY,
     _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+    _SOURCE_CONSUMABLE_SANCTUARY_POLICY_IDS,
     CampaignRunner,
+    load_campaign_spec,
     _campaign_has_caerlin_staff,
     _campaign_segment_end_state,
     _repair_caerlin_staff_attempt_metadata,
+    _repair_source_resource_dispatch_contract,
     _repair_stale_caerlin_staff_reserve,
+    _state_has_sanctuary_reserve,
     _caerlin_staff_handoff_repair_allowed,
     _caerlin_staff_locator_revalidation_allowed,
     _caerlin_staff_locator_retry_allowed,
@@ -30,10 +39,19 @@ from dd4tester.campaign import (
     _select_source_ranked_alternate_sanctuary_candidate,
     _select_source_ranked_moria_4071_reacquisition_candidate,
     _select_source_ranked_olympus_sanctuary_candidate,
+    _select_source_ranked_olympus_adept_sanctuary_candidate,
+    _select_source_ranked_olympus_hephaestus_sanctuary_candidate,
+    _select_source_ranked_sanctuary_maintenance_candidate,
     _select_source_consumable_candidate,
+    _sanctuary_policy_retry_terminal,
+    _source_consumable_required_loot_level_offset,
+    _source_consumable_selective_loot_keywords,
     _source_caerlin_staff_candidate_shape_allowed,
+    _source_hephaestus_sanctuary_candidate_shape_allowed,
+    _source_hephaestus_dispatch_contract_allowed,
     _source_ranked_healer_blindness_recovery_allowed,
     _source_ranked_hunt_stops,
+    _source_ranked_sanctuary_candidate_research_open,
     _source_sanctuary_carrier_output_allowed,
 )
 from dd4tester.encounters import active_encounter_budget
@@ -113,6 +131,20 @@ def test_campaign_staff_detection_parses_ansi_nested_char_items() -> None:
     assert _campaign_has_caerlin_staff(state)
 
 
+def test_campaign_staff_detection_accepts_structured_gmcp_equipment() -> None:
+    state = {
+        "equipment": [
+            {
+                "name": "Staff of the Bard",
+                "slot": "hold",
+                "vnum": 19173,
+            }
+        ]
+    }
+
+    assert _campaign_has_caerlin_staff(state)
+
+
 def test_caerlin_is_selected_as_exact_staff_recovery_carrier() -> None:
     world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
     state = _level_39_healer_state()
@@ -156,6 +188,29 @@ def test_alternate_sanctuary_carrier_stays_closed_after_same_boot_absence() -> N
     state["campaign_source_revision"] = "test-source"
     state["campaign_research_results"] = {
         "source-ranked-hunt-olympus-916-927-39": {
+            "boot_id": "test-boot",
+            "absent": True,
+            "observed": False,
+            "viable": False,
+        }
+    }
+
+    assert (
+        _select_source_ranked_alternate_sanctuary_candidate(
+            state,
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+        )
+        is None
+    )
+
+
+def test_alternate_policy_absence_closes_candidate_specific_carrier() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.policy_id: {
             "boot_id": "test-boot",
             "absent": True,
             "observed": False,
@@ -277,6 +332,532 @@ def test_olympus_sanctuary_policy_closes_after_its_own_fatal_result() -> None:
     )
 
 
+def test_olympus_sanctuary_carrier_closes_after_same_boot_source_xp_loss() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_ranked_xp_loss_policies"] = [
+        {
+            "boot_id": "test-boot",
+            "level": 39,
+            "policy_id": "source-ranked-hunt-olympus-916-927-39",
+            "loss_count": 1,
+            "loss_event_id": 18218,
+            "xp_delta": -1000,
+        }
+    ]
+
+    assert _sanctuary_policy_retry_terminal(
+        state,
+        _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id,
+    )
+    assert (
+        _select_source_ranked_olympus_sanctuary_candidate(
+            state,
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+        )
+        is None
+    )
+    assert (
+        _select_source_consumable_candidate(
+            state,
+            spell_name="sanctuary",
+            short_description="an ivory staff",
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+            require_unarmed=True,
+            required_reset=(916, 927),
+        )
+        is None
+    )
+
+
+def test_sanctuary_maintenance_can_use_fresh_out_of_band_armed_adept() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "level": 40,
+            "hp": 962,
+            "max_hp": 962,
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_research_results": {
+                "source-ranked-hunt-olympus-905-926-40": {
+                    "boot_id": "test-boot",
+                    "completed_kill": False,
+                    "consider_viable": False,
+                    "observed": True,
+                    "viable": False,
+                }
+            },
+        }
+    )
+
+    selection = _select_source_ranked_sanctuary_maintenance_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+        excluded_target_stops=((916, 927), (907, 925), (908, 937)),
+        level_ceiling_offset=100,
+        require_unarmed=False,
+        allowed_target_specials=("spec_cast_adept",),
+        allow_armed_carrier=True,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (905, 926)
+    assert candidate.estimated_level_range == (42, 46)
+    assert candidate.specials == ("spec_cast_adept",)
+    assert len(candidate.equipped_weapons) == 1
+    assert object_vnums == (926,)
+    assert (
+        _source_consumable_required_loot_level_offset(
+            candidate,
+            world,
+            character_level=40,
+            allow_out_of_band=True,
+        )
+        == 6
+    )
+
+
+def test_olympus_adept_policy_selects_athena_after_alchemist_closes() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id: {
+            "boot_id": "test-boot",
+            "level": 39,
+            "fatal_failure": True,
+            "completed_kill": False,
+        }
+    }
+
+    selection = _select_source_ranked_olympus_adept_sanctuary_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (907, 925)
+    assert candidate.specials == ("spec_cast_adept",)
+    assert object_vnums == (905,)
+    assert _source_consumable_required_loot_level_offset(candidate, world) == 5
+    assert _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id not in (
+        state["campaign_research_results"]
+    )
+
+
+def test_olympus_adept_policy_keeps_its_own_fatal_result_closed() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id: {
+            "boot_id": "test-boot",
+            "level": 39,
+            "fatal_failure": True,
+            "completed_kill": False,
+        }
+    }
+
+    assert (
+        _select_source_ranked_olympus_adept_sanctuary_candidate(
+            state,
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+        )
+        is None
+    )
+
+
+def test_olympus_hephaestus_policy_selects_exact_lightning_carrier() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    selection = _select_source_ranked_olympus_hephaestus_sanctuary_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (908, 937)
+    assert candidate.specials == ("spec_breath_lightning",)
+    assert object_vnums == (926,)
+    assert _source_hephaestus_sanctuary_candidate_shape_allowed(candidate, world)
+    assert _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.minimum_level == 38
+    stops = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=39,
+        state=state,
+    )
+    endpoint = next(stop for stop in stops if stop.target is not None)
+    assert endpoint.require_sanctuary is False
+    assert endpoint.allow_source_hephaestus_special_endpoint is True
+
+
+def test_hephaestus_policy_uses_source_consumable_dispatch_contract() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    selection = _select_source_ranked_olympus_hephaestus_sanctuary_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert (
+        _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+        in _SOURCE_CONSUMABLE_SANCTUARY_POLICY_IDS
+    )
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert _source_hephaestus_dispatch_contract_allowed(
+        candidate,
+        object_vnums,
+    )
+    assert not _source_hephaestus_dispatch_contract_allowed(candidate, (4050,))
+
+
+def test_misrouted_hephaestus_receipt_is_invalidated_without_editing_run() -> None:
+    policy_id = _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+
+    class MemoryStorage:
+        def __init__(self) -> None:
+            self.segments = [{
+                "id": 18449,
+                "sequence": 800,
+                "phase": policy_id,
+                "run_id": 19055,
+            }]
+            self.checkpoints: list[dict[str, object]] = []
+
+        def list_recent_campaign_segments(self, _campaign_id: int, *, limit: int):
+            return self.segments[:limit]
+
+        def record_campaign_checkpoint(self, _campaign_id: int, **kwargs):
+            self.checkpoints.append(kwargs)
+
+    storage = MemoryStorage()
+    state = {
+        "level": 39,
+        "world_boot_id": "test-boot",
+        "campaign_source_revision": "test-source",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": True,
+                "viable": True,
+                "completed_kill": False,
+                "required_object_acquired": True,
+                "required_object_vnums": [4050],
+                "boot_id": "test-boot",
+            }
+        },
+    }
+    checkpoint = {
+        "segment_id": 18449,
+        "run_id": 19055,
+        "phase": policy_id,
+    }
+
+    repaired = _repair_source_resource_dispatch_contract(
+        storage,
+        35,
+        checkpoint,
+        state,
+    )
+
+    assert policy_id not in repaired.get("campaign_research_results", {})
+    assert repaired["campaign_source_resource_dispatch_contract_repair"][
+        "observed_object_vnums"
+    ] == [4050]
+    assert storage.checkpoints[0]["reason"] == (
+        "source_resource_dispatch_contract_repaired"
+    )
+
+
+def test_invalidated_misrouted_hephaestus_receipt_reopens_selector() -> None:
+    policy_id = _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "world_boot_id": "test-boot",
+            "campaign_source_revision": "test-source",
+            "campaign_source_resource_dispatch_contract_repair": {
+                "status": "invalidated",
+                "policy_id": policy_id,
+                "boot_id": "test-boot",
+                "source_revision": "test-source",
+                "observed_object_vnums": [4050],
+                "expected_object_vnums": [926],
+            },
+            "campaign_research_results": {
+                policy_id: {
+                    "boot_id": "test-boot",
+                    "required_object_acquired": True,
+                    "required_object_vnums": [4050],
+                    "viable": True,
+                }
+            },
+        }
+    )
+    candidate = SimpleNamespace(
+        mobile_vnum=908,
+        room_vnum=937,
+    )
+
+    assert _source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+    )
+
+
+def test_olympus_hephaestus_policy_keeps_its_own_fatal_result_closed() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state["campaign_source_revision"] = "test-source"
+    state["campaign_research_results"] = {
+        _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id: {
+            "boot_id": "test-boot",
+            "level": 39,
+            "fatal_failure": True,
+            "completed_kill": False,
+        }
+    }
+
+    assert (
+        _select_source_ranked_olympus_hephaestus_sanctuary_candidate(
+            state,
+            source_directory=SOURCE_DIRECTORY,
+            source_world=world,
+        )
+        is None
+    )
+
+
+def test_olympus_viability_result_opens_athena_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    config_path = Path("runs/heroes/dorrik/campaign.yaml")
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._source_world = world
+    runner._boot_id = "test-boot"
+    runner._select_source_ranked_candidate = lambda _state, **_kwargs: None
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *_args, **_kwargs: _SOURCE_RANKED_HUNT_POLICY,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._caerlin_staff_handoff_repair_allowed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._caerlin_staff_retry_open",
+        lambda *_args, **_kwargs: False,
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a buffalo water skin"},
+            ]],
+            "hunger": 100,
+            "thirst": 100,
+            "move": 500,
+            "max_move": 500,
+            "affects": [{"name": "fly", "duration": "100"}],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_source_resource_reserves": {},
+            "campaign_fastwalk_training_complete": True,
+            "campaign_training_deficit_repair": {
+                "attempted": True,
+                "boot_id": "test-boot",
+                "deficits": [],
+            },
+            "campaign_training_audit": {
+                "observed": True,
+                "boot_id": "test-boot",
+                "level": 39,
+                "physical_practices": 0,
+                "intellectual_practices": 0,
+                "deficits": [],
+            },
+            "campaign_protection_recovery_required": {
+                "boot_id": "test-boot",
+                "level": 39,
+                "loss_count": 1,
+                "policy_id": "source-ranked-hunt-quake-12038-12199-39",
+                "trigger": "hard_health_floor",
+                "xp_delta": 0,
+            },
+            "campaign_research_results": {
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "fatal_failure": True,
+                    "completed_kill": False,
+                },
+                _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "fatal_failure": True,
+                    "completed_kill": False,
+                },
+                _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "observed": True,
+                    "completed_kill": False,
+                    "viable": False,
+                },
+            },
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "closed",
+                "outcome": "route_hazard",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    assert _sanctuary_policy_retry_terminal(
+        state,
+        _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id,
+    )
+    selected = runner._policy_without_learned_flight(state)
+
+    assert selected.policy_id == _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id
+    assert runner._selected_source_consumable_candidate is not None
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 907
+    assert runner._selected_source_consumable_object_vnums == (905,)
+
+
+def test_olympus_hephaestus_fallback_opens_after_athena_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    config_path = Path("runs/heroes/dorrik/campaign.yaml")
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._source_world = world
+    runner._boot_id = "test-boot"
+    runner._select_source_ranked_candidate = lambda _state, **_kwargs: None
+    monkeypatch.setattr(
+        "dd4tester.campaign.policy_for",
+        lambda *_args, **_kwargs: _SOURCE_RANKED_HUNT_POLICY,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._caerlin_staff_handoff_repair_allowed",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        "dd4tester.campaign._caerlin_staff_retry_open",
+        lambda *_args, **_kwargs: False,
+    )
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[
+                {"short_desc": "a big pot pie"},
+                {"short_desc": "a buffalo water skin"},
+            ]],
+            "hunger": 100,
+            "thirst": 100,
+            "move": 500,
+            "max_move": 500,
+            "affects": [{"name": "fly", "duration": "100"}],
+            _SOURCE_REVISION_KEY: "test-source",
+            "campaign_source_resource_reserves": {},
+            "campaign_fastwalk_training_complete": True,
+            "campaign_training_deficit_repair": {
+                "attempted": True,
+                "boot_id": "test-boot",
+                "deficits": [],
+            },
+            "campaign_training_audit": {
+                "observed": True,
+                "boot_id": "test-boot",
+                "level": 39,
+                "physical_practices": 0,
+                "intellectual_practices": 0,
+                "deficits": [],
+            },
+            "campaign_protection_recovery_required": {
+                "boot_id": "test-boot",
+                "level": 39,
+                "loss_count": 1,
+                "policy_id": "source-ranked-hunt-quake-12038-12199-39",
+                "trigger": "hard_health_floor",
+                "xp_delta": 0,
+            },
+            "campaign_research_results": {
+                _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "fatal_failure": True,
+                    "completed_kill": False,
+                },
+                _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "fatal_failure": True,
+                    "completed_kill": False,
+                },
+                _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "observed": True,
+                    "completed_kill": False,
+                    "viable": False,
+                },
+                _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id: {
+                    "boot_id": "test-boot",
+                    "level": 39,
+                    "fatal_failure": True,
+                    "completed_kill": False,
+                },
+            },
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "closed",
+                "outcome": "route_hazard",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    assert _sanctuary_policy_retry_terminal(
+        state,
+        _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id,
+    )
+    selected = runner._policy_without_learned_flight(state)
+
+    assert selected.policy_id == (
+        _SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    )
+    assert runner._selected_source_consumable_candidate is not None
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 908
+    assert runner._selected_source_consumable_object_vnums == (926,)
+
+
 def test_caerlin_recovery_stop_is_unprotected_but_healer_backed() -> None:
     world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
     state = _level_39_healer_state()
@@ -320,6 +901,14 @@ def test_caerlin_recovery_stop_is_unprotected_but_healer_backed() -> None:
     assert endpoint.allow_healer_blindness_recovery is True
     assert endpoint.source_specials == ("spec_cast_cleric",)
     assert endpoint.outbound_intercept_room_vnums == ("19002",)
+
+
+def test_caerlin_staff_uses_selective_loot_keyword() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+
+    assert _source_consumable_selective_loot_keywords(
+        world.objects[19173]
+    ) == ("staff",)
 
 
 def test_caerlin_staff_special_follows_the_wanderer_through_opened_doors() -> None:
@@ -817,6 +1406,123 @@ def test_live_nested_staff_inventory_keeps_caerlin_reserve() -> None:
     assert repaired["campaign_source_resource_reserves"] == {
         "sanctuary": reserve
     }
+
+
+def test_structured_live_staff_rebuilds_missing_caerlin_reserve() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "world_boot_id": "test-boot",
+            "campaign_source_revision": "test-source",
+            "campaign_source_resource_reserves": {},
+            "equipment": [
+                {
+                    "name": "Staff of the Bard",
+                    "slot": "hold",
+                    "vnum": 19173,
+                }
+            ],
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "succeeded",
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    repaired = _repair_stale_caerlin_staff_reserve(
+        state,
+        state,
+        source_revision="test-source",
+        source_world=world,
+    )
+
+    reserve = repaired["campaign_source_resource_reserves"]["sanctuary"]
+    assert reserve["object_vnum"] == 19173
+    assert reserve["charges_remaining"] == 10
+    assert reserve["command"] == "brandish"
+    assert _state_has_sanctuary_reserve(repaired)
+
+
+def test_memory_staff_does_not_rebuild_caerlin_reserve() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "world_boot_id": "test-boot",
+            "campaign_source_revision": "test-source",
+            "campaign_source_resource_reserves": {},
+            "inventory": '[[{"short_desc":"the memory staff"}]]',
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "closed",
+                "outcome": "reserve_reacquisition_missed",
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+
+    assert not _campaign_has_caerlin_staff(state)
+    repaired = _repair_stale_caerlin_staff_reserve(
+        state,
+        state,
+        source_revision="test-source",
+        source_world=world,
+    )
+
+    assert repaired["campaign_source_resource_reserves"] == {}
+    assert not _state_has_sanctuary_reserve(repaired)
+
+
+def test_memory_staff_clears_a_false_caerlin_reserve_from_merged_state() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "world_boot_id": "test-boot",
+            "campaign_source_revision": "test-source",
+            "campaign_source_resource_reserves": {
+                "sanctuary": {
+                    "effect": "sanctuary",
+                    "object_vnum": 19173,
+                    "object_description": "memory staff",
+                    "mode": "staff",
+                    "charges_remaining": 10,
+                }
+            },
+            "inventory": '[[{"short_desc":"the memory staff"}]]',
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "closed",
+                "outcome": "reserve_reacquisition_missed",
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+    live_state = {"inventory": '[[{"short_desc":"the memory staff"}]]'}
+
+    repaired = _repair_stale_caerlin_staff_reserve(
+        state,
+        live_state,
+        source_revision="test-source",
+        source_world=world,
+    )
+
+    assert repaired["campaign_source_resource_reserves"] == {}
+    assert not _state_has_sanctuary_reserve(repaired)
 
 
 def test_caerlin_reacquisition_preempts_optional_rearming() -> None:

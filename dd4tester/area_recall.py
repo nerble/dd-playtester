@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Collection, Mapping, Sequence
 
 from .equipment import (
     GearCatalog,
+    ITEM_WEAPON,
     STANCE_COMBAT,
     STANCE_RECOVERY,
     is_capacity_infrastructure,
@@ -22,7 +23,12 @@ from .hunt_candidates import (
     source_room_level_rejection, source_route_hazard_rejections,
 )
 from .observations import _DD4_PROMPT
-from .source_purchases import SourcePurchase, SourcePurchaseSession
+from .source_purchases import (
+    SourceLiquidation,
+    SourceLiquidationSession,
+    SourcePurchase,
+    SourcePurchaseSession,
+)
 from .specials import SAFE_NONCOMBAT_SPECIALS, TRANSIT_SAFE_COMBAT_ONLY_SPECIALS
 from .state import CharacterState
 
@@ -39,6 +45,10 @@ SHOP_STEPS = (
 ESCAPE_STEPS = (
     (27347, "up", 27647), (27647, "up", 27132),
     (27132, "up", 27071),
+)
+WATER_LOSS_RETURN_STEPS = (
+    (27132, "down", 27648), (27648, "west", 27647),
+    (27647, "down", 27347),
 )
 SHOP_RETURN_STEPS = (
     (27331, "east", 27332), (27332, "north", 27337),
@@ -78,11 +88,38 @@ LOCAL_WATER_SHOP_STEPS = {
         (27344, "south", 27339), (27339, "east", 27340),
     ),
 }
+LOCAL_WATER_RECALL_ROOMS = frozenset(
+    str(room)
+    for route in LOCAL_WATER_SHOP_STEPS.values()
+    for origin, _direction, destination in route
+    for room in (origin, destination)
+)
 LOCAL_WATER_POTION_VNUM = 27333
 LOCAL_WATER_POTION_DESCRIPTION = "shark's wine"
 LOCAL_WATER_POTION_KEYWORD = "shark"
 LOCAL_WATER_POTION_SHOPKEEPER_VNUM = 27235
 LOCAL_WATER_POTION_SHOP_ROOM = 27340
+LOCAL_WEAPON_SHOPKEEPER_VNUM = 27233
+LOCAL_WEAPON_SHOP_ROOM = 27334
+LOCAL_WEAPON_SHOP_STEPS = {
+    "27340": (
+        (27340, "west", 27339), (27339, "south", 27334),
+    ),
+    "27347": (
+        (27347, "south", 27341), (27341, "east", 27342),
+        (27342, "east", 27343), (27343, "east", 27344),
+        (27344, "south", 27339), (27339, "south", 27334),
+    ),
+}
+LOCAL_WEAPON_TO_WATER_STEPS = (
+    (27334, "north", 27339), (27339, "east", 27340),
+)
+LOCAL_WEAPON_LIQUIDATION = SourceLiquidation(
+    LOCAL_WEAPON_SHOPKEEPER_VNUM,
+    LOCAL_WEAPON_SHOP_ROOM,
+    (ITEM_WEAPON,),
+    maximum_items=1,
+)
 LOCAL_VALUE_OFFER = re.compile(
     r"tells you 'I'll give you (?P<coins>\d+) coins? for (?P<item>.+?)'\.",
     re.IGNORECASE,
@@ -155,11 +192,18 @@ def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int
     for origin, direction, destination in (
         *SHOP_STEPS,
         *ESCAPE_STEPS,
+        *WATER_LOSS_RETURN_STEPS,
         *{
             step
             for route in LOCAL_WATER_SHOP_STEPS.values()
             for step in route
         },
+        *{
+            step
+            for route in LOCAL_WEAPON_SHOP_STEPS.values()
+            for step in route
+        },
+        *LOCAL_WEAPON_TO_WATER_STEPS,
     ):
         room = world.rooms.get(origin)
         target = world.rooms.get(destination)
@@ -225,6 +269,33 @@ def undersea_escape_source_issue(world: WorldSource, directory: Path, level: int
         for reason in local_water_hazards
     ):
         return "the local water-breathing shop route has an additional source hazard"
+    market_text = (directory / "sahuagin_market.are").read_text(
+        encoding="utf-8", errors="replace",
+    )
+    weapon_stock = [
+        reset
+        for reset in world.mob_resets
+        if reset.mobile_vnum == LOCAL_WEAPON_SHOPKEEPER_VNUM
+        and reset.room_vnum == LOCAL_WEAPON_SHOP_ROOM
+    ]
+    if (
+        LOCAL_WEAPON_SHOPKEEPER_VNUM not in world.shopkeepers
+        or len(weapon_stock) != 1
+        or not re.search(r"(?m)^27233\s+5\s+0\s+0\s+0\s+0\s+", market_text)
+    ):
+        return "the exact local weaponsmith liquidation route is not source-usable"
+    weapon_route_hazards = source_route_hazard_rejections(
+        world,
+        tuple(step[0] for step in LOCAL_WEAPON_SHOP_STEPS["27347"])
+        + (LOCAL_WEAPON_SHOP_ROOM,),
+        character_level=level,
+        combat_at_destination=False,
+    )
+    if any(
+        reason != "a non-safe special mobile can reach the route: a sahuagin thief"
+        for reason in weapon_route_hazards
+    ):
+        return "the local weaponsmith liquidation route has an additional source hazard"
     # Only visible pre-combat threats can be excluded by the infrared scan.
     # Passive invisible combat-only casters cannot start this noncombat route.
     dangerous = set()
@@ -259,7 +330,7 @@ class AreaRecallEscape:
     also makes the escape usable, so a verified permanent light can avoid an
     unnecessary reboot-priced purchase. A reconnect that clears water
     breathing can also buy the source-verified local potion, funding it with
-    one redundant source armour item when necessary.
+    a bounded set of distinct redundant source armour items when necessary.
     """
 
     stage: str = "new"
@@ -273,6 +344,8 @@ class AreaRecallEscape:
         SourcePurchase(27292, 27231, 27331, "a goblin shark pie", "shark", 500, 100),
     ))
     scans: list[dict[str, str]] = field(default_factory=list)
+    scan_retry_count: int = 0
+    scan_retry_due: float | None = None
     commands_sent: int = 0
     backtrack_index: int = 0
     water_purchase: SourcePurchaseSession = field(default_factory=lambda: SourcePurchaseSession(
@@ -290,7 +363,17 @@ class AreaRecallEscape:
     water_prep_origin: str | None = None
     water_route_index: int = 0
     water_return_index: int = 0
+    water_loss_return_active: bool = False
+    water_loss_return_index: int = 0
     water_funding_attempted: bool = False
+    water_funding_attempts: int = 0
+    water_funding_item_vnums: tuple[int, ...] = ()
+    water_funding_origin: str | None = None
+    water_funding_route_index: int = 0
+    water_funding_return_index: int = 0
+    water_funding_liquidation: SourceLiquidationSession = field(
+        default_factory=lambda: SourceLiquidationSession(LOCAL_WEAPON_LIQUIDATION),
+    )
     water_sale_description: str | None = None
     water_sale_keyword: str | None = None
     water_sale_selector: str | None = None
@@ -313,6 +396,7 @@ class AreaRecallEscape:
     def observe(self, text: str) -> None:
         self.purchase.observe(text)
         self.water_purchase.observe(text)
+        self.water_funding_liquidation.observe(text)
         if self.pending_kind:
             self.response = (self.response + text)[-8000:]
 
@@ -322,6 +406,9 @@ class AreaRecallEscape:
             return True
         if self.water_purchase.expire(now):
             self.failure = self.water_purchase.failure
+            return True
+        if self.water_funding_liquidation.expire(now):
+            self.failure = self.water_funding_liquidation.failure
             return True
         if self.deadline is not None and now >= self.deadline:
             if not _DD4_PROMPT.search(self.response):
@@ -340,8 +427,10 @@ class AreaRecallEscape:
         inventory: Sequence[tuple[str, str | None]],
         equipment: Any,
         gear_catalog: GearCatalog | None,
+        excluded_vnums: Collection[int] = (),
+        accepted_item_types: Collection[int] = (9,),
     ) -> tuple[str, str | None, Any] | None:
-        """Choose one redundant, source-safe armour item for the local quote."""
+        """Choose one redundant, source-safe item for a local quote."""
         if gear_catalog is None:
             return None
         worn_names = _equipment_names(equipment)
@@ -354,7 +443,8 @@ class AreaRecallEscape:
                 continue
             item = candidates[0]
             if (
-                item.item_type != 9
+                item.vnum in excluded_vnums
+                or item.item_type not in accepted_item_types
                 or not is_releasable_funding_item(item)
                 or is_capacity_infrastructure(item)
                 or item_category(item) is None
@@ -425,6 +515,12 @@ class AreaRecallEscape:
         invisible: bool,
     ) -> str | None:
         """Buy and consume local water breathing before the air-sector exit."""
+        if state.position == 4 or str(state.position).casefold() == "sleeping":
+            return self._send(
+                "stand",
+                now,
+                kind="water-wake",
+            )
         origin = self.water_prep_origin
         route = LOCAL_WATER_SHOP_STEPS.get(str(origin or ""), ())
         if not route:
@@ -460,37 +556,29 @@ class AreaRecallEscape:
                 quote_failure = self.water_purchase.failure == (
                     "quoted price exceeds the reserved purchase balance"
                 )
-                if quote_failure and not self.water_funding_attempted:
-                    funding = self._funding_item(inventory, equipment, gear_catalog)
-                    if funding is None:
+                if quote_failure and self.water_funding_attempts < 4:
+                    self.water_funding_attempted = True
+                    self.water_funding_attempts += 1
+                    self.water_funding_origin = str(state.room_vnum)
+                    if self.water_funding_origin not in LOCAL_WEAPON_SHOP_STEPS:
                         self.failure = (
-                            "the local water-breathing potion is unaffordable and no "
-                            "redundant source armour item is available for funding"
+                            "the local water-breathing potion is unaffordable and "
+                            "the source weaponsmith route has no registered origin"
                         )
                         return None
-                    description, selector, item = funding
-                    self.water_funding_attempted = True
-                    self.water_sale_description = description
-                    self.water_sale_selector = selector
-                    self.water_sale_vnum = item.vnum
-                    self.water_sale_keyword = next(
-                        word for word in item.keywords.split()
-                        if word.casefold() in {
-                            word.casefold()
-                            for word in normalize_item_name(description).split()
-                        }
+                    self.water_funding_route_index = 0
+                    self.water_funding_liquidation = SourceLiquidationSession(
+                        LOCAL_WEAPON_LIQUIDATION,
                     )
-                    self.water_sale_initial_count = _inventory_count(
-                        inventory, description
-                    )
-                    self.water_prep_stage = "water-sale-value"
-                    self.water_purchase = SourcePurchaseSession(
-                        self.water_purchase.plan,
-                    )
-                    return self._send(
-                        f"value {selector or self.water_sale_keyword}",
-                        now,
-                        kind="water-sale-value",
+                    self.water_prep_stage = "water-funding-outbound"
+                    return self._water_funding_command(
+                        state,
+                        inventory=inventory,
+                        coins=coins,
+                        gear_catalog=gear_catalog,
+                        equipment=equipment,
+                        now=now,
+                        invisible=invisible,
                     )
                 self.failure = self.water_purchase.failure
                 return None
@@ -543,6 +631,103 @@ class AreaRecallEscape:
             return None
         return None
 
+    def _water_funding_command(
+        self,
+        state: CharacterState,
+        *,
+        inventory: Sequence[tuple[str, str | None]],
+        coins: int,
+        gear_catalog: GearCatalog | None,
+        equipment: Any,
+        now: float,
+        invisible: bool,
+    ) -> str | None:
+        """Sell one source-safe weapon before retrying the water quote."""
+        if self.water_prep_stage == "water-funding-outbound":
+            route = LOCAL_WEAPON_SHOP_STEPS.get(str(self.water_funding_origin or ""), ())
+            if self.water_funding_route_index < len(route):
+                origin, direction, destination = route[self.water_funding_route_index]
+                if (
+                    str(state.room_vnum) != str(origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live local weaponsmith funding route differs from source"
+                    return None
+                self.water_funding_route_index += 1
+                return self._send(direction, now, kind="water-funding", room=destination)
+            self.water_prep_stage = "water-funding-sale"
+
+        if self.water_prep_stage == "water-funding-sale":
+            funding = self._funding_item(
+                inventory,
+                equipment,
+                gear_catalog,
+                excluded_vnums=self.water_funding_item_vnums,
+                accepted_item_types=(ITEM_WEAPON,),
+            )
+            command = self.water_funding_liquidation.next_command(
+                room_vnum=state.room_vnum,
+                inventory=inventory,
+                now=now,
+                funding_item=(funding[0], funding[1] or "", funding[2].vnum)
+                if funding is not None else None,
+            )
+            if self.water_funding_liquidation.failure:
+                self.failure = self.water_funding_liquidation.failure
+                return None
+            if command:
+                return self._send(
+                    command,
+                    now,
+                    kind="water-funding",
+                    room=LOCAL_WEAPON_SHOP_ROOM,
+                )
+            if self.water_funding_liquidation.stage != "complete":
+                return None
+            sold = self.water_funding_liquidation.funding_item_vnums
+            if not sold:
+                self.failure = (
+                    "the local water-breathing potion is unaffordable and no "
+                    "source-safe weapon is available for weaponsmith funding"
+                )
+                return None
+            self.water_funding_item_vnums = tuple(dict.fromkeys(
+                (*self.water_funding_item_vnums, *sold),
+            ))
+            self.water_funding_return_index = 0
+            self.water_prep_stage = "water-funding-return"
+
+        if self.water_prep_stage == "water-funding-return":
+            if self.water_funding_return_index < len(LOCAL_WEAPON_TO_WATER_STEPS):
+                origin, direction, destination = LOCAL_WEAPON_TO_WATER_STEPS[
+                    self.water_funding_return_index
+                ]
+                if (
+                    str(state.room_vnum) != str(origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live weaponsmith-to-water route differs from source"
+                    return None
+                self.water_funding_return_index += 1
+                return self._send(direction, now, kind="water-funding", room=destination)
+            self.water_funding_liquidation = SourceLiquidationSession(
+                LOCAL_WEAPON_LIQUIDATION,
+            )
+            self.water_purchase = SourcePurchaseSession(self.water_purchase.plan)
+            self.water_prep_stage = "water-purchase"
+            return self._water_preparation_command(
+                state,
+                inventory=inventory,
+                coins=coins,
+                gear_catalog=gear_catalog,
+                equipment=equipment,
+                now=now,
+                invisible=invisible,
+            )
+        return None
+
     def next_command(
         self, state: CharacterState, *, now: float, inventory: Sequence[tuple[str, str | None]],
         coins: int, flight: bool, infrared: bool, sanctuary: bool, purple_available: bool,
@@ -571,13 +756,21 @@ class AreaRecallEscape:
                 return None
             if kind == "scan":
                 self.scans.append({"room_vnum": str(room), "text": response})
-                if re.search(r"\b(?:one room|a closed .+? right here)\b", response, re.I):
+                if re.search(r"\ba closed .+? right here\b", response, re.I):
+                    self.failure = "the immediate escape destination is occupied or closed"
+                    return None
+                if re.search(r"\bone room upwards\b", response, re.I):
+                    if self.scan_retry_count < 2:
+                        self.scan_retry_count += 1
+                        self.scan_retry_due = now + 5.0
+                        return None
                     self.failure = "the immediate escape destination is occupied or closed"
                     return None
                 if not ("You can't see anything upwards." in response
                         or re.search(r"\b(?:two|three|four|five|six) rooms? upwards", response)):
                     self.failure = "the infrared escape scan had no complete direction response"
                     return None
+                self.scan_retry_count = 0
                 self.stage = "scanned"
             elif kind == "vision-consumed":
                 return self._send("affects", now, kind="vision")
@@ -611,6 +804,16 @@ class AreaRecallEscape:
                 self.water_prep_stage = "water-return"
                 self.water_return_index = 0
                 return self._water_preparation_command(
+                    state,
+                    inventory=inventory,
+                    coins=coins,
+                    gear_catalog=gear_catalog,
+                    equipment=equipment,
+                    now=now,
+                    invisible=invisible,
+                )
+            elif kind == "water-funding":
+                return self._water_funding_command(
                     state,
                     inventory=inventory,
                     coins=coins,
@@ -678,11 +881,56 @@ class AreaRecallEscape:
                 now=now,
                 invisible=invisible,
             )
+        if self.scan_retry_due is not None:
+            if now < self.scan_retry_due:
+                return None
+            self.scan_retry_due = None
         if not water_breathing:
-            if room != "27347":
-                if str(room or "") not in LOCAL_WATER_SHOP_STEPS:
+            if not self.water_loss_return_active and room != "27347":
+                if any(
+                    str(origin) == str(room)
+                    for origin, _direction, _destination in WATER_LOSS_RETURN_STEPS
+                ):
+                    self.water_loss_return_active = True
+                    self.water_loss_return_index = 0
+                elif str(room or "") not in LOCAL_WATER_RECALL_ROOMS:
                     self.failure = "underwater escape requires water breathing independently of flight"
                     return None
+            if self.water_loss_return_active:
+                if not state.move or state.move < 6:
+                    self.failure = "water-loss return has insufficient movement"
+                    return None
+                if room == "27347":
+                    self.water_loss_return_active = False
+                    self.water_loss_return_index = 0
+                    self.water_prep_origin = "27347"
+                    self.water_prep_stage = "water-outbound"
+                    self.water_route_index = 0
+                    return self._water_preparation_command(
+                        state,
+                        inventory=inventory,
+                        coins=coins,
+                        gear_catalog=gear_catalog,
+                        equipment=equipment,
+                        now=now,
+                        invisible=invisible,
+                    )
+                if self.water_loss_return_index >= len(WATER_LOSS_RETURN_STEPS):
+                    self.failure = "water-loss return reached an unexpected room"
+                    return None
+                origin, direction, destination = WATER_LOSS_RETURN_STEPS[
+                    self.water_loss_return_index
+                ]
+                if (
+                    room != str(origin)
+                    or state.exits.get(direction[0], state.exits.get(direction))
+                    != str(destination)
+                ):
+                    self.failure = "the live water-loss return differs from source"
+                    return None
+                self.water_loss_return_index += 1
+                return self._send(direction, now, room=destination)
+            if room != "27347":
                 self.water_prep_origin = "27347"
                 self.water_prep_stage = "water-await-recall"
                 return self._send("recall", now, kind="water-direct-recall", room=27347)
@@ -710,6 +958,20 @@ class AreaRecallEscape:
         if room == "3001":
             self.stage = "complete"
             return None
+        if (
+            room == "27347"
+            and self.stage in {"escape", "scanned", "supplied"}
+            and not infrared
+            and not light_available
+        ):
+            # A reconnect or a long safe wait can let the temporary pie
+            # expire after the cursor has already entered the escape phase.
+            # Re-enter the audited shop loop only from the safe local recall
+            # room; dark-room states remain fail-closed below.
+            self.stage = "new"
+            self.shop_index = 0
+            self.scans.clear()
+            self.purchase = SourcePurchaseSession(self.purchase.plan)
         if self.stage == "backtrack":
             if room == "27347":
                 self.stage = "new"
@@ -788,9 +1050,14 @@ class AreaRecallEscape:
     def evidence(self) -> dict:
         return {"stage": self.stage, "commands_sent": self.commands_sent,
                 "failure": self.failure, "purchase": self.purchase.evidence(),
-                "scans": self.scans, "backtrack_index": self.backtrack_index,
+                "scans": self.scans,
+                "scan_retry_count": self.scan_retry_count,
+                "scan_retry_due": self.scan_retry_due,
+                "backtrack_index": self.backtrack_index,
                 "water_prep_stage": self.water_prep_stage,
                 "water_prep_origin": self.water_prep_origin,
+                "water_loss_return_active": self.water_loss_return_active,
+                "water_loss_return_index": self.water_loss_return_index,
                 "water_purchase": self.water_purchase.evidence(),
                 "water_sale": {
                     "description": self.water_sale_description,
@@ -799,4 +1066,10 @@ class AreaRecallEscape:
                     "initial_count": self.water_sale_initial_count,
                 },
                 "water_funding_attempted": self.water_funding_attempted,
+                "water_funding_attempts": self.water_funding_attempts,
+                "water_funding_item_vnums": list(self.water_funding_item_vnums),
+                "water_funding_origin": self.water_funding_origin,
+                "water_funding_route_index": self.water_funding_route_index,
+                "water_funding_return_index": self.water_funding_return_index,
+                "water_funding_liquidation": self.water_funding_liquidation.evidence(),
                 }

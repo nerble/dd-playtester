@@ -107,6 +107,10 @@ class Fastwalk:
     return_commands_allow_open: bool = False
     # Exact source identity for visibility-aware program preflight only.
     route_preflight_source_mobile_vnum: int | None = None
+    # Exact source aggressive mobiles audited as possible transit fighters.
+    # Runtime still requires a singleton live identity and bounded output;
+    # these VNUMs never turn a transit interruption into an XP target.
+    route_aggressive_mobile_vnums: tuple[int, ...] = ()
     # Exact aggressive source mobiles whose update.c aggression check is
     # blocked only while fresh live invisibility remains confirmed.
     route_invisibility_source_mobile_vnums: tuple[int, ...] = ()

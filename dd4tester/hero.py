@@ -40,7 +40,9 @@ from .credentials import (
     save_character_password,
 )
 from .mudlet import MudletBridge
+from .report import write_campaign_report
 from .scenario import load_yaml_mapping
+from .storage import RunStorage
 
 
 DEFAULT_HERO_WORKSPACE = Path("runs/heroes")
@@ -958,7 +960,49 @@ async def run_hero_request(
             retry_stalled=retry_stalled,
             progress_callback=progress_callback,
         )
+    if result.target_achieved or _result_level(result) >= target_level:
+        _write_completed_hero_report(
+            preparation,
+            result,
+            progress_callback=progress_callback,
+        )
     return preparation, result
+
+
+def _write_completed_hero_report(
+    preparation: HeroPreparation,
+    result: CampaignResult,
+    *,
+    progress_callback: Callable[[str], None] | None,
+) -> None:
+    """Materialize the final report when a HERO target is actually reached."""
+    database = getattr(preparation.character, "database", None)
+    if database is None:
+        if progress_callback is not None:
+            progress_callback(
+                "HERO target reached, but the final report has no character "
+                "database path to read."
+            )
+        return
+    try:
+        with RunStorage(Path(database)) as storage:
+            json_path, markdown_path = write_campaign_report(
+                storage,
+                result.campaign_id,
+                directory=preparation.directory,
+            )
+    except Exception as exc:  # pragma: no cover - defensive finalization path
+        if progress_callback is not None:
+            progress_callback(
+                "HERO target reached, but final report generation failed: "
+                f"{exc}"
+            )
+        return
+    if progress_callback is not None:
+        progress_callback(
+            "Final HERO reports written: "
+            f"{json_path} and {markdown_path}."
+        )
 
 
 async def run_hero_until_target(

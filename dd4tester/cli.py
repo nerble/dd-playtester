@@ -626,6 +626,10 @@ def build_parser() -> argparse.ArgumentParser:
             "all",
             "sanctuary",
             "protection",
+            "energy-containment",
+            "energy containment",
+            "disintegrate protection",
+            "disint protection",
             "healing",
             "recovery",
             "flight",
@@ -4538,6 +4542,7 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 f"plain-executable={diagnosis.get('plain_executable_current_band_count', 0)} "
                 f"sanctuary-required={diagnosis.get('sanctuary_required_count', 0)} "
                 f"no-sanctuary={diagnosis.get('no_sanctuary_count', 0)} "
+                f"psionic-protection-gated={diagnosis.get('psionic_protection_gated_count', 0)} "
                 f"below-band={diagnosis.get('same_boot_below_band_count', 0)} "
                 f"transit-hazard={diagnosis.get('same_boot_transit_hazard_count', 0)} "
                 f"cooldown={diagnosis.get('same_boot_cooldown_count', 0)}"
@@ -4551,6 +4556,33 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 ]
                 if rendered_blockers:
                     print("Frontier blockers: " + "; ".join(rendered_blockers))
+            psionic_candidates = diagnosis.get(
+                "psionic_protection_gated_candidates"
+            )
+            if isinstance(psionic_candidates, list) and psionic_candidates:
+                print("Psionic protection-gated options (never dispatched):")
+                for candidate in psionic_candidates:
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    levels = candidate.get("level_range", ())
+                    level_text = (
+                        f"{levels[0]}-{levels[1]}"
+                        if isinstance(levels, (list, tuple)) and len(levels) == 2
+                        else "unknown level"
+                    )
+                    effects = candidate.get("protection_effects", ())
+                    effect_text = (
+                        ", ".join(str(item) for item in effects)
+                        if isinstance(effects, list) and effects
+                        else "unknown spell exposure"
+                    )
+                    print(
+                        "  "
+                        f"{candidate.get('target', 'unknown target')} "
+                        f"[{candidate.get('mobile_vnum', '-')}]; "
+                        f"levels {level_text}; exposure={effect_text}; "
+                        f"reason={candidate.get('reason', 'protection required')}"
+                    )
             sanctuary_candidates = diagnosis.get(
                 "sanctuary_required_candidates"
             )

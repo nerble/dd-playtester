@@ -40,6 +40,14 @@ def _clear_scan(response: str, direction: str) -> bool:
     )
 
 
+def _midgaard_recall_arrival(response: str) -> bool:
+    """Recognize DD4's canonical recall-room text before GMCP catches up."""
+    return re.search(
+        r"(?mi)^\s*The Temple Of Midgaard\s*$",
+        response,
+    ) is not None
+
+
 def repaired_recall_route_evidence(
     failed: Mapping[str, Any], recovery: Mapping[str, Any],
     kills: Collection[Mapping[str, Any]], current: Mapping[str, Any],
@@ -228,7 +236,12 @@ class AdjacentRecallEscape:
         if self.deadline is not None:
             if not _DD4_PROMPT.search(self.response):
                 return None
-            if state.room_vnum != self.pending_room:
+            delayed_recall_room = bool(
+                self.stage == "recalling"
+                and str(self.pending_room) == "3001"
+                and _midgaard_recall_arrival(self.response)
+            )
+            if state.room_vnum != self.pending_room and not delayed_recall_room:
                 self.failure = "adjacent recall escape did not reach its exact expected room"
                 return None
             self.deadline = None

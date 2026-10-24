@@ -24,6 +24,14 @@ SHOP_LIST_ITEM = re.compile(
     r"^\s*\[\s*(?P<level>\d+)\s+(?P<price>\d+)\]\s+"
     r"(?:(?P<target>\[#\d+\])\s+)?(?P<name>.+?)\s*$", re.MULTILINE,
 )
+SHOP_VALUE_OFFER = re.compile(
+    r"tells you 'I'll give you (?P<coins>\d+) coins? for (?P<item>.+?)'\.",
+    re.IGNORECASE,
+)
+SHOP_SALE_COMPLETED = re.compile(
+    r"You sell (?P<item>.+?) for (?P<coins>\d+) coins?\.",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,16 @@ class SourcePurchase:
     keyword: str
     maximum_price: int
     coin_reserve: int = 100
+
+
+@dataclass(frozen=True)
+class SourceLiquidation:
+    """Source-audited shop stop for selling a bounded number of items."""
+
+    shopkeeper_vnum: int
+    room_vnum: int
+    accepted_item_types: tuple[int, ...]
+    maximum_items: int = 4
 
 
 @dataclass(frozen=True)
@@ -221,9 +239,17 @@ class SourcePurchaseSession:
     price: int | None = None
     selector: str | None = None
     initial_count: int = 0
+    funding_attempts: int = 0
+    funding_item_vnums: tuple[int, ...] = ()
+    funding_item_description: str | None = None
+    funding_item_selector: str | None = None
+    funding_item_initial_count: int = 0
 
     def observe(self, text: str) -> None:
-        if self.stage in {"visibility", "listing", "buying", "inventory"}:
+        if self.stage in {
+            "visibility", "listing", "buying", "inventory",
+            "funding-value", "funding-sell", "funding-inventory",
+        }:
             self.response = (self.response + text)[-8000:]
 
     def expire(self, now: float) -> bool:
@@ -235,7 +261,9 @@ class SourcePurchaseSession:
 
     def next_command(
         self, *, room_vnum: str | None, level: int, coins: int,
-        inventory: Sequence[tuple[str, str | None]], now: float, invisible: bool = False,
+        inventory: Sequence[tuple[str, str | None]], now: float,
+        invisible: bool = False,
+        funding_item: tuple[str, str, int] | None = None,
     ) -> str | None:
         self.expire(now)
         if self.failure or self.stage == "complete":
@@ -246,7 +274,52 @@ class SourcePurchaseSession:
         count = sum(normalize_item_name(name) == normalize_item_name(self.plan.description)
                     for name, _ in inventory)
         command = None
-        if self.stage == "new":
+        if self.stage == "funding-value":
+            if not _DD4_PROMPT.search(self.response):
+                return None
+            offer = SHOP_VALUE_OFFER.search(self.response)
+            if (
+                offer is None
+                or normalize_item_name(offer.group("item"))
+                != normalize_item_name(self.funding_item_description or "")
+            ):
+                self.failure = "funding shop did not quote the exact source item"
+                self.stage = "failed"
+                return None
+            self.stage = "funding-sell"
+            command = f"sell {self.funding_item_selector}"
+        elif self.stage == "funding-sell":
+            if not _DD4_PROMPT.search(self.response):
+                return None
+            sold = SHOP_SALE_COMPLETED.search(self.response)
+            if (
+                sold is None
+                or normalize_item_name(sold.group("item"))
+                != normalize_item_name(self.funding_item_description or "")
+            ):
+                self.failure = "funding shop did not confirm the exact sale"
+                self.stage = "failed"
+                return None
+            self.stage = "funding-inventory"
+            command = "inventory"
+        elif self.stage == "funding-inventory":
+            if not _DD4_PROMPT.search(self.response):
+                return None
+            funding_count = sum(
+                normalize_item_name(name)
+                == normalize_item_name(self.funding_item_description or "")
+                for name, _ in inventory
+            )
+            if funding_count >= self.funding_item_initial_count:
+                self.failure = "funding item remained in inventory after sale"
+                self.stage = "failed"
+                return None
+            self.funding_item_description = None
+            self.funding_item_selector = None
+            self.funding_item_initial_count = 0
+            self.stage = "listing"
+            command = f"list {self.plan.keyword}"
+        elif self.stage == "new":
             self.initial_count = count
             if invisible:
                 self.stage, command = "visibility", "vis"
@@ -269,6 +342,32 @@ class SourcePurchaseSession:
                 return None
             offer = offers[0]
             self.price, self.selector = int(offer.group("price")), offer.group("target")[1:-1]
+            if not 0 < self.price <= self.plan.maximum_price:
+                self.failure, self.stage = "quoted price exceeds the purchase maximum", "failed"
+                return None
+            if self.price > coins - self.plan.coin_reserve:
+                if funding_item is None or self.funding_attempts >= 4:
+                    self.failure, self.stage = "quoted price exceeds the reserved purchase balance", "failed"
+                    return None
+                description, selector, vnum = funding_item
+                if (
+                    not description
+                    or not selector
+                    or int(vnum) in self.funding_item_vnums
+                ):
+                    self.failure, self.stage = "no distinct source item was available for purchase funding", "failed"
+                    return None
+                self.funding_attempts += 1
+                self.funding_item_vnums = (*self.funding_item_vnums, int(vnum))
+                self.funding_item_description = description
+                self.funding_item_selector = selector
+                self.funding_item_initial_count = sum(
+                    normalize_item_name(name) == normalize_item_name(description)
+                    for name, _ in inventory
+                )
+                self.stage = "funding-value"
+                self.response, self.deadline = "", now + 5.0
+                return f"value {selector}"
             if not 0 < self.price <= min(self.plan.maximum_price, coins - self.plan.coin_reserve):
                 self.failure, self.stage = "quoted price exceeds the reserved purchase balance", "failed"
                 return None
@@ -292,4 +391,141 @@ class SourcePurchaseSession:
     def evidence(self) -> dict[str, Any]:
         return {"object_vnum": self.plan.object_vnum, "room_vnum": self.plan.room_vnum,
                 "shopkeeper_vnum": self.plan.shopkeeper_vnum, "stage": self.stage,
-                "price": self.price, "selector": self.selector, "failure": self.failure}
+                "price": self.price, "selector": self.selector, "failure": self.failure,
+                "funding_attempts": self.funding_attempts,
+                "funding_item_vnums": list(self.funding_item_vnums),
+                "funding_item_description": self.funding_item_description,
+                "funding_item_selector": self.funding_item_selector}
+
+
+@dataclass
+class SourceLiquidationSession:
+    """Sell source-identified items with value, sale, and inventory receipts."""
+
+    plan: SourceLiquidation
+    stage: str = "new"
+    response: str = ""
+    deadline: float | None = None
+    failure: str | None = None
+    funding_item_vnums: tuple[int, ...] = ()
+    funding_item_description: str | None = None
+    funding_item_selector: str | None = None
+    funding_item_initial_count: int = 0
+
+    def observe(self, text: str) -> None:
+        if self.stage in {"value", "sell", "inventory"}:
+            self.response = (self.response + text)[-8000:]
+
+    def expire(self, now: float) -> bool:
+        if (
+            self.deadline is not None
+            and now >= self.deadline
+            and not _DD4_PROMPT.search(self.response)
+        ):
+            self.failure = "liquidation shop response did not complete within five seconds"
+            self.stage, self.deadline = "failed", None
+            return True
+        return False
+
+    def next_command(
+        self,
+        *,
+        room_vnum: str | None,
+        inventory: Sequence[tuple[str, str | None]],
+        now: float,
+        funding_item: tuple[str, str, int] | None = None,
+    ) -> str | None:
+        self.expire(now)
+        if self.failure or self.stage == "complete":
+            return None
+        if str(room_vnum) != str(self.plan.room_vnum):
+            self.failure, self.stage = "liquidation shop room identity changed", "failed"
+            return None
+        if self.stage == "new":
+            if len(self.funding_item_vnums) >= max(1, self.plan.maximum_items):
+                self.stage = "complete"
+                return None
+            if funding_item is None:
+                self.stage = "complete"
+                return None
+            description, selector, vnum = funding_item
+            if (
+                not description
+                or not selector
+                or int(vnum) in self.funding_item_vnums
+            ):
+                self.failure = "no distinct source item was available for liquidation"
+                self.stage = "failed"
+                return None
+            self.funding_item_description = description
+            self.funding_item_selector = selector
+            self.funding_item_vnums = (*self.funding_item_vnums, int(vnum))
+            self.funding_item_initial_count = sum(
+                normalize_item_name(name) == normalize_item_name(description)
+                for name, _ in inventory
+            )
+            self.stage = "value"
+            self.response, self.deadline = "", now + 5.0
+            return f"value {selector}"
+        if not _DD4_PROMPT.search(self.response):
+            return None
+        if self.stage == "value":
+            offer = SHOP_VALUE_OFFER.search(self.response)
+            if (
+                offer is None
+                or normalize_item_name(offer.group("item"))
+                != normalize_item_name(self.funding_item_description or "")
+            ):
+                self.failure = "liquidation shop did not quote the exact source item"
+                self.stage = "failed"
+                return None
+            self.stage = "sell"
+            self.response, self.deadline = "", now + 5.0
+            return f"sell {self.funding_item_selector}"
+        if self.stage == "sell":
+            sold = SHOP_SALE_COMPLETED.search(self.response)
+            if (
+                sold is None
+                or normalize_item_name(sold.group("item"))
+                != normalize_item_name(self.funding_item_description or "")
+            ):
+                self.failure = "liquidation shop did not confirm the exact sale"
+                self.stage = "failed"
+                return None
+            self.stage = "inventory"
+            self.response, self.deadline = "", now + 5.0
+            return "inventory"
+        if self.stage == "inventory":
+            remaining = sum(
+                normalize_item_name(name)
+                == normalize_item_name(self.funding_item_description or "")
+                for name, _ in inventory
+            )
+            if remaining >= self.funding_item_initial_count:
+                self.failure = "liquidation item remained in inventory after sale"
+                self.stage = "failed"
+                return None
+            self.funding_item_description = None
+            self.funding_item_selector = None
+            self.funding_item_initial_count = 0
+            self.response, self.deadline = "", None
+            self.stage = "complete" if len(self.funding_item_vnums) >= max(
+                1, self.plan.maximum_items
+            ) else "new"
+            return None
+        self.failure = f"unknown liquidation stage: {self.stage}"
+        self.stage = "failed"
+        return None
+
+    def evidence(self) -> dict[str, Any]:
+        return {
+            "shopkeeper_vnum": self.plan.shopkeeper_vnum,
+            "room_vnum": self.plan.room_vnum,
+            "accepted_item_types": list(self.plan.accepted_item_types),
+            "maximum_items": self.plan.maximum_items,
+            "stage": self.stage,
+            "failure": self.failure,
+            "funding_item_vnums": list(self.funding_item_vnums),
+            "funding_item_description": self.funding_item_description,
+            "funding_item_selector": self.funding_item_selector,
+        }

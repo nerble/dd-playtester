@@ -32,16 +32,39 @@ actually depends on one, and otherwise move to the next eligible policy.
 Treat `spec_cast_psionicist` as a hard protection gate. Source `special.c`
 opens energy drain at mobile level 14 and disintegrate at level 35, so do not
 engage a psionicist in either band without a fresh source- and live-verified
-protection receipt. Sanctuary, Globe, energy containment, Illithid psychic
-resistance, and the Crysomer sword's descriptive lore are not disintegrate
-immunity. A level-40+ psionic is therefore out of bounds for Dorrik unless
-that evidence is actually present; do not infer it from a damage estimate.
+protection receipt. In `spell_disintegrate`, the concrete player bypass is
+Phoenix form (or a player-killer room); otherwise a failed save can destroy
+carried objects and the follow-up check can kill the player. Sanctuary, Globe,
+energy containment, Illithid psychic resistance, and the Crysomer sword's
+descriptive lore are not disintegrate immunity. A level-40+ psionic is
+therefore out of bounds for Dorrik unless that evidence is actually present;
+do not infer it from a damage estimate or a normal saving throw chance. A
+fresh Sanctuary refill can repair one exact prior unprotected plain-target
+loss, but it is not disintegration protection and never reopens a psionic.
 Favor productive, risk-adjusted fights: when fresh live `consider`, source
 damage/output bounds, current gear, and practiced skills support a bounded kill,
 take the useful-XP opportunity instead of detouring merely to avoid ordinary
 damage or waiting automatically for sanctuary. Missing sanctuary alone does not
 close a plain target when the documented no-reserve gates pass; target identity,
 route, health, output, and live abort checks remain mandatory.
+Sanctuary acquisition is a maintenance objective, not an XP-band hunt: a
+source-audited carrier may be outside the ordinary useful-XP band when its
+exact route, isolation, live identity, live `consider`, own-health floor and
+required-loot confirmation pass. Do not reject that carrier before live play
+because of a source HP or damage estimate; retain those values as evidence.
+Record the kill as maintenance and do not credit it as progression XP. A
+same-boot miss closes only that carrier; it must not make unrelated Sanctuary
+sources wait for a reboot.
+During an already-admitted fight, one additional activation from the same
+source-verified, charged Sanctuary staff is allowed after its observed effect
+expires. Keep the exact target, live identity, own-health, and resource-charge
+gates; ordinary pouch potions remain single-use for that fight.
+When a safe healer checkpoint has a healthy Sanctuary reserve but the source
+selector has no executable current-band route, one fresh source-ranked carrier
+may still be used to top up protection. Run that maintenance fallback only
+after gear repair has had its chance and when no active quest or quest-point
+shortfall owns the checkpoint; never treat the maintenance kill as progression
+XP or as permission to bypass the ordinary live gates.
 Generate ranked candidates through the source-supported +5 `consider` band so
 the existing lucky-consider and HP-fuzz probe paths can actually see them.
 This widens scouting only: exact live `consider`, target identity, route,
@@ -209,6 +232,10 @@ two-to-four-reset population. Keep `status=reject` and the capacity-only
 rejection so `plain_bounded_population` and every research gate still apply.
 Audit all target reset objects, preserve both original source rejections, and
 carry only exact audited unarmed economic actors into noncombat locator paths.
+For transit-only proof, the economic actor itself may instead be a source-
+bounded two-to-four-reset, same-area singleton population with identical reset
+counts from 1-4 and no objects or equipment. This never authorizes fighting a
+thief or relaxes the target's isolation, output, consider, or loss gates.
 Retain the eight-room blind-search limit and full-map hazard checks. Neither
 coin exposure nor population proof permits a crowded fight or old-failure retry.
 For source-ambiguous passive targets, the travel controller may make one
@@ -387,12 +414,16 @@ Ota'ar Dar is a hard five-favour circuit: its gladiators do not release the
 character until all five distinct favour objects are carried. The source gate
 checks VNUMs 27481, 27482, 27483, 27484, and 27485, one for each gladiator
 type. They are `ITEM_TREASURE` objects, not keys, and DD4 writes carried
-treasure to the character save file; a graceful logout or reboot therefore
-can preserve them. After reconnect, require a fresh exact inventory audit
-against the unique source descriptions and item type before accepting an
-older receipt. A receipt without that live inventory confirmation remains
-boot-scoped evidence. A death or disconnect before the objects are saved is
-unfinished circuit evidence, not proof that the exit is usable. Never issue
+treasure (type 8) to the character save file; `ITEM_KEY` is type 18 and is
+explicitly excluded. `quit` and a controlled reboot both call `save_char_obj`,
+so a completed save preserves these level-30 tokens when they are carried.
+Keep them directly in inventory: the gatekeeper's `carrying()` check does not
+search inside containers. After reconnect, require a fresh exact inventory
+audit against the unique source descriptions and source item type before
+accepting an older receipt. A receipt without that live inventory confirmation
+remains boot-scoped evidence. A death, hard disconnect, or incomplete save
+before the objects are written is unfinished circuit evidence, not proof that
+the exit is usable. Never issue
 the exit route, generic recall, logout, or a maintenance detour from inside
 the arena while any favour is missing; resume the exact remaining gladiator
 circuit instead.
@@ -639,11 +670,23 @@ before each dark-room step. It authorizes no fights or XP kills. Changed source,
 missing effects, occupied adjacent rooms, mismatched live exits, or a five-second
 response timeout stop this thirty-command route. Preserve its purchase and scan
 evidence; do not retry an unchanged failed recall.
+The source `quest.c` recall table assigns Ota'ar Dar to slot 14 (400 QP); slot 1
+is clan recall and is not a substitute. Require a fresh live recall-list receipt
+for slot 14 before issuing remote Ota'ar preparation, or skip recall when the
+character is already at the registered Ota'ar origin room 27347.
 Flight does not prevent drowning in sectors 8/12. Never leave a failed,
 noncombat room-27347 session merely link-dead: after the exact source/no-mob
 logout gate passes, issue quit once and allow five seconds for farewell evidence.
 The run still failed its return objective. Never use this cleanup in Purgatory
 or as authorization for unverified field logout.
+When local water-breathing preparation is short of a live shop quote, sell at
+most four distinct, source-unique, redundant and releasable armour items. Each
+sale requires exact value, sell, and inventory acknowledgements; live price and
+stock remain authoritative, and no protected, cursed, capacity or stat item is
+funding permission. If that bounded funding attempt fails away from room 27347,
+return there before surfacing the failure. A reconnect at nonpositive HP must
+wait for DD4's death/Purgatory transition rather than saving, quitting or
+starting another policy.
 For a noncombat source-known no-recall room, `AdjacentRecallEscape` may use
 one open ordinary exit to a source-hazard-free, nonrandom, land room whose
 source default recall is Midgaard. Require the matching live exit and a complete
@@ -964,11 +1007,14 @@ level, no target/consider/kill or XP-loss evidence, and no crowd or cooldown.
 Persist and consume this exact marker before dispatch; any other route failure
 or a second attempt stays closed.
 When a healthy character is already at healer room 3054 and the selected
-frontier is unavailable, allow exactly one automatic maintenance-only
+frontier is unavailable, allow a bounded automatic maintenance-only
 `world-time-probe`. It may issue `time`, save, and quit, but it cannot hunt,
 clear reboot-scoped cooldowns, or claim XP. Persist its checkpoint phase so a
-same-frontier failure or same-boot result is not reconnected blindly; only the
-existing reset-aware wait may authorize another probe.
+same-frontier failure or same-boot result is not reconnected blindly. A
+timestamped marker may authorize at most one new maintenance probe after six
+hours; a legacy marker without a timestamp remains one-shot until durable
+world-time history repairs it. This never reopens a failed hunt or makes a
+reboot a general XP requirement.
 At a safe healer checkpoint, if health, movement, or mana is below the campaign
 readiness threshold and food is available, use the bounded healer recovery
 policy before declaring the frontier unavailable. Re-select the source route

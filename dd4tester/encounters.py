@@ -24,6 +24,7 @@ from .hunt_candidates import (
     mobile_expected_round_damage,
     mobile_sanctuary_peak_round_damage,
 )
+from .populations import source_sequential_duplicate_reset_limit
 
 
 @dataclass(frozen=True)
@@ -119,7 +120,7 @@ class SourcePairBudget(EncounterBudget):
 
 @dataclass
 class SourcePairEncounter:
-    """One or two considered targets, sharing the measured encounter controller."""
+    """A bounded set of considered targets sharing one encounter controller."""
 
     budget: SourcePairBudget
     selectors: tuple[str, ...]
@@ -131,6 +132,7 @@ class SourcePairEncounter:
     started_at: float | None = None
     defeated: set[str] = field(default_factory=set)
     damage_commands: int = 0
+    finisher_grace_used: bool = False
 
     @property
     def remaining(self) -> tuple[str, ...]:
@@ -286,7 +288,16 @@ def source_pair_budget(
     upper = min(upper, character_level - 2)
     if character_level <= 0 or upper < max(lower, character_level - 4):
         return SourcePairBudget(False, "source range has no useful easy-kill intersection")
-    if not 0 < hp <= max_hp or hp < ceil(max_hp * .95):
+    if character_level <= 0 or hp <= 0 or max_hp <= 0:
+        return SourcePairBudget(False, "pair admission requires fresh near-full health")
+    # Equipment changes can briefly deliver a current HP/mana value before the
+    # matching GMCP maximum.  The current value is a hard lower bound for the
+    # cap; rejecting that transient ordering would turn healthy live state into
+    # a false "missing resources" result.
+    max_hp = max(max_hp, hp)
+    if max_mana > 0:
+        max_mana = max(max_mana, mana)
+    if hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "pair admission requires fresh near-full health")
     actions = max(4, min(8, 2 * max(1, output.maximum_actions)))
     peak = 2 * _mobile_peak_round_damage(
@@ -381,8 +392,11 @@ def source_duplicate_pair_budget(
     weapon = world.objects.get(weapons[0])
     if weapon is None or weapon.item_type != ITEM_WEAPON:
         return SourcePairBudget(False, "duplicate pair weapon is not source-verified")
-    if character_level <= 0 or not 0 < hp <= max_hp:
+    if character_level <= 0 or hp <= 0 or max_hp <= 0:
         return SourcePairBudget(False, "duplicate pair is missing live player resources")
+    max_hp = max(max_hp, hp)
+    if max_mana > 0:
+        max_mana = max(max_mana, mana)
     if hp < ceil(max_hp * .95):
         return SourcePairBudget(False, "duplicate pair admission requires near-full health")
     lower, upper = _mobile_level_range(mobile.level)
@@ -441,6 +455,152 @@ def source_duplicate_pair_budget(
     )
 
 
+def source_sequential_duplicate_budget(
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    room_vnum: int,
+    instance_count: int,
+    character_level: int,
+    hp: int,
+    max_hp: int,
+    mana: int,
+    max_mana: int,
+    output: SourceCombatOutput | None,
+    maximum_level_offset: int = 1,
+) -> SourcePairBudget:
+    """Admit a small plain reset for sequential, one-at-a-time kills.
+
+    The caller supplies fresh exact selectors and live ``consider`` results.
+    This function only proves the source reset and prices one bounded opening
+    window per observed copy; it never uses target HP as an admission gate.
+    """
+    if not 2 <= instance_count <= 4:
+        return SourcePairBudget(
+            False,
+            "sequential duplicate encounter needs two to four live copies",
+        )
+    mobile = world.mobiles.get(mobile_vnum)
+    if mobile is None or output is None or output.conservative_damage <= 0:
+        return SourcePairBudget(False, "missing source mobile or executable damage")
+    if (
+        not mobile.sentinel
+        or mobile.wanders
+        or mobile.aggressive
+        or mobile.fear_aura
+        or mobile.programs
+        or mobile.attack_programs
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or world.mobile_specials.get(mobile_vnum)
+        or mobile_vnum in world.shopkeepers
+    ):
+        return SourcePairBudget(
+            False,
+            "sequential duplicate encounter requires a plain sentinel reset",
+        )
+    if not mobile.damage_modifier_known:
+        return SourcePairBudget(False, "source mobile damage modifier is unavailable")
+    reset_limit = source_sequential_duplicate_reset_limit(
+        world,
+        mobile_vnum=mobile_vnum,
+        room_vnum=room_vnum,
+    )
+    if reset_limit is None or instance_count > reset_limit:
+        return SourcePairBudget(
+            False,
+            "sequential duplicate reset is not a bounded plain population",
+        )
+    if character_level <= 0 or hp <= 0 or max_hp <= 0:
+        return SourcePairBudget(False, "sequential duplicate is missing live player resources")
+    max_hp = max(max_hp, hp)
+    if max_mana > 0:
+        max_mana = max(max_mana, mana)
+    if hp < ceil(max_hp * .95):
+        return SourcePairBudget(
+            False,
+            "sequential duplicate admission requires near-full health",
+        )
+    if not 0 <= maximum_level_offset <= 5:
+        return SourcePairBudget(False, "sequential duplicate level ceiling is outside consider range")
+    lower, upper = _mobile_level_range(mobile.level)
+    lower = max(lower, character_level - 4)
+    upper = min(upper, character_level + maximum_level_offset)
+    if lower <= 0 or lower > upper:
+        return SourcePairBudget(
+            False,
+            "sequential duplicate has no source level intersection",
+        )
+    expected_one = mobile_expected_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    peak_one = _mobile_peak_round_damage(
+        upper,
+        wielding=False,
+        dual_wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    critical_one = _mobile_critical_hit_damage(
+        upper,
+        wielding=False,
+        damage_modifier=mobile.damage_modifier,
+    )
+    reserve = ceil(max_hp * .20)
+    # One measured opening window per copy keeps the source admission finite;
+    # the live controller still owns the actual 20% withdrawal decision.
+    actions_per_copy = max(2, min(8, max(1, output.maximum_actions // 2)))
+    actions = instance_count * actions_per_copy
+    expected_incoming = instance_count * expected_one
+    mana_cost = instance_count * output.resource_cost if output.resource == "mana" else 0
+    values = dict(
+        mobile_vnums=tuple(mobile_vnum for _ in range(instance_count)),
+        actions=actions,
+        expected_incoming=expected_incoming,
+        peak_round=peak_one,
+        health_reserve=reserve,
+        mana_cost=mana_cost,
+        level_ceiling=upper,
+        target_hp_ceiling=0,
+        source_only=True,
+    )
+    if max(peak_one, critical_one) >= hp - reserve:
+        return SourcePairBudget(
+            False,
+            "sequential duplicate source damage reaches the 20% reserve",
+            **values,
+        )
+    if expected_incoming >= hp - reserve:
+        return SourcePairBudget(
+            False,
+            "sequential duplicate opening window reaches the 20% reserve",
+            **values,
+        )
+    if output.resource == "mana" and (
+        max_mana <= 0 or mana - mana_cost < ceil(max_mana * .15)
+    ):
+        return SourcePairBudget(
+            False,
+            "sequential duplicate would consume the 15% mana reserve",
+            **values,
+        )
+    if output.resource not in {"actions", "mana"} or (
+        output.resource == "actions" and output.resource_cost
+    ):
+        return SourcePairBudget(
+            False,
+            "unsupported sequential duplicate damage resource",
+            **values,
+        )
+    return SourcePairBudget(
+        True,
+        "source plain duplicate reset and live considers fit sequential rotation",
+        **values,
+    )
+
+
 def solo_continuation_budget(
     world: WorldSource, enemies: Sequence[Mapping[str, Any]], *,
     character_level: int, hp: int, max_hp: int, mana: int, max_mana: int,
@@ -490,6 +650,7 @@ def active_encounter_budget(
     maximum_level_offsets_by_vnum: Mapping[int, int] | None = None,
     allowed_adept_special_vnums: Collection[int] = (),
     allowed_caerlin_special_vnums: Collection[int] = (),
+    allowed_hephaestus_special_vnums: Collection[int] = (),
 ) -> EncounterBudget:
     """Estimate a short finish without granting permission to start combat.
 
@@ -518,6 +679,7 @@ def active_encounter_budget(
             maximum_level_offsets_by_vnum=maximum_level_offsets_by_vnum or {},
             allowed_adept_special_vnums=allowed_adept_special_vnums,
             allowed_caerlin_special_vnums=allowed_caerlin_special_vnums,
+            allowed_hephaestus_special_vnums=allowed_hephaestus_special_vnums,
         )
     members: list[tuple[int, int, int]] = []
     peak = critical = 0
@@ -621,6 +783,7 @@ def _active_level_encounter_budget(
     maximum_level_offsets_by_vnum: Mapping[int, int],
     allowed_adept_special_vnums: Collection[int],
     allowed_caerlin_special_vnums: Collection[int],
+    allowed_hephaestus_special_vnums: Collection[int],
 ) -> EncounterBudget:
     """Validate live source identities and levels without using enemy HP."""
     if not 1 <= len(enemies) <= 3:
@@ -655,6 +818,7 @@ def _active_level_encounter_budget(
                 vnum,
                 allowed_adept_special_vnums,
                 allowed_caerlin_special_vnums,
+                allowed_hephaestus_special_vnums,
             )
             or vnum in world.shopkeepers
         ):
@@ -713,6 +877,7 @@ def _encounter_special_is_allowed(
     mobile_vnum: int,
     allowed_adept_special_vnums: Collection[int],
     allowed_caerlin_special_vnums: Collection[int] = (),
+    allowed_hephaestus_special_vnums: Collection[int] = (),
 ) -> bool:
     specials = set(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
@@ -760,7 +925,32 @@ def _encounter_special_is_allowed(
             for _slot, object_vnum in reset.equipment
         )
     )
-    return adept_allowed or caerlin_allowed
+    hephaestus_allowed = (
+        mobile_vnum in allowed_hephaestus_special_vnums
+        and mobile_vnum == 908
+        and specials == {"spec_breath_lightning"}
+        and mobile is not None
+        and mobile.level == 38
+        and mobile.sentinel
+        and not mobile.wanders
+        and not mobile.aggressive
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and len(resets) == 1
+        and resets[0].room_vnum == 937
+        and resets[0].maximum_count == 1
+        and 926 in resets[0].object_vnums
+        and all(
+            (item := world.objects.get(object_vnum)) is not None
+            and item.item_type != ITEM_WEAPON
+            for reset in resets
+            for _slot, object_vnum in reset.equipment
+        )
+    )
+    return adept_allowed or caerlin_allowed or hephaestus_allowed
 
 
 def source_multi_encounter_budget(

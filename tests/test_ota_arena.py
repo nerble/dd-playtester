@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import dd4tester.campaign as campaign_module
@@ -14,7 +15,7 @@ from dd4tester.ota_arena import (
     OTA_ARENA_TARGETS,
     ota_arena_token_terms_present,
 )
-from dd4tester.starter import StarterPolicy
+from dd4tester.starter import FieldHuntStop, StarterPolicy
 from dd4tester.equipment import GearCatalog
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.state import CharacterState
@@ -64,6 +65,7 @@ def test_ota_arena_plan_has_five_source_targets_and_exit_route() -> None:
             for term in target.token_terms[1:]
         )
         assert token.item_type == target.token_item_type == 8
+        assert token.item_type != 18  # ITEM_KEY is not retained by save_char_obj.
         assert mobile.programs == ()
 
     gatekeeper = world.mobiles[27357]
@@ -1098,6 +1100,204 @@ def test_ota_arena_source_refresh_requires_changed_source_and_one_old_loss() -> 
     )
 
 
+def test_ota_arena_pending_source_refresh_bypasses_only_its_unsafe_quarantine() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    candidate = _arena_campaign_candidate(world)
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+    state = _arena_source_refresh_state(policy_id)
+    receipt = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert receipt is not None
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = receipt
+    state[campaign_module._SOURCE_RANKED_UNSAFE_POLICIES_KEY] = [{
+        "boot_id": "boot-current",
+        "level": 39,
+        "policy_id": policy_id,
+        "reason": "prior attempt ended in Purgatory",
+    }]
+
+    selected = campaign_module._select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=39,
+        character_max_hp=937,
+        allow_cooldown_retry=True,
+        allow_retry_exhausted_repeat=True,
+        allow_repeated_policy_ids=(policy_id,),
+        allow_water_breathing_preparation=True,
+    )
+
+    assert selected is candidate
+
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        **receipt,
+        "status": "closed",
+        "attempted": True,
+    }
+    assert campaign_module._select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=39,
+        character_max_hp=937,
+        allow_cooldown_retry=True,
+        allow_retry_exhausted_repeat=True,
+        allow_repeated_policy_ids=(policy_id,),
+        allow_water_breathing_preparation=True,
+    ) is None
+
+
+def test_ota_arena_source_refresh_is_consumed_only_at_exact_dispatch() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    candidate = _arena_campaign_candidate(world)
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+    state = _arena_source_refresh_state(policy_id)
+    receipt = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert receipt is not None
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = receipt
+
+    assert not campaign_module._consume_ota_arena_source_refresh_before_dispatch(
+        state,
+        policy_id="different-policy",
+        character_level=39,
+    )
+    assert (
+        state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY][
+            "status"
+        ]
+        == "pending"
+    )
+
+    assert campaign_module._consume_ota_arena_source_refresh_before_dispatch(
+        state,
+        policy_id=policy_id,
+        character_level=39,
+    )
+    marker = state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY]
+    assert marker["status"] == "attempted"
+    assert marker["attempted"] is True
+
+
+def test_ota_arena_preparation_does_not_consume_source_refresh_receipt() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    candidate = _arena_campaign_candidate(world)
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+    state = _arena_source_refresh_state(policy_id)
+    receipt = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert receipt is not None
+    attempted = {
+        **receipt,
+        "status": "attempted",
+        "attempted": True,
+    }
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = attempted
+
+    repaired = campaign_module._repair_ota_arena_source_refresh_preparation_handoff(
+        state,
+        [
+            {
+                "phase": "buy-flight-potion",
+                "start_state_json": json.dumps(state),
+            }
+        ],
+    )
+    marker = repaired[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY]
+    assert marker["status"] == "pending"
+    assert marker["attempted"] is False
+    assert marker["preparation_handoff_repaired"] is True
+
+    exact_hunt_state = {
+        **state,
+        campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY: attempted,
+    }
+    preserved = campaign_module._repair_ota_arena_source_refresh_preparation_handoff(
+        exact_hunt_state,
+        [
+            {
+                "phase": policy_id,
+                "start_state_json": json.dumps(exact_hunt_state),
+            }
+        ],
+    )
+    assert (
+        preserved[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY][
+            "status"
+        ]
+        == "attempted"
+    )
+
+
+def test_ota_arena_selector_close_is_rearmed_only_once() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    candidate = _arena_campaign_candidate(world)
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+    state = _arena_source_refresh_state(policy_id)
+    receipt = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert receipt is not None
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        **receipt,
+        "status": "closed",
+        "attempted": False,
+        "reason": campaign_module._OTAAR_ARENA_SOURCE_REFRESH_SELECTOR_CLOSE_REASON,
+    }
+
+    repaired = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert repaired is not None
+    assert repaired["status"] == "pending"
+    assert repaired["selector_repair_rearmed"] is True
+
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = {
+        **repaired,
+        "status": "closed",
+    }
+    assert (
+        campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+            candidate,
+            state,
+            character_level=39,
+            source_world=world,
+        )
+        is None
+    )
+
+
 def test_ota_arena_source_refresh_is_one_shot_and_closes_without_a_kill() -> None:
     world = load_world_source(SOURCE, include_all_areas=True)
     candidate = _arena_campaign_candidate(world)
@@ -1155,6 +1355,75 @@ def test_ota_arena_source_refresh_is_one_shot_and_closes_without_a_kill() -> Non
     assert marker["status"] == "closed"
     assert marker["outcome"] == "no_kill"
     assert marker["prior_source_revision"] == "old-source"
+
+
+def test_ota_arena_route_recovery_revalidation_reopens_only_the_fixed_timeout() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    candidate = _arena_campaign_candidate(world)
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=39,
+    )
+    state = _arena_source_refresh_state(policy_id)
+    source_refresh = campaign_module._source_ranked_ota_arena_source_refresh_revalidation_receipt(
+        candidate,
+        state,
+        character_level=39,
+        source_world=world,
+    )
+    assert source_refresh is not None
+    attempted_source_refresh = {
+        **source_refresh,
+        "status": "attempted",
+        "attempted": True,
+    }
+    state[campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY] = (
+        attempted_source_refresh
+    )
+    closed_state = campaign_module._campaign_segment_end_state(
+        state,
+        {**state, "campaign_objective_kills": []},
+        execution="source-ranked-hunt",
+        policy_id=policy_id,
+    )
+    assert closed_state[
+        campaign_module._OTAAR_ARENA_SOURCE_REFRESH_REVALIDATION_KEY
+    ]["status"] == "closed"
+
+    receipt = campaign_module._source_ranked_ota_arena_route_recovery_revalidation_receipt(
+        candidate,
+        closed_state,
+        character_level=39,
+        source_world=world,
+    )
+
+    assert receipt is not None
+    assert receipt["revision"] == campaign_module._OTAAR_ARENA_ROUTE_RECOVERY_REVALIDATION_REVISION
+    assert receipt["status"] == "pending"
+    closed_state[campaign_module._OTAAR_ARENA_ROUTE_RECOVERY_REVALIDATION_KEY] = receipt
+    assert not campaign_module._source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        closed_state,
+        character_level=39,
+        character_max_hp=937,
+        source_world=world,
+    )
+
+    assert campaign_module._consume_ota_arena_route_recovery_before_dispatch(
+        closed_state,
+        policy_id=policy_id,
+        character_level=39,
+    )
+    assert closed_state[
+        campaign_module._OTAAR_ARENA_ROUTE_RECOVERY_REVALIDATION_KEY
+    ]["status"] == "attempted"
+    assert campaign_module._source_ranked_candidate_blocked_by_protection_recovery(
+        candidate,
+        closed_state,
+        character_level=39,
+        character_max_hp=937,
+        source_world=world,
+    )
 
 
 def test_ota_arena_allows_only_the_bounded_old_higue_transit_fight() -> None:
@@ -1238,6 +1507,54 @@ def test_ota_arena_special_transit_bypasses_early_route_hazard_dispatch() -> Non
         max_move=583,
         position=7,
         area="Shadowsea",
+        room_vnum="27134",
+        room_flags=["no_recall"],
+        enemies=[[{
+            "name": mobile.short_description,
+            "level": "29",
+            "hp": "650",
+            "maxhp": "650",
+            "isnpc": "27106",
+            "long_desc": mobile.room_description,
+        }]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.fastwalk_abort_reason is None
+    assert policy.fastwalk_plain_transit_fight_active is True
+    assert policy.active_target == mobile.short_description
+
+
+def test_ota_arena_transit_admission_precedes_consider_only_probe_abort() -> None:
+    world = load_world_source(SOURCE, include_all_areas=True)
+    mobile = world.mobiles[27106]
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source-ranked Ota'ar arena favour circuit",
+            1,
+            100,
+            "s",
+            route_bounded_transit_special_mobile_vnums=(27106,),
+            route_bounded_transit_special_room_vnums=("27134",),
+        ),
+        fastwalk_hunt_stops=(
+            FieldHuntStop((), "the Arenamaster", consider_only=True),
+        ),
+        source_world=world,
+        title_configured=True,
+        description_configured=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.current_room = "27134"
+    state = CharacterState(
+        level=39,
+        hp=937,
+        max_hp=937,
         room_vnum="27134",
         room_flags=["no_recall"],
         enemies=[[{

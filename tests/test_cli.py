@@ -3370,6 +3370,17 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
                     "autonomous_safe_count": 2,
                     "sanctuary_required_count": 1,
                     "no_sanctuary_count": 1,
+                    "psionic_protection_gated_count": 1,
+                    "psionic_protection_gated_candidates": [{
+                        "target": "a level forty psionicist",
+                        "mobile_vnum": 39017,
+                        "level_range": [38, 42],
+                        "protection_effects": ["energy drain", "disintegrate"],
+                        "reason": (
+                            "fresh psionic protection receipt required for "
+                            "energy drain/disintegrate"
+                        ),
+                    }],
                     "same_boot_below_band_count": 1,
                     "sanctuary_required_candidates": [{
                         "policy_id": "source-ranked-hunt-guard-102-202-25",
@@ -3440,6 +3451,11 @@ def test_show_campaign_prints_frontier_diagnosis(tmp_path, capsys) -> None:
     assert "Frontier diagnosis: no executable source-ranked frontier" in captured.out
     assert "candidates=12 current-band=3 autonomous-safe=2" in captured.out
     assert "Frontier blockers: sanctuary reserve required: 1" in captured.out
+    assert "Psionic protection-gated options (never dispatched):" in captured.out
+    assert (
+        "a level forty psionicist [39017]; levels 38-42; "
+        "exposure=energy drain, disintegrate"
+    ) in captured.out
     assert "Sanctuary-required frontier options (diagnostic only):" in captured.out
     assert "a sanctuary target [102] at The Guard Room" in captured.out
     assert "HP 10-200; peak 55; weapons=a guard's sword" in captured.out

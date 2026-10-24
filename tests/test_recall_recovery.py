@@ -45,6 +45,24 @@ def test_adjacent_recall_escape_requires_scan_step_and_exact_recall_confirmation
     assert "can't see anything" in escape.evidence()["scan_response"]
 
 
+def test_adjacent_recall_escape_accepts_temple_text_before_room_info():
+    state = state_case()
+    escape = AdjacentRecallEscape("100", "north", "101")
+    assert escape.next_command(state, now=0) == "scan north"
+    escape.observe("You can't see anything to the north.\n" + PROMPT)
+    assert escape.next_command(state, now=1) == "north"
+    state.room_vnum = "101"
+    escape.observe(PROMPT)
+    assert escape.next_command(state, now=2) == "recall"
+    # The server's text parser has the old room until the later Room.Info
+    # packet, but the canonical Temple header proves the recall arrived.
+    state.room_vnum = "101"
+    escape.observe("The Temple Of Midgaard\n" + PROMPT)
+    assert escape.next_command(state, now=3) is None
+    assert escape.stage == "complete"
+    assert escape.failure is None
+
+
 @pytest.mark.parametrize("reply", [
     "A demon who is one room to the north.",
     "A closed door right here to the north.",

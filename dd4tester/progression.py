@@ -1776,6 +1776,31 @@ _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY = ProgressionPolicy(
     segment_kill_limit=1,
 )
 
+_OTAAR_LOCAL_SANCTUARY_POLICY = ProgressionPolicy(
+    policy_id="otaar-local-sanctuary-reserve-40-100",
+    minimum_level=40,
+    maximum_level=100,
+    status="research",
+    execution="otaar-local-sanctuary-hunt",
+    summary=(
+        "Acquire the exact Ota'ar local purple Sanctuary reserve before "
+        "reopening the current-band arena route."
+    ),
+    evidence=(
+        "The source market reset loads mobile 27224, the large hobgoblin, "
+        "in room 27329 with purple potion 27287.",
+        "The bounded local approach starts from room 27347, buys source "
+        "water-breathing potion 27333 in room 27340, then reaches the carrier "
+        "without relying on the long recall-to-Ota'ar route.",
+        "Aernth the Slavemaster (27228) shares the carrier room but has only a "
+        "death_prog. The live endpoint must still consider his exact selector "
+        "before the carrier is touched; other programmed or combat-capable "
+        "companions remain hard hazards.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
 _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY = ProgressionPolicy(
     policy_id="source-ranked-sanctuary-alternate-2-100",
     minimum_level=2,
@@ -1818,6 +1843,58 @@ _SOURCE_RANKED_OLYMPUS_SANCTUARY_POLICY = ProgressionPolicy(
         "This policy is scoped to the exact mobile, room, object, source "
         "revision, level and reboot, so an unrelated Moria or Dwarven failure "
         "cannot close the Olympus recovery route.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-olympus-adept-38-100",
+    minimum_level=38,
+    maximum_level=100,
+    status="research",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire the source-verified Sanctuary staff from Athena's passive "
+        "Olympus reset when the lower-level carrier is closed."
+    ),
+    evidence=(
+        "olympus.are resets mobile 907, Athena, once in room 925 with "
+        "object 905, an ivory staff that activates Sanctuary.",
+        "Athena is a level-43 singleton, sentinel, unarmed, non-aggressive "
+        "reset with only spec_cast_adept. The source special is limited to "
+        "beneficial support and is audited separately from psionic or combat "
+        "specials.",
+        "This identity has its own research and retry history. A failed or "
+        "exhausted Alchemist reset cannot close Athena, and the live stop "
+        "still requires exact identity, isolation, fresh consider, source "
+        "output, and the player's ordinary withdrawal checks.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=1,
+)
+
+_SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-sanctuary-olympus-hephaestus-38-100",
+    minimum_level=38,
+    maximum_level=100,
+    status="research",
+    execution="moria-sanctuary-hunt",
+    summary=(
+        "Acquire the source-verified Sanctuary nectar from Hephaestus after "
+        "the passive Olympus carrier routes have closed."
+    ),
+    evidence=(
+        "olympus.are resets mobile 908, Hephaestus, in room 937 with "
+        "object 926, a nectar that activates Sanctuary.",
+        "Hephaestus is a singleton, unarmed, non-aggressive level-38 source "
+        "reset whose only procedure is spec_breath_lightning. The route's "
+        "Golden Maiden companions are source-below-band and are retained as "
+        "trivial bystanders, not combat permission.",
+        "This exact carrier is the only target-special exception in the "
+        "required-loot Sanctuary path. It keeps fresh live identity, "
+        "consider, isolation, output and own-health withdrawal checks, and "
+        "does not admit psionicists or any disintegration risk.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -6798,6 +6875,7 @@ _HANDOFF_BLOCKING_EXECUTIONS = frozenset(
         "audit-combat-pouch",
         "choose-subclass",
         "recall-point-acquire",
+        "otaar-local-sanctuary-hunt",
     }
 )
 
@@ -7056,8 +7134,6 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RECOVER_SCHOOL_WRIST_FLOAT_POLICY
     if context.needs_gremlin_waist:
         return _RECOVER_GREMLIN_WAIST_POLICY
-    if context.needs_daycare_ring:
-        return _RECOVER_DAYCARE_RING_POLICY
     if (
         normalized_level >= 6
         and context.progression_track == "verified-field-martial"
@@ -7066,6 +7142,8 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         return _RECOVER_FOUNDRY_SET_CIRCLET_POLICY
     if context.needs_war_dog_collar:
         return _RECOVER_WAR_DOG_COLLAR_POLICY
+    if context.needs_daycare_ring:
+        return _RECOVER_DAYCARE_RING_POLICY
     if context.needs_training_repair:
         return replace(
             _TRAINING_DEFICIT_REPAIR_POLICY,

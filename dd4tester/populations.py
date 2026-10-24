@@ -7,6 +7,7 @@ from typing import Any
 
 from .equipment import normalize_item_name
 from .hunt_candidates import (
+    ACT_IS_NPC,
     ACT_SENTINEL,
     ITEM_PILL,
     ITEM_POTION,
@@ -40,11 +41,12 @@ def source_sequential_duplicate_reset_limit(
     mobile_vnum: int,
     room_vnum: int | str,
 ) -> int | None:
-    """Prove a two-copy sentinel reset safe to select one instance at a time.
+    """Prove a small plain sentinel reset safe to select one at a time.
 
     This is not multi-target combat permission or the capacity-only population
     research path. It applies only to one unprogrammed, unspecial, unequipped
-    sentinel reset with exactly two instances in one room.
+    sentinel reset with two to four instances in one room. The caller still
+    has to prove every live selector and keep the sequential kill bound.
     """
     try:
         room = int(room_vnum)
@@ -55,22 +57,29 @@ def source_sequential_duplicate_reset_limit(
         reset for reset in world.mob_resets
         if reset.mobile_vnum == mobile_vnum
     ] if world is not None else []
+    room_resets = [reset for reset in resets if reset.room_vnum == room]
     if (
         mobile is None
-        or mobile.act_flags != ACT_SENTINEL
+        or mobile.act_flags not in {ACT_SENTINEL, ACT_IS_NPC | ACT_SENTINEL}
         or mobile.affected_flags != 0
         or mobile.programs
         or world.mobile_specials.get(mobile_vnum)
         or mobile.rank.casefold() not in {"common", "none"}
         or not mobile.short_description.strip()
-        or len(resets) != 1
-        or resets[0].room_vnum != room
-        or resets[0].maximum_count != 2
-        or resets[0].object_vnums
-        or resets[0].equipment
+        or not room_resets
+        or len(room_resets) != 1
+        or type(room_resets[0].maximum_count) is not int
+        or not 2 <= room_resets[0].maximum_count <= 4
+        or any(
+            type(reset.maximum_count) is not int
+            or reset.maximum_count != room_resets[0].maximum_count
+            or reset.object_vnums
+            or reset.equipment
+            for reset in resets
+        )
     ):
         return None
-    return 2
+    return room_resets[0].maximum_count
 
 
 def population_locator_mismatch_receipt(state: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -394,10 +403,27 @@ def plain_bounded_population(
     ):
         return False
     mobile = world.mobiles[candidate.mobile_vnum]
+    # Source ranking represents a passive multi-room population as a normal
+    # caution candidate: the copies are in distinct rooms, so no room-local
+    # crowd rejection is emitted. Keep that source shape eligible for the
+    # capacity-research contract alongside the older same-room rejection
+    # shape. Live isolation and consider checks still decide the encounter.
+    source_ranked_plain_population_shape = bool(
+        candidate.status in {"caution", "promising"}
+        and not candidate.autonomy_rejections
+    )
+    legacy_capacity_research_shape = bool(
+        candidate.status == "reject"
+        and candidate.autonomy_rejections
+        == ("target reset capacity exceeds one",)
+    )
     return bool(
         not candidate.specials and not candidate.equipped_weapons
-        and not candidate.is_coin_stash and candidate.status == "reject"
-        and candidate.autonomy_rejections == ("target reset capacity exceeds one",)
+        and not candidate.is_coin_stash
+        and (
+            source_ranked_plain_population_shape
+            or legacy_capacity_research_shape
+        )
         and type(candidate.source_spawn_limit) is int
         and 2 <= candidate.source_spawn_limit <= 4
         and type(candidate.room_spawn_count) is int and candidate.room_spawn_count == 1

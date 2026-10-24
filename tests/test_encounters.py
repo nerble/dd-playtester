@@ -7,6 +7,7 @@ from dd4tester.encounters import (
     source_duplicate_pair_budget,
     source_multi_encounter_budget,
     source_pair_budget,
+    source_sequential_duplicate_budget,
 )
 from dd4tester.hunt_candidates import (
     ACT_SENTINEL, ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
@@ -226,6 +227,87 @@ def test_source_duplicate_pair_keeps_armed_and_resource_boundaries(change):
     assert not _source_duplicate_pair(**change).allowed
 
 
+def _source_sequential(**overrides):
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        level=39,
+        act_flags=ACT_SENTINEL,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        room_vnum=100,
+        maximum_count=4,
+    )
+    params = dict(
+        room_vnum=100,
+        instance_count=4,
+        character_level=39,
+        hp=1000,
+        max_hp=1000,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 12),
+    )
+    params.update(overrides)
+    return source_sequential_duplicate_budget(world, 1, **params)
+
+
+def test_source_sequential_duplicate_prices_four_plain_copies_without_target_hp():
+    budget = _source_sequential()
+
+    assert budget.allowed
+    assert budget.source_only
+    assert budget.mobile_vnums == (1, 1, 1, 1)
+    assert budget.target_hp_ceiling == 0
+    assert budget.health_reserve == 200
+    assert "target HP" not in budget.reason
+
+
+def test_source_sequential_duplicate_accepts_transient_lower_reported_caps():
+    budget = _source_sequential(hp=927, max_hp=912, mana=531, max_mana=462)
+
+    assert budget.allowed
+    assert budget.health_reserve == 186
+
+
+@pytest.mark.parametrize("change", [
+    {"instance_count": 1},
+    {"instance_count": 5},
+    {"hp": 700},
+    {"maximum_level_offset": 0, "character_level": 50},
+])
+def test_source_sequential_duplicate_keeps_finite_population_and_health_gates(change):
+    assert not _source_sequential(**change).allowed
+
+
+def test_source_sequential_duplicate_rejects_armed_or_special_resets():
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        level=39,
+        act_flags=ACT_SENTINEL,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        room_vnum=100,
+        maximum_count=4,
+        equipment=((WEAR_WIELD, 1000),),
+    )
+    assert not source_sequential_duplicate_budget(
+        world,
+        1,
+        room_vnum=100,
+        instance_count=4,
+        character_level=39,
+        hp=1000,
+        max_hp=1000,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 12),
+    ).allowed
+
+
 def _source_multi(**overrides):
     world = _world()
     world.mobiles[1] = replace(world.mobiles[1], level=5)
@@ -304,6 +386,49 @@ def test_live_level_only_pair_ignores_enemy_hp_but_keeps_level_and_floor_gates()
     assert not active_encounter_budget(world, [enemy], **kwargs).allowed
 
 
+def test_active_encounter_accepts_only_opted_in_hephaestus_lightning_special():
+    world = _world()
+    world.mobiles[908] = replace(
+        world.mobiles[1],
+        vnum=908,
+        level=38,
+        act_flags=ACT_SENTINEL,
+    )
+    world.mobile_specials[908] = ("spec_breath_lightning",)
+    world.mob_resets.append(
+        replace(
+            world.mob_resets[0],
+            mobile_vnum=908,
+            room_vnum=937,
+            maximum_count=1,
+            object_vnums=(926,),
+            equipment=(),
+        )
+    )
+    world.objects[926] = ObjectSource(
+        926, "nectar", "nectar", 26, (12, 0, 0, 0), 80000,
+    )
+    enemy = {"isnpc": "908", "name": "Hephaestus", "level": "38"}
+    common = dict(
+        character_level=39,
+        hp=113,
+        max_hp=113,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 18, 23, 28, "actions", 0, 12),
+        target_hp_evidence_only=True,
+        maximum_level_offsets_by_vnum={908: 1},
+    )
+
+    assert not active_encounter_budget(world, [enemy], **common).allowed
+    assert active_encounter_budget(
+        world,
+        [enemy],
+        **common,
+        allowed_hephaestus_special_vnums=(908,),
+    ).allowed
+
+
 @pytest.mark.parametrize("hazard", [
     "special", "aggressive", "program", "armed", "missing_reset", "population",
 ])
@@ -339,3 +464,5 @@ def test_source_multi_preserves_source_hazard_boundaries(hazard):
     )
 
     assert not budget.allowed
+
+

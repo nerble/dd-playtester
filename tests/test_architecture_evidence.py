@@ -275,6 +275,50 @@ def test_queued_observations_keep_one_event_and_sparse_checkpoints(
     storage.close()
 
 
+def test_large_database_finish_defers_full_report_build(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database) as storage:
+        run_id = storage.create_run(
+            scenario_name="starter:Deferred",
+            scenario_path=Path("character.yaml"),
+        )
+        storage.queue_observation(
+            run_id,
+            kind="state_snapshot",
+            timestamp="2026-10-03T00:00:01+00:00",
+            payload={
+                "reason": "initial_state",
+                "source": "gmcp",
+                "state": {
+                    "name": "Deferred",
+                    "level": 40,
+                    "xp": 100,
+                    "hp": 30,
+                    "max_hp": 30,
+                },
+            },
+        )
+        monkeypatch.setattr(
+            storage_module,
+            "_campaign_database_is_large",
+            lambda _path: True,
+        )
+
+        storage.finish_run(
+            run_id,
+            status="success",
+            execution_status="completed",
+            objective_outcome="achieved",
+            safety_outcome="safe",
+        )
+
+        run = storage.get_run(run_id)
+        assert run is not None
+        assert run["status"] == "success"
+        assert run["execution_status"] == "completed"
+        assert storage.get_run_summary(run_id) is None
+
+
 def test_queued_snapshot_uses_its_originating_game_event(tmp_path) -> None:
     with RunStorage(tmp_path / "runs.sqlite3", event_commit_interval=100) as storage:
         run_id = storage.create_run(

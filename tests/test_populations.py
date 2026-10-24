@@ -55,6 +55,21 @@ def test_bounded_population_allows_isolation_research_without_reclassifying_targ
     )
 
 
+def test_source_ranked_plain_multiroom_population_is_capacity_researchable():
+    candidate, world = population_case()
+    world.mobiles[100] = replace(world.mobiles[100], act_flags=ACT_SENTINEL)
+    world.objects.clear()
+    world.mob_resets = [MobReset(100, vnum, 3, ()) for vnum in (300, 301, 302)]
+    candidate = replace(
+        candidate,
+        status="caution",
+        autonomy_rejections=(),
+        loot=(),
+    )
+
+    assert plain_bounded_population(candidate, world)
+
+
 def sequential_duplicate_case():
     mobile = MobileSource(
         100,
@@ -80,9 +95,18 @@ def test_two_copy_sentinel_reset_is_only_admitted_for_sequential_selection():
     ) == 2
 
 
+def test_four_copy_sentinel_reset_is_admitted_with_a_finite_sequential_bound():
+    world = sequential_duplicate_case()
+    world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=4)
+
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=100, room_vnum="200",
+    ) == 4
+
+
 @pytest.mark.parametrize("mutation", [
     "aggressive", "wanders", "affected", "program", "special",
-    "armed", "object", "third_copy", "different_room", "second_reset",
+    "armed", "object", "fifth_copy", "different_room", "second_reset",
 ])
 def test_sequential_duplicate_reset_rejects_any_unverified_source_change(mutation):
     world = sequential_duplicate_case()
@@ -107,8 +131,8 @@ def test_sequential_duplicate_reset_rejects_any_unverified_source_change(mutatio
         )
     elif mutation == "object":
         world.mob_resets[0] = replace(world.mob_resets[0], object_vnums=(200,))
-    elif mutation == "third_copy":
-        world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=3)
+    elif mutation == "fifth_copy":
+        world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=5)
     elif mutation == "different_room":
         world.mob_resets[0] = replace(world.mob_resets[0], room_vnum=201)
     else:
