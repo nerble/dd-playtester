@@ -12,6 +12,7 @@ from dd4tester.character import load_character_spec
 from dd4tester.dd4_catalog import ClassOption, SubclassOption, parse_character_catalog
 from dd4tester.hero import (
     HeroRequest,
+    _latest_profile_campaign_config,
     load_existing_hero_request,
     prepare_hero_request,
     run_hero_request,
@@ -452,15 +453,20 @@ def test_autonomous_hero_continues_ready_cycles_and_limits_reset_waits(
     )
 
 
-def test_autonomous_hero_does_not_default_to_a_reset_wait(
+def test_autonomous_hero_defaults_to_one_reset_retry_per_cycle(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     calls: list[dict[str, object]] = []
+    progress: list[str] = []
     prepared = object()
 
     async def fake_request(request, **options):
         calls.append(options)
+        options["progress_callback"](
+            "Waiting for DD4 area reset: 1/42s; "
+            "the healer checkpoint remains durable."
+        )
         return prepared, CampaignResult(
             1,
             "ready",
@@ -482,6 +488,7 @@ def test_autonomous_hero_does_not_default_to_a_reset_wait(
             workspace=tmp_path / "heroes",
             cycles=5,
             max_reset_waits=1,
+            progress_callback=progress.append,
             password="test-password",
         )
     )
@@ -489,7 +496,7 @@ def test_autonomous_hero_does_not_default_to_a_reset_wait(
     assert preparation is prepared
     assert result.awaiting_area_reset
     assert len(calls) == 1
-    assert calls[0]["reset_retries"] == 0
+    assert calls[0]["reset_retries"] == 1
 
 
 def test_autonomous_hero_stops_on_blocked_result(tmp_path: Path, monkeypatch) -> None:
@@ -1366,6 +1373,74 @@ def test_named_resume_loads_a_saved_legacy_campaign(
     assert resumed.manifest_path is None
     assert resumed.profile_path == saved.profile_path.resolve()
     assert resumed.campaign_path == saved.campaign_path.resolve()
+
+
+def test_generated_hero_prefers_canonical_campaign_over_legacy_profile_campaign(
+    tmp_path: Path,
+) -> None:
+    catalog = parse_character_catalog(SOURCE, source="fixture")
+    saved = prepare_hero_request(
+        HeroRequest(
+            name="Valora",
+            race="human",
+            sex="female",
+            character_class="mage",
+        ),
+        catalog=catalog,
+        workspace=tmp_path / "heroes",
+    )
+    database = tmp_path / "campaigns.sqlite3"
+    profile_text = saved.profile_path.read_text(encoding="utf-8")
+    saved.profile_path.write_text(
+        profile_text.replace(
+            'database: "runs/dd4tester.sqlite3"',
+            f'database: "{database.as_posix()}"',
+        ),
+        encoding="utf-8",
+    )
+    legacy_path = saved.directory / "legacy.yaml"
+    legacy_path.write_text(
+        saved.campaign_path.read_text(encoding="utf-8").replace(
+            "max_segments: 10000", "max_segments: 100"
+        ),
+        encoding="utf-8",
+    )
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE campaigns (
+                id INTEGER PRIMARY KEY,
+                config_path TEXT NOT NULL,
+                character_profile_path TEXT NOT NULL
+            );
+            CREATE TABLE campaign_checkpoints (
+                id INTEGER PRIMARY KEY,
+                campaign_id INTEGER NOT NULL,
+                state_json TEXT NOT NULL
+            );
+            """
+        )
+        profile = str(saved.profile_path.resolve())
+        connection.executemany(
+            "INSERT INTO campaigns VALUES (?, ?, ?)",
+            [
+                (1, str(saved.campaign_path.resolve()), profile),
+                (2, str(legacy_path.resolve()), profile),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO campaign_checkpoints VALUES (?, ?, ?)",
+            [
+                (1, 1, json.dumps({"name": "Valora", "level": 40})),
+                (2, 2, json.dumps({"name": "Valora", "level": 40})),
+            ],
+        )
+
+    character = load_character_spec(saved.profile_path)
+    assert _latest_profile_campaign_config(
+        saved.profile_path,
+        character=character,
+    ) == saved.campaign_path.resolve()
 
 
 def test_named_resume_uses_only_workspace_with_saved_campaign_progress(

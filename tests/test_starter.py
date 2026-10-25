@@ -3693,6 +3693,45 @@ def _spec(**overrides: object) -> CharacterSpec:
     return CharacterSpec.from_mapping(values)
 
 
+def test_red_dragon_fire_sanctuary_stop_is_identity_bound() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    stop = FieldHuntStop(
+        (),
+        target="red dragon",
+        exact_target=True,
+        maximum_target_count=1,
+        require_isolated=True,
+        require_sanctuary=True,
+        source_mobile_vnum=7040,
+        source_reset_room_vnum="7428",
+        source_target_armed=True,
+        source_specials=("spec_breath_fire",),
+        allow_source_red_dragon_fire_endpoint=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        source_world=world,
+        fastwalk_hunt_stops=(stop,),
+    )
+
+    assert policy._source_stop_has_red_dragon_fire_sanctuary_special(
+        stop,
+        room_vnum="7428",
+    )
+    assert not policy._source_stop_has_red_dragon_fire_sanctuary_special(
+        replace(stop, source_target_armed=False),
+        room_vnum="7428",
+    )
+    assert not policy._source_stop_has_red_dragon_fire_sanctuary_special(
+        replace(stop, source_mobile_vnum=7041),
+        room_vnum="7428",
+    )
+
+
 def _mage_combat_policy_for_spell_rotation() -> tuple[StarterPolicy, CharacterState]:
     policy = StarterPolicy(
         _spec(**{"class": "mage", "subclass": None}),
@@ -9966,6 +10005,7 @@ def test_source_sanctuary_staff_can_refresh_once_after_expiry() -> None:
         protected,
     )
     policy.fastwalk_sanctuary_observed_in_combat = True
+    policy.source_resource_effect_acknowledged = "sanctuary"
 
     refresh = policy._combat_pouch_potion_decision(
         replace(state, affects=[]),
@@ -17079,6 +17119,35 @@ def test_consider_rejects_every_low_xp_branch(message: str) -> None:
     assert policy.consider_viable is False
 
 
+def test_sanctuary_maintenance_accepts_a_below_band_consider() -> None:
+    stop = FieldHuntStop(
+        (),
+        "large hobgoblin",
+        required_items=("a purple potion",),
+        allow_below_band_for_required_loot=True,
+        source_policy_id=(
+            "source-ranked-hunt-moria-4055-4071-40-"
+            "sanctuary-maintenance"
+        ),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.current_room = "4071"
+    policy.consider_target = "large hobgoblin"
+
+    policy.observe_text(
+        "You can kill the large hobgoblin naked and weaponless.\n"
+        "Also, you are currently much healthier than he.\n"
+    )
+
+    assert policy.consider_viable is True
+    assert policy.consider_player_health_advantage is True
+    assert "large hobgoblin" in policy.fastwalk_below_band_targets
+
+
 def test_required_loot_stop_can_attack_below_band_without_relaxing_xp_policy() -> None:
     stop = foundry_body_gear_hunt_stops()[0]
     policy = StarterPolicy(
@@ -20320,6 +20389,39 @@ def test_capacity_relief_can_release_unique_plain_unprotected_armor() -> None:
     ) == "overalls"
 
 
+def test_capacity_relief_can_release_dominated_stat_gear_copy() -> None:
+    stronger_robe = ObjectSource(
+        19061,
+        "forest green robe",
+        "a forest green robe",
+        ITEM_ARMOR,
+        (4, 0, 0, 0),
+        100,
+        wear_flags=1025,
+        affects=((4, 2), (12, 35)),
+    )
+    weaker_robe = ObjectSource(
+        6621,
+        "linen robe",
+        "a linen robe",
+        ITEM_ARMOR,
+        (1, 0, 0, 0),
+        100,
+        wear_flags=1025,
+        affects=((4, 1), (12, 5)),
+    )
+    catalog = GearCatalog({stronger_robe.vnum: stronger_robe, weaker_robe.vnum: weaker_robe})
+
+    assert _capacity_relief_inventory_keyword(
+        [{"short_desc": "a linen robe", "quan": "1"}],
+        catalog,
+        character_class="warrior",
+        subclass="Knight",
+        worn_source_vnums=(stronger_robe.vnum,),
+        worn_source_items=(stronger_robe,),
+    ) == "linen"
+
+
 def test_required_loot_capacity_releases_only_surplus_safe_potions() -> None:
     potion = ObjectSource(
         11527,
@@ -20451,6 +20553,42 @@ def test_healer_capacity_eats_one_surplus_pie_and_verifies_the_freed_slot() -> N
     assert decision is None
     assert policy.fastwalk_required_loot_capacity_preflight_complete is True
     assert policy._recovery_session.carrying_capacity.final_count == 40
+
+
+def test_healer_capacity_drops_one_surplus_pie_when_already_full() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    full = CharacterState(
+        level=36,
+        room_vnum="3054",
+        position=7,
+        hunger=48,
+        max_hunger=48,
+        inventory=[[{"short_desc": "a big pot pie", "quan": "3"}]],
+        stats={"carry_num": 41, "maxcarry_num": 41},
+    )
+
+    handled, drop = policy._healer_carrying_capacity_preflight_decision(
+        full,
+        required_slots=1,
+    )
+
+    assert handled is True
+    assert drop is not None
+    assert drop.command == "drop pie"
+
+    policy.observe_text("You drop a big pot pie.\n")
+    handled, sacrifice = policy._healer_carrying_capacity_preflight_decision(
+        full,
+        required_slots=1,
+    )
+    assert handled is True
+    assert sacrifice is not None
+    assert sacrifice.command == "sacrifice pie"
 
 
 def test_healer_capacity_does_not_eat_the_last_food_reserve() -> None:
@@ -34499,6 +34637,45 @@ def test_lucky_consider_requires_explicit_source_probe_and_rejects_below_band() 
         "The plain target says 'Do you feel lucky, punk?' and is no match for you.\n"
     )
     assert below_band.consider_viable is False
+
+
+@pytest.mark.parametrize(
+    ("consider_line", "level_ceiling"),
+    (
+        ("Apollo says 'Do you feel lucky, punk?'.", 5),
+        ("Apollo laughs at you mercilessly.", 9),
+    ),
+)
+def test_sanctuary_maintenance_accepts_high_side_consider_and_tank_evidence(
+    consider_line: str,
+    level_ceiling: int,
+) -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_hunt_stops=(
+            FieldHuntStop(
+                (),
+                "apollo",
+                source_policy_id=(
+                    "source-ranked-hunt-olympus-905-926-40-"
+                    "sanctuary-maintenance"
+                ),
+                allow_below_band_for_required_loot=True,
+                required_items=("nectar",),
+                maximum_level_offset=9,
+            ),
+        ),
+    )
+    policy.consider_target = "apollo"
+
+    policy.observe_text(
+        f"{consider_line} Also, he is built like a tank!\n"
+    )
+
+    assert policy.consider_viable is True
+    assert policy.consider_health_warning is True
+    assert policy.consider_level_offset_ceiling == level_ceiling
 
 
 def test_source_ranked_easy_kill_remains_viable_with_tank_warning() -> None:
@@ -49154,6 +49331,29 @@ def test_combat_reserves_sanctuary_for_below_band_required_loot_kill() -> None:
     assert policy.combat_pouch_potions == {"purple": 1}
 
 
+def test_sanctuary_maintenance_allows_below_band_consider_without_inventory_gap() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=starter.daycare_ring_hunt_route(),
+    )
+    stop = FieldHuntStop(
+        (),
+        target="large hobgoblin",
+        required_items=("purple potion",),
+        allow_below_band_for_required_loot=True,
+        source_policy_id=(
+            "source-ranked-hunt-moria-4055-4071-40-"
+            "sanctuary-maintenance"
+        ),
+    )
+
+    assert policy._allows_below_band_resource_kill(
+        CharacterState(hp=100, max_hp=100),
+        stop,
+    )
+
+
 def test_fastwalk_research_loots_incidental_kill_before_resuming_route() -> None:
     route = route_named("foundry captain")
     policy = StarterPolicy(
@@ -56832,6 +57032,116 @@ def test_warrior_stun_opener_switches_back_to_primary_weapon() -> None:
     assert kill is not None
     assert kill.command == "kill #22332"
     assert policy.combat_active is True
+
+
+def test_warrior_stun_opener_ignores_a_carried_lance_as_primary_weapon() -> None:
+    mace = ObjectSource(
+        4003,
+        "mace",
+        "a mace",
+        5,
+        (0, 2, 5, 7),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    sword = ObjectSource(
+        4002,
+        "rusty sword",
+        "a rusty sword",
+        5,
+        (0, 4, 8, 3),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((19, 4),),
+    )
+    lance = ObjectSource(
+        4004,
+        "javelin",
+        "a javelin",
+        5,
+        (10, 10, 10, 10),
+        100,
+        wear_flags=1 | (1 << 13),
+        extra_flags=ITEM_LANCE,
+    )
+    target = "the patrolling guard"
+    stop = FieldHuntStop(
+        (),
+        target,
+        exact_target=True,
+        source_mobile_vnum=22332,
+        require_sanctuary=True,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        gear_catalog=GearCatalog(
+            {item.vnum: item for item in (mace, sword, lance)}
+        ),
+        fastwalk_hunt_stops=(stop,),
+    )
+    policy.known_skills.add("stun")
+    policy.known_skill_levels["stun"] = 80
+    policy.gear_worn = [mace]
+    policy.active_target = target
+    policy.active_target_selector = "#22332"
+    policy.consider_target = target
+    policy.consider_target_selector = "#22332"
+    policy.consider_viable = True
+    policy.current_room = "3020"
+    policy.combat_pouch_potions["purple"] = 1
+    policy.verified_combat_pouch_potions["purple"] = 1
+    state = CharacterState(
+        level=20,
+        position=7,
+        room_vnum="3020",
+        inventory=[[{"short_desc": "a rusty sword"}, {"short_desc": "a javelin"}]],
+        enemies=[
+            {
+                "name": target,
+                "isnpc": "22332",
+                "hp": "100",
+                "maxhp": "100",
+            }
+        ],
+    )
+
+    first = policy._combat_opener_decision(
+        target,
+        "fight the source target",
+        state=state,
+    )
+    assert first.command == "stun #22332"
+    policy.observe_text(
+        "You viciously pound the patrolling guard, causing it to buckle and collapse.\n"
+    )
+
+    switch = policy._stun_opener_decision()
+    assert switch is not None
+    assert switch.command == "wield sword"
+
+
+def test_stun_opener_ready_ack_and_flee_pending_cannot_repeat_wield() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+    )
+    policy.stun_opener_step = "wield_followup"
+    policy.stun_opener_target = "the patrolling guard"
+    policy.stun_opener_selector = "#22332"
+    policy.stun_opener_followup_action = "kill"
+    policy.stun_opener_followup_weapon_keyword = "javelin"
+
+    policy.observe_text("You ready a javelin.\n")
+
+    assert policy.stun_opener_step == "kill"
+    assert policy.stun_opener_followup_weapon_keyword is None
+    policy.flee_pending = True
+    assert policy._stun_opener_decision() is None
+    policy.flee_pending = False
+    decision = policy._stun_opener_decision()
+    assert decision is not None
+    assert decision.command == "kill #22332"
 
 
 def test_warrior_stun_opener_uses_exact_consider_without_precombat_enemy_hp() -> None:
@@ -64569,6 +64879,66 @@ def test_armed_transit_attacker_requires_live_sanctuary_and_identity() -> None:
         state,
         policy._current_room_enemy_records(state),
     )
+
+
+def test_armed_transit_attacker_is_not_fled_from_when_route_hazard_is_live() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    mobile = world.mobiles[17503]
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source-ranked hunt rolf",
+            1,
+            100,
+            "west",
+            route_preflight_room_vnum="17500",
+            route_preflight_target=mobile.short_description,
+            route_preflight_source_mobile_vnum=17503,
+            route_preflight_hard_hazard=True,
+            route_allowed_armed_transit_mobile_vnums=(17503,),
+            route_allowed_armed_transit_room_vnums=("17534",),
+        ),
+        source_world=world,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_route_preflight_complete = True
+    policy.fastwalk_outbound_index = 1
+    policy.current_room = "17534"
+    policy.combat_active = True
+    state = CharacterState(
+        level=40,
+        hp=962,
+        max_hp=962,
+        mana=539,
+        max_mana=539,
+        move=588,
+        max_move=653,
+        position=6,
+        room_vnum="17534",
+        in_combat=True,
+        combat_target=mobile.short_description,
+        affects=[{"name": "sanctuary"}],
+        enemies=[[{
+            "name": mobile.short_description,
+            "level": "35",
+            "hp": "700",
+            "maxhp": "700",
+            "isnpc": "17503",
+            "long_desc": mobile.room_description,
+        }]],
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None or decision.command not in {"flee", "recall"}
+    assert policy.fastwalk_plain_transit_fight_active is True
+    assert policy.fastwalk_plain_transit_fight_count == 1
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_armed_transit_preflight_prepares_sanctuary_before_crossing(

@@ -464,6 +464,7 @@ def build_campaign_report(
                 "below_useful_band": bool(kill["below_useful_band"]),
                 "objective_eligible": bool(kill["objective_eligible"]),
                 "route_gate": bool(kill["route_gate"]),
+                "transit_only": bool(kill["transit_only"]),
                 "timestamp": kill["timestamp"],
             }
             for kill in kill_rows
@@ -1219,8 +1220,16 @@ def _kill_record_from_row(row: Any) -> dict[str, Any]:
         value = row[key]
         if value is not None:
             kill[key] = value
-    for key in ("below_useful_band", "objective_eligible", "route_gate"):
-        value = bool(row[key])
+    for key in (
+        "below_useful_band",
+        "objective_eligible",
+        "route_gate",
+        "transit_only",
+    ):
+        try:
+            value = bool(row[key])
+        except (KeyError, IndexError):
+            continue
         default = key == "objective_eligible"
         if value != default:
             kill[key] = value

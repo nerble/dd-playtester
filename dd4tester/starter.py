@@ -85,6 +85,7 @@ from .equipment import (
     is_bow,
     is_disposable_food,
     is_equipment_object,
+    is_lance,
     is_releasable_funding_item,
     is_piercing_weapon,
     is_strength_penalty_ring,
@@ -146,6 +147,7 @@ from .hunt_candidates import (
     ITEM_INSTRUMENT,
     ITEM_CONTAINER,
     ITEM_POTION,
+    ITEM_STAFF,
     ITEM_WEAPON,
     EX_WALL,
     SECT_AIR,
@@ -159,6 +161,7 @@ from .hunt_candidates import (
     SourceTeacherRoute,
     WorldSource,
     WEAR_DUAL,
+    WEAR_HOLD,
     WEAR_WIELD,
     load_world_source,
     mobile_sanctuary_critical_hit_damage,
@@ -2784,6 +2787,9 @@ class FieldHuntStop:
     # source-bounded lightning breath. This flag is identity-bound and never
     # admits psionic or other breath-special targets.
     allow_source_hephaestus_special_endpoint: bool = False
+    # The exact Sewer red-dragon reset carries the SanctuaryOrb but uses
+    # destructive fire breath. This is maintenance-only and identity-bound.
+    allow_source_red_dragon_fire_endpoint: bool = False
     # Source-backed player output metadata supports planning and reports only;
     # target HP observations never become an admission veto.
     source_combat_action: str | None = None
@@ -5656,6 +5662,90 @@ class StarterPolicy:
                 self.consider_health_warning = False
                 self.consider_player_health_advantage = False
                 self.consider_level_offset_ceiling = None
+            elif (
+                stop is not None
+                and self._is_sanctuary_maintenance_stop(stop)
+                and any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_BELOW_BAND_FRAGMENTS
+                )
+                and not any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_DANGEROUS_FRAGMENTS
+                )
+            ):
+                # Sanctuary acquisition is a maintenance objective, so a
+                # source-audited carrier may intentionally sit below the XP
+                # band. Keep the live consider and player-health gates active,
+                # but do not turn DD4's low-level wording into an XP skip.
+                self.consider_viable = True
+                self.consider_health_warning = any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_UNSUPPORTED_HEALTH_FRAGMENTS
+                )
+                self.consider_player_health_advantage = any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_PLAYER_HEALTH_ADVANTAGE_FRAGMENTS
+                )
+                self.consider_level_offset_ceiling = None
+                self.fastwalk_below_band_targets.add(
+                    self.consider_target.casefold()
+                )
+                if self.current_room:
+                    self.fastwalk_below_band_sightings.add(
+                        (
+                            str(self.current_room),
+                            self.consider_target.casefold(),
+                        )
+                    )
+                    if source_policy_id:
+                        self.fastwalk_source_below_band_sightings.add(
+                            (
+                                source_policy_id,
+                                str(self.current_room),
+                                self.consider_target.casefold(),
+                            )
+                        )
+            elif (
+                stop is not None
+                and self._is_sanctuary_maintenance_stop(stop)
+                and any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_DANGEROUS_FRAGMENTS
+                )
+                and not any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_BELOW_BAND_FRAGMENTS
+                )
+            ):
+                # A Sanctuary carrier may also be above the ordinary XP
+                # band. DD4's high-side consider wording is level evidence,
+                # not a blanket refusal for this maintenance objective; the
+                # live level, identity, isolation, route, and own-health
+                # gates still decide whether combat can start. In particular,
+                # "built like a tank" remains observation-only evidence.
+                self.consider_viable = True
+                self.consider_health_warning = any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_UNSUPPORTED_HEALTH_FRAGMENTS
+                )
+                self.consider_player_health_advantage = any(
+                    phrase in consider_recent
+                    for phrase in _CONSIDER_PLAYER_HEALTH_ADVANTAGE_FRAGMENTS
+                )
+                self.consider_level_offset_ceiling = (
+                    5
+                    if "do you feel lucky, punk?" in consider_recent
+                    else 9
+                    if "laughs at you mercilessly" in consider_recent
+                    else 14
+                    if "death will thank you" in consider_recent
+                    else 25
+                    if "could crush you with my little finger" in consider_recent
+                    else 99
+                    if "puny insect" in consider_recent
+                    else None
+                )
             elif any(phrase in consider_recent for phrase in _CONSIDER_REJECTED_FRAGMENTS):
                 self.consider_viable = False
                 self.consider_health_warning = False
@@ -5864,6 +5954,37 @@ class StarterPolicy:
             self.stun_opener_step == "wield_followup"
             and "you wield " in recent
         ):
+            self.stun_opener_step = "kill"
+        elif (
+            self.stun_opener_step == "wield_followup"
+            and "you ready " in recent
+        ):
+            # Lances are placed in DD4's ranged slot and acknowledge with
+            # "ready", not "wield". They are not a melee follow-up weapon;
+            # use the already-wielded primary instead of repeating the command.
+            self.stun_opener_followup_weapon_keyword = None
+            self.stun_opener_step = "kill"
+        elif self.stun_opener_step in {
+            "wield_pounding",
+            "wield_piercing",
+            "wield_followup",
+        } and any(
+            marker in recent
+            for marker in (
+                "you do not have that item",
+                "you don't have that item",
+                "you cannot use lances",
+                "it is too heavy for you to wield",
+                "you already wield two weapons",
+                "you can't wear, wield, or hold that",
+                "you cannot wear, wield, or hold that",
+            )
+        ):
+            # Do not retry a rejected weapon command in a live fight. A
+            # bounded ordinary attack is safer and keeps the combat loop
+            # moving while the campaign records the failed equipment choice.
+            self.stun_opener_followup_weapon_keyword = None
+            self.stun_opener_followup_action = "kill"
             self.stun_opener_step = "kill"
         current_form_rejection = any(
             phrase in recent
@@ -11724,22 +11845,32 @@ class StarterPolicy:
                 live_enemies,
             )
         )
-        bounded_special_transit = bool(
+        # Plain armed transit attackers and source-special transit mobiles
+        # share the same live singleton/output gate, but the former must not
+        # depend on the latter's special-function check.  Keeping this call
+        # outside the special branch lets an audited Sanctuary-backed
+        # wanderer become a controlled transit fight instead of an automatic
+        # XP-losing flee.
+        bounded_plain_transit = bool(
             route_hazard is not None
             and not bounded_midgaard_drunk
             and len(live_enemies) == 1
-            and self._source_mobile_route_transit_special_is_bounded(
-                live_enemies[0],
-                state,
-            )
             and self._source_plain_transit_attacker_is_admitted(
                 state,
                 live_enemies,
             )
         )
+        bounded_special_transit = bool(
+            bounded_plain_transit
+            and self._source_mobile_route_transit_special_is_bounded(
+                live_enemies[0],
+                state,
+            )
+        )
         if (
             route_hazard is not None
             and not bounded_midgaard_drunk
+            and not bounded_plain_transit
             and not bounded_special_transit
         ):
             # Source-registered route hazards are never opportunistic targets:
@@ -15312,6 +15443,11 @@ class StarterPolicy:
                 if self.gear_catalog is not None
                 else ()
             ),
+            worn_source_items=(
+                _equipment_sources(state.equipment, self.gear_catalog)
+                if self.gear_catalog is not None
+                else ()
+            ),
         )
         if keyword is None:
             self.failure = (
@@ -16175,6 +16311,76 @@ class StarterPolicy:
                 and item.item_type != ITEM_WEAPON
                 for _slot, object_vnum in resets[0].equipment
             )
+        )
+
+    def _source_stop_has_red_dragon_fire_sanctuary_special(
+        self,
+        stop: FieldHuntStop | None,
+        *,
+        room_vnum: str | None = None,
+    ) -> bool:
+        """Recheck the exact armed red-dragon SanctuaryOrb carrier."""
+        if (
+            stop is None
+            or not stop.allow_source_red_dragon_fire_endpoint
+            or not stop.exact_target
+            or not stop.require_isolated
+            or stop.maximum_target_count != 1
+            or stop.source_mobile_vnum != 7040
+            or stop.source_target_armed is not True
+            or not stop.require_sanctuary
+            or tuple(stop.source_specials) != ("spec_breath_fire",)
+            or self.source_world is None
+        ):
+            return False
+        mobile = self.source_world.mobiles.get(7040)
+        resets = [
+            reset
+            for reset in self.source_world.mob_resets
+            if reset.mobile_vnum == 7040
+        ]
+        try:
+            reset_room = int(stop.source_reset_room_vnum or 7428)
+            current_room = int(room_vnum) if room_vnum is not None else None
+        except (TypeError, ValueError):
+            return False
+        orb = self.source_world.objects.get(7303)
+        weapon = self.source_world.objects.get(7216)
+        expected_equipment = {
+            (5, 7304),
+            (7, 7305),
+            (9, 7306),
+            (6, 7307),
+            (11, 7308),
+            (10, 7309),
+            (8, 7310),
+            (WEAR_WIELD, 7216),
+            (WEAR_HOLD, 7303),
+        }
+        return bool(
+            reset_room == 7428
+            and (current_room is None or current_room == reset_room)
+            and mobile is not None
+            and mobile.level == 30
+            and mobile.sentinel
+            and not mobile.wanders
+            and mobile.aggressive
+            and not mobile.fear_aura
+            and not mobile.confused
+            and not mobile.programs
+            and not mobile.attack_programs
+            and not mobile.non_corporeal
+            and not mobile.costs_fame
+            and set(self.source_world.mobile_specials.get(7040, ()))
+            == {"spec_breath_fire"}
+            and len(resets) == 1
+            and resets[0].room_vnum == 7428
+            and resets[0].maximum_count == 1
+            and set(resets[0].equipment) == expected_equipment
+            and weapon is not None
+            and weapon.item_type == ITEM_WEAPON
+            and orb is not None
+            and orb.item_type == ITEM_STAFF
         )
 
     def _source_stop_has_corpse_only_special(
@@ -17558,6 +17764,14 @@ class StarterPolicy:
                 )
                 else ()
             ),
+            allowed_red_dragon_fire_special_vnums=(
+                (stop.source_mobile_vnum,)
+                if self._source_stop_has_red_dragon_fire_sanctuary_special(
+                    stop,
+                    room_vnum=str(state.room_vnum or self.current_room or ""),
+                )
+                else ()
+            ),
         )
         audit = {**asdict(budget), "room_vnum": state.room_vnum,
                  "action": output.action if output else None}
@@ -18310,7 +18524,7 @@ class StarterPolicy:
             and self._skill_is_usable("backstab")
             and self._skill_is_usable("stun")
         ):
-            weapons = self._state_weapons(state)
+            weapons = self._melee_state_weapons(state)
             pounding = self._best_weapon(weapons, is_blunt_weapon)
             piercing = self._best_weapon(weapons, is_piercing_weapon)
             if pounding is not None and piercing is not None:
@@ -18344,7 +18558,7 @@ class StarterPolicy:
             and self._skill_is_usable("stun")
             and self._stun_target_is_ready(state, target, source_stop)
         ):
-            weapons = self._state_weapons(state)
+            weapons = self._melee_state_weapons(state)
             pounding = self._best_weapon(weapons, is_blunt_weapon)
             primary = self._best_weapon(weapons, lambda _item: True)
             if pounding is not None and primary is not None:
@@ -19277,7 +19491,7 @@ class StarterPolicy:
         self,
         state: CharacterState,
     ) -> ObjectSource | None:
-        weapons = self._state_weapons(state)
+        weapons = self._melee_state_weapons(state)
         preference = self._combat_weapon_preference()
         predicate = (
             is_piercing_weapon
@@ -19292,6 +19506,7 @@ class StarterPolicy:
                     for item in weapons
                     if item.vnum == self.preserved_primary_weapon_vnum
                     and item_category(item) == "wield"
+                    and not is_lance(item)
                     and predicate(item)
                 ),
                 None,
@@ -19335,7 +19550,7 @@ class StarterPolicy:
     ) -> ObjectSource | None:
         """Return the best source-matched blunt weapon for ``stun``."""
         return self._best_weapon(
-            self._state_weapons(state),
+            self._melee_state_weapons(state),
             is_blunt_weapon,
         )
 
@@ -19356,7 +19571,8 @@ class StarterPolicy:
         items = [
             item
             for item in self.gear_worn
-            if item.vnum not in self.gear_ranged_vnums and not is_bow(item)
+            if item.vnum not in self.gear_ranged_vnums
+            and item_category(item) in {"wield", "ranged_weapon"}
         ]
         if self.gear_catalog is None:
             return items
@@ -19364,9 +19580,17 @@ class StarterPolicy:
         items.extend(
             item
             for item in carried
-            if item_category(item) == "wield" and not is_bow(item)
+            if item_category(item) in {"wield", "ranged_weapon"}
         )
         return list({item.vnum: item for item in items}.values())
+
+    def _melee_state_weapons(self, state: CharacterState) -> list[ObjectSource]:
+        """Return source-matched weapons that can occupy the primary slot."""
+        return [
+            item
+            for item in self._state_weapons(state)
+            if item_category(item) == "wield" and not is_lance(item)
+        ]
 
     @staticmethod
     def _best_weapon(
@@ -19398,7 +19622,7 @@ class StarterPolicy:
             "sanctuary",
         ) is None or not self._skill_is_usable("stun"):
             return False
-        weapons = self._state_weapons(state)
+        weapons = self._melee_state_weapons(state)
         if self._best_weapon(weapons, is_blunt_weapon) is None:
             return False
         character_class = self.spec.character_class.casefold()
@@ -19419,6 +19643,10 @@ class StarterPolicy:
         self,
         state: CharacterState | None = None,
     ) -> BotDecision | None:
+        # A queued flee/recall is a safety action. Never let a delayed weapon
+        # acknowledgement put another wield command in front of it.
+        if self.flee_pending:
+            return None
         if self.stun_opener_step is None or self.stun_opener_target is None:
             return None
         target = self.stun_opener_target
@@ -29003,6 +29231,14 @@ class StarterPolicy:
         state: CharacterState,
         stop: FieldHuntStop,
     ) -> bool:
+        if self._is_sanctuary_maintenance_stop(stop):
+            # Sanctuary recovery is maintenance, not XP progression.  The
+            # campaign may deliberately select a much lower carrier after
+            # current-band fights have consumed the reserve.  Keep the live
+            # identity, isolation, route, and player-health gates below; this
+            # only prevents a harmless low-level `consider` from being
+            # misclassified as an ordinary XP rejection.
+            return True
         if (
             self.fastwalk_defer_provision_resupply
             and stop.allow_below_band_for_source_coins
@@ -29018,6 +29254,15 @@ class StarterPolicy:
                     stop.required_items,
                 )
             )
+        )
+
+    @staticmethod
+    def _is_sanctuary_maintenance_stop(stop: FieldHuntStop) -> bool:
+        """Recognize a required-loot stop whose objective is Sanctuary."""
+        return bool(
+            stop.allow_below_band_for_required_loot
+            and stop.required_items
+            and "sanctuary" in str(stop.source_policy_id or "").casefold()
         )
 
     def _fastwalk_intercept_followup_decision(
@@ -31136,6 +31381,7 @@ class StarterPolicy:
         state: CharacterState,
         *,
         effect: str,
+        allow_reactivation: bool = False,
     ) -> BotDecision | None:
         """Hold and activate one source-verified recovery object."""
         if not self.use_sanctuary_potions:
@@ -31168,7 +31414,13 @@ class StarterPolicy:
         self.source_resource_hold_ready = None
         if record_effect in self.failed_source_resource_effects:
             return None
-        if self.source_resource_effect_acknowledged == record_effect:
+        if (
+            self.source_resource_effect_acknowledged == record_effect
+            and not (
+                allow_reactivation
+                and record_effect == "sanctuary"
+            )
+        ):
             return None
         if self.pending_source_resource_effect == record_effect:
             return None
@@ -31437,6 +31689,7 @@ class StarterPolicy:
             source_resource = self._source_resource_decision(
                 state,
                 effect="sanctuary",
+                allow_reactivation=source_sanctuary_refresh,
             )
             if source_resource is not None:
                 if self.pending_source_resource_hold is None:
@@ -38162,6 +38415,27 @@ class StarterPolicy:
                 f"eat {keyword}",
                 "eat one surplus food item while retaining a carried food reserve",
             )
+        if (
+            not capacity.food_relief_attempted
+            and not hunger_allows_food
+            and len(foods) > max(2, required_slots + 1)
+        ):
+            # A full character cannot eat down a surplus stack. Drop one
+            # confirmed food object instead, retaining more than the minimum
+            # reserve so maintenance does not trade one capacity problem for
+            # a provisioning problem.
+            keyword = foods[0]
+            capacity.food_relief_attempted = True
+            capacity.food_relief_keyword = keyword
+            self.fastwalk_required_loot_capacity_relief_attempts += 1
+            self.required_loot_capacity_relief_keyword = keyword
+            self.fastwalk_required_loot_capacity_relief_step = 1
+            selector = _inventory_selector_for_keyword(state.inventory, keyword)
+            reply.begin(f"drop {selector or keyword}", now=time.monotonic())
+            return True, BotDecision(
+                f"drop {selector or keyword}",
+                "drop one surplus food object while retaining a carried reserve",
+            )
         keyword = _capacity_relief_inventory_keyword(
             state.inventory,
             self.gear_catalog,
@@ -38176,6 +38450,11 @@ class StarterPolicy:
                         self.gear_catalog,
                     )
                 }
+                if self.gear_catalog is not None
+                else ()
+            ),
+            worn_source_items=(
+                _equipment_sources(state.equipment, self.gear_catalog)
                 if self.gear_catalog is not None
                 else ()
             ),
@@ -42475,6 +42754,13 @@ class StarterPolicy:
                 room_vnum=str(state.room_vnum or self.current_room or ""),
             )
         )
+        red_dragon_endpoint = bool(
+            stop is not None
+            and self._source_stop_has_red_dragon_fire_sanctuary_special(
+                stop,
+                room_vnum=str(state.room_vnum or self.current_room or ""),
+            )
+        )
         if (
             self.source_world is None
             or stop is None
@@ -42482,11 +42768,13 @@ class StarterPolicy:
                 stop.allow_protected_special_hp_fuzz_probe
                 or caerlin_endpoint
                 or hephaestus_endpoint
+                or red_dragon_endpoint
             )
             or (
                 not stop.require_sanctuary
                 and not caerlin_endpoint
                 and not hephaestus_endpoint
+                and not red_dragon_endpoint
             )
             or not stop.exact_target
             or stop.source_mobile_vnum is None
@@ -42494,6 +42782,7 @@ class StarterPolicy:
             or (
                 stop.source_target_armed is not False
                 and not economic_endpoint
+                and not red_dragon_endpoint
             )
         ):
             return False
@@ -42508,7 +42797,7 @@ class StarterPolicy:
             and mobile.awards_fame
         )
         if mobile is None or mobile.attack_programs or (
-            mobile.aggressive and not famous_gas_entry
+            mobile.aggressive and not famous_gas_entry and not red_dragon_endpoint
         ):
             # An aggressive or scripted mobile can change the fight before
             # the exact opener; the famous gas exception has its own healer
@@ -57268,6 +57557,7 @@ def _capacity_relief_inventory_keyword(
     subclass: str | None = None,
     character_alignment: int | None = None,
     worn_source_vnums: Collection[int] = (),
+    worn_source_items: Collection[ObjectSource] = (),
 ) -> str | None:
     """Return a source keyword for one safe inventory capacity relief item."""
     if gear_catalog is None:
@@ -57275,17 +57565,41 @@ def _capacity_relief_inventory_keyword(
     descriptions = _inventory_descriptions(value)
     duplicate_counts = Counter(normalize_item_name(description) for description in descriptions)
     worn_vnums = {vnum for vnum in worn_source_vnums if type(vnum) is int}
+    inventory_items = tuple(
+        candidates[0]
+        for description in descriptions
+        if len(candidates := gear_catalog.candidates(description)) == 1
+    )
+    retained_items = (*inventory_items, *worn_source_items)
     set_vnums = {
         vnum
         for object_set in gear_catalog.object_sets.values()
         for vnum in object_set.object_vnums
     }
+
+    def dominated_stat_gear(item: ObjectSource) -> bool:
+        """Allow disposal of a stat item made redundant in both stances."""
+        category = item_category(item)
+        if category is None:
+            return False
+        capacity = {"finger": 2, "neck": 2, "wrist": 2}.get(category, 1)
+        better_peers = [
+            peer
+            for peer in retained_items
+            if peer.vnum != item.vnum
+            and item_category(peer) == category
+            and stance_score(peer, STANCE_COMBAT) > stance_score(item, STANCE_COMBAT)
+            and stance_score(peer, STANCE_RECOVERY) > stance_score(item, STANCE_RECOVERY)
+        ]
+        return len(better_peers) >= capacity
+
     for description in descriptions:
         normalized = normalize_item_name(description)
         candidates = gear_catalog.candidates(description)
         if len(candidates) != 1:
             continue
         item = candidates[0]
+        redundant_stat_gear = dominated_stat_gear(item)
         if (
             item.item_type == ITEM_DRINK_CONTAINER
             and len(item.values) >= 4 and item.values[0] > 0
@@ -57358,6 +57672,7 @@ def _capacity_relief_inventory_keyword(
             and not worn_duplicate
             and not plain_instrument
             and not plain_unprotected_armor
+            and not redundant_stat_gear
         ):
             continue
         if (
@@ -57367,6 +57682,7 @@ def _capacity_relief_inventory_keyword(
                 and not unusable_for_character
                 and not worn_duplicate
                 and not surplus_equipment_copy
+                and not redundant_stat_gear
             )
             or is_capacity_infrastructure(item)
             or item.vnum in set_vnums

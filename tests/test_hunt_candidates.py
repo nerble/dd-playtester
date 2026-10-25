@@ -2550,6 +2550,45 @@ def test_source_audit_finds_energy_containment_carrier_without_admitting_route()
     assert any("aggressive mobile reset" in note for note in placement.autonomy_rejections)
 
 
+def test_resource_audit_can_include_out_of_band_sanctuary_carriers() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    ordinary = rank_resource_sources(
+        world,
+        character_level=40,
+        effect="sanctuary",
+        character_max_hp=962,
+        include_all_areas=True,
+    )
+    broad = rank_resource_sources(
+        world,
+        character_level=40,
+        effect="sanctuary",
+        character_max_hp=962,
+        include_all_areas=True,
+        include_out_of_band=True,
+    )
+
+    ordinary_hermes = next(
+        placement
+        for placement in ordinary
+        if placement.source_mobile_vnum == 903
+        and placement.room_vnum == 947
+    )
+    broad_hermes = next(
+        placement
+        for placement in broad
+        if placement.source_mobile_vnum == 903
+        and placement.room_vnum == 947
+    )
+    assert ordinary_hermes.status == "source-only"
+    assert broad_hermes.status == "caution"
+    assert broad_hermes.source_level_range == (41, 45)
+
+
 def test_source_audit_finds_bastion_energy_containment_vials_in_wardrobe() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),

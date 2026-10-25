@@ -2,8 +2,12 @@
 
 ## Current Target-Selection Policy
 
-The current durable checkpoint is **61960** (campaign **35**). Dorrik is level
-**40** with **1,447,976 XP**, 18 quest points, and a safe healer checkpoint.
+The current durable checkpoint is **62654** (campaign **35**). Dorrik is level
+**40** with **1,467,761 XP**, 18 quest points, and a safe healer checkpoint.
+The latest completed live segment is **19620** (run **20226**). Runs
+**20224-20226** safely checked two exact out-of-band Sanctuary carriers and
+completed one flight-preparation segment; the carriers were absent and no new
+XP loss was recorded.
 Run **19999** acquired the Staff of the Bard as an out-of-band Sanctuary
 maintenance objective; after four protected hunts, the persisted reserve has
 **6 charges**. Runs **20006-20007** safely tested an alternate reserve route
@@ -15,7 +19,11 @@ Sanctuary, but their XP is recorded as maintenance rather than progression.
 When a safe healer checkpoint has a live reserve but no executable current-band
 route remains, the controller may top up that reserve from a fresh out-of-band
 carrier after gear and quest gates; this is still maintenance, never XP-band
-permission.
+permission. A carrier may be below or above the ordinary XP band: the exact
+source reset and live `consider` still decide whether it is fightable, while a
+confirmed kill is recorded as maintenance rather than progression XP. After a
+bounded area-reset boundary, recheck each exact absent carrier once. One miss
+does not make unrelated carriers wait for a reboot.
 Run **19955** closed a Smugglers Ship transit interception by armed Crewman
 mobile **17517** after a safe **1,060 XP** loss; the source audit now covers its
 paired **17503/17517** family. Run **19956** reached One-eye (mobile **17500**)
@@ -522,6 +530,11 @@ kill history, select other candidates normally, and retain the final guard.
 Only an existing exact, source-audited revalidation may reopen that
 source-validated preflight. `--retry-stalled` rotates the frontier but does not
 grant route-program retry permission.
+
+When a completed area-reset boundary ages an exact legacy protection-recovery
+fallback, the selector may reopen that one unattempted fallback. A dispatched
+fallback remains closed after a no-progress result, and XP-loss evidence always
+wins over reset aging.
 
 For a recently productive plain hunt, a completed clear city observation may
 arm one exact-policy/level/boot clearance even when a different policy spent

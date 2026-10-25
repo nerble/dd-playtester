@@ -83,6 +83,14 @@ def test_level_rejections_survive_target_hp_change(level):
     )
 
 
+def test_source_plus_five_admission_uses_nominal_level_not_fuzzed_upper_bound():
+    target = replace(candidate(level=45), estimated_level_range=(43, 47))
+
+    assert campaign._source_ranked_level_admission_available(
+        target, {}, character_level=40, source_world=None,
+    )
+
+
 @pytest.mark.parametrize("hp", [None, 1599, 10_000_000])
 def test_viable_consider_opens_without_target_hp_permission(hp):
     policy, state = policy_and_state(hp)
@@ -115,7 +123,9 @@ def test_output_capability_does_not_forecast_target_hp(monkeypatch):
         assert campaign._source_ranked_caster_output_can_cover(
             candidate(hp), state, character_level=39,
         )
-    assert not campaign._source_ranked_caster_output_can_cover(
+    # Predicted incoming damage is report evidence, not a target-admission
+    # veto; the live health floor remains the combat controller's authority.
+    assert campaign._source_ranked_caster_output_can_cover(
         replace(candidate(), estimated_peak_round_damage=10000), state,
         character_level=39,
     )

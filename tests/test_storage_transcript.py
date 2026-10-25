@@ -1673,3 +1673,30 @@ def test_storage_persists_route_gate_kill_classification(tmp_path) -> None:
     assert len(kills) == 1
     assert kills[0]["route_gate"] == 1
     assert kills[0]["selector"] == "#3901"
+
+
+def test_storage_persists_transit_only_kill_classification(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    run_id = storage.create_run(
+        scenario_name="source-ranked-transit:Ararisa",
+        scenario_path=Path("profile.yaml"),
+    )
+
+    storage.record_mob_kill(
+        run_id,
+        character_name="Ararisa",
+        boot_id="boot-1",
+        mob_name="the route guard",
+        xp_gained=30,
+        source_mobile_vnum=3064,
+        source_policy_id="source-ranked-transit",
+        objective_eligible=False,
+        transit_only=True,
+    )
+
+    kills = storage.list_mob_kills_for_run(run_id)
+    storage.close()
+
+    assert len(kills) == 1
+    assert kills[0]["transit_only"] == 1
+    assert kills[0]["objective_eligible"] == 0

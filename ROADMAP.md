@@ -13,23 +13,24 @@ one character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 24, 2026
+### Current campaign status: October 25, 2026
 
-Campaign **35**, checkpoint **61960**, keeps Dorrik as the only progression
-pilot. Dorrik is a level **40 Dwarf Knight** at **1,447,976 XP** with **18 QP**
+Campaign **35**, checkpoint **62654**, keeps Dorrik as the only progression
+pilot. Dorrik is a level **40 Dwarf Knight** at **1,467,761 XP** with **18 QP**
 and no current level-up shortfall. The current DD4 boot is **Fri Oct 23 07:05:19
-2026** and the parsed source is **134bba170b762a19b3f8a7031ce3bac3071cdf77**.
+2026** and the parsed source is **eb965f7d9a27b8a70b3cbd9d3f9d5240f15073ef**.
 
-Run **20013** safely closed the Ota'ar Sanctuary top-up before travel: Dorrik
-has only default Midgaard recall, while source `quest.c` assigns Ota'ar Dar to
-recall slot **14** for **400 QP**. No potion was acquired and no XP or life was
-lost. The selector now requires a live slot-14 receipt or a physical Ota'ar
-origin, preventing another inaccessible-route retry.
+Runs **20224-20226** continued live Sanctuary maintenance. The Freeport carrier
+was absent, flight preparation completed safely, and the next Olympus carrier
+was absent. These are safe, non-achieved maintenance segments with no new XP
+loss. A carrier outside the ordinary XP band remains a valid Sanctuary target;
+its kill is maintenance evidence, not progression XP.
 
-Run **20014** completed a safe healer return-home segment at checkpoint
-**61959** without combat or XP change. A later bounded retry rotation
-completed safely at checkpoint **61960** after offline source ranking found no
-executable current-band route; it opened no socket and claimed no XP.
+Run **20219** acquired Moria Sanctuary maintenance loot; run **20220** remains
+a safe loss record, and run **20223** returned safely from a Lotus route without
+claiming objective XP. The controller now rechecks exact absent Sanctuary
+carriers after a bounded area reset instead of making the maintenance frontier
+reboot-scoped. The latest segment is **19620** / run **20226**.
 
 Run **19999** acquired the source-verified Staff of the Bard as an out-of-band
 Sanctuary maintenance objective. Runs **20001-20005** then consumed four

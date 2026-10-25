@@ -854,11 +854,14 @@ evidence; a safe abort or orphan segment alone never closes a target. For an
 accepted connection that sends no login prompt, use the five-second
 pre-login timeout and its bounded retry, then checkpoint transport
 unavailability; do not convert silence into route evidence or a reboot wait.
-The in-game inactivity timeout remains separate. If this happens during the
-one-shot sanctuary area-reset recheck and zero game commands were issued, leave
-that recheck pending for a later explicit invocation; do not spend it, wait
-again, or retry automatically in the same invocation. Once game commands have
-started, the normal one-shot boundary applies.
+The in-game inactivity timeout remains separate. If this happens during a
+Sanctuary carrier area-reset recheck and zero game commands were issued, leave
+that exact carrier's recheck pending for a later explicit invocation; do not
+spend its receipt, wait again, or retry it automatically in the same invocation.
+Once game commands have started, consume the exact carrier receipt and preserve
+its result. Other source-audited carriers may still be selected, and a later
+bounded area-reset scan may recheck each exact carrier once; Sanctuary
+maintenance is never a reboot-wide gate.
 
 The spent sanctuary recheck must not block the first bounded respawn wait for
 an independent, recently productive plain hunt. Require the exact latest

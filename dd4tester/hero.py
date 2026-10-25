@@ -533,7 +533,13 @@ def _latest_profile_campaign_config(
     *,
     character: CharacterSpec,
 ) -> Path | None:
-    """Find the newest checkpointed campaign using this exact character profile."""
+    """Find the authoritative checkpointed campaign for this hero profile.
+
+    Generated HERO workspaces use ``campaign.yaml`` while older launches used
+    the character profile itself as the campaign config.  Prefer the generated
+    config when both histories exist; otherwise a newer legacy row can hide the
+    canonical campaign and unexpectedly reintroduce its smaller segment budget.
+    """
     database_path = Path(character.database)
     if not database_path.is_absolute():
         database_path = (Path.cwd() / database_path).resolve()
@@ -559,6 +565,11 @@ def _latest_profile_campaign_config(
                 ORDER BY id DESC
                 """
             ).fetchall()
+            preferred_config_path = (
+                expected_profile.parent / "campaign.yaml"
+            ).resolve()
+            preferred: Path | None = None
+            fallback: Path | None = None
             for row in campaigns:
                 stored_profile = Path(str(row["character_profile_path"]))
                 if not stored_profile.is_absolute():
@@ -598,7 +609,11 @@ def _latest_profile_campaign_config(
                     and campaign.character.name.casefold()
                     == character.name.casefold()
                 ):
-                    return config_path
+                    if config_path == preferred_config_path:
+                        preferred = config_path
+                    elif fallback is None:
+                        fallback = config_path
+            return preferred or fallback
     except sqlite3.Error:
         return None
     return None
@@ -1056,14 +1071,15 @@ async def run_hero_until_target(
                 f"reset waits used={waits_used}/{max_reset_waits}."
             )
         available_waits = max(0, max_reset_waits - waits_used)
-        # A bounded HERO cycle is a work unit, not a reason to sleep through
-        # an area reset.  Reset waits remain available as an explicit caller
-        # choice, but an omitted value must match run_hero_request's bounded
-        # default and pass zero retries down to the campaign runner.
+        # Autonomous HERO cycles get one reset retry by default.  A bounded
+        # live segment still returns after its own work unit, but the outer
+        # HERO worker must be able to spend its separate reset-wait budget
+        # before declaring a resumable area cooldown to be a blocker.
+        requested_reset_retries = (
+            1 if reset_retries is None else reset_retries
+        )
         cycle_reset_retries = (
-            reset_retries
-            if reset_retries is not None and available_waits
-            else 0
+            requested_reset_retries if available_waits else 0
         )
         cycle_reset_retries = min(cycle_reset_retries, available_waits)
         preparation, result = await run_hero_request(

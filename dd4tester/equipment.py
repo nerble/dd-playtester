@@ -159,6 +159,9 @@ class GearSourcePlacement:
     route_preflight_room_vnum: str | None = None
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
+    # Preserve the exact source identity for a generated route preflight so
+    # runtime can apply narrowly-scoped transit exceptions.
+    route_preflight_source_mobile_vnum: int | None = None
     route_preflight_hard_hazard: bool = False
     route_preflight_route_room_names: tuple[str, ...] = ()
     route_source_program_audited: bool = False
@@ -529,6 +532,19 @@ def rank_gear_sources(
                     if candidate is not None
                     else None
                 ),
+                route_preflight_source_mobile_vnum=(
+                    candidate.route_preflight_source_mobile_vnum
+                    if candidate is not None
+                    and candidate.route_preflight_source_mobile_vnum is not None
+                    else (
+                        candidate.route_attack_program_mobile_vnums[0]
+                        if (
+                            candidate is not None
+                            and len(candidate.route_attack_program_mobile_vnums) == 1
+                        )
+                        else None
+                    )
+                ),
                 route_preflight_hard_hazard=(
                     bool(candidate.route_preflight_hard_hazard)
                     if candidate is not None
@@ -768,9 +784,9 @@ def normalize_room_item_name(value: str) -> str:
 def item_category(item: ObjectSource) -> str | None:
     if item.item_type == ITEM_LIGHT:
         return "light"
-    # DD4 marks bows as wieldable in the object prototype, but the live
-    # equipment model gives them the separate ranged-weapon slot.
-    if item.extra_flags & ITEM_BOW:
+    # DD4 marks bows and lances as wieldable in the object prototype, but the
+    # live equipment model gives both the separate ranged-weapon slot.
+    if item.extra_flags & (ITEM_BOW | ITEM_LANCE):
         return "ranged_weapon"
     for bit, category in _WEAR_CATEGORIES.items():
         if item.wear_flags & (1 << bit):
@@ -813,6 +829,11 @@ def is_digging_weapon(item: ObjectSource) -> bool:
 def is_bow(item: ObjectSource) -> bool:
     """Mirror DD4's ITEM_BOW requirement used by do_shoot."""
     return bool(item.extra_flags & ITEM_BOW)
+
+
+def is_lance(item: ObjectSource) -> bool:
+    """Mirror DD4's ITEM_LANCE placement in ``WEAR_RANGED_WEAPON``."""
+    return bool(item.extra_flags & ITEM_LANCE)
 
 
 def generated_weapon_damage_floor(level: int) -> tuple[int, int] | None:

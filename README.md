@@ -3,25 +3,26 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 24, 2026
+## Current Status: October 25, 2026
 
-Latest durable campaign checkpoint **61960** (campaign **35**; latest completed
-campaign segment **19408**, live run **20014**): Dorrik is a level **40 Dwarf
-Knight** with **1,447,976 XP**, **18 quest points**, and is back at the Midgaard
+Latest durable campaign checkpoint **62654** (campaign **35**; latest completed
+campaign segment **19620**, live run **20226**): Dorrik is a level **40 Dwarf
+Knight** with **1,467,761 XP**, **18 quest points**, and is back at the Midgaard
 healer. HERO remains unproved, and Dorrik remains the sole progression pilot.
 
-Run **20013** safely closed before travel because Dorrik has only the default
-Midgaard recall point; source `quest.c` assigns Ota'ar Dar to recall slot **14**
-and requires **400 quest points**. No Sanctuary potion was acquired and there
-was no death or XP loss. The selector now requires a live slot-14 receipt, or a
-character already physically at the Ota'ar origin, so this inaccessible route
-cannot be retried as a generic progression loop.
+Runs **20224-20226** continued the bounded live Sanctuary-maintenance rotation.
+The Freeport carrier was absent, flight preparation completed safely, and the
+next Olympus carrier was also absent. All three returned Dorrik to the healer
+without a death or new XP loss; execution, objective, and safety outcomes are
+recorded separately. The controller now advances through exact source-ranked
+carriers after bounded area resets, including carriers outside the ordinary XP
+band, rather than treating one miss as a reboot-wide blocker.
 
-Run **20014** then completed a safe healer return-home segment and left the
-campaign at checkpoint **61959** without opening combat or changing XP. A
-subsequent bounded retry rotation completed safely at checkpoint **61960**
-after offline source ranking found no executable current-band route; it opened
-no socket and claimed no XP.
+Run **20219** acquired the Moria Sanctuary resource as maintenance. Run
+**20220** remains a safe loss record, and run **20223** safely returned from a
+Lotus route without claiming objective XP. The active DD4 boot is **Fri Oct 23
+07:05:19 2026** and the source mirror is
+**eb965f7d9a27b8a70b3cbd9d3f9d5240f15073ef**, aligned with `origin/master`.
 
 Run **19999** acquired the source-verified Staff of the Bard from Caerlin as an
 out-of-band Sanctuary maintenance objective. Subsequent live hunts consumed
@@ -54,17 +55,20 @@ reserve survives into the next segment. Ordinary source-ranked armed hunts
 enable a verified Sanctuary reserve at the combat opener without turning
 Sanctuary into a target-admission veto.
 
-Policy revision **369** adds a source-ranked Sanctuary maintenance rotation.
+Policy revision **370** adds bounded area-reset rechecks to the source-ranked
+Sanctuary maintenance rotation.
 When the fixed recovery identities are exhausted, the campaign can select the
 next exact source carrier, including a mob outside the ordinary XP band. Its
 route, identity, isolation, live `consider`, health-floor, and required-loot
 checks still apply; source HP and damage estimates remain evidence rather than
 a pre-live admission veto. The kill is recorded as maintenance and never
-counted as progression XP. Each carrier has its own durable result, so one same-boot miss
-does not make unrelated Sanctuary sources wait for a reboot. A reserve does not
-force a reboot wait when the current-band frontier is exhausted: one fresh
-top-up carrier may be selected after gear repair and quest gates, with the same
-live safety checks and maintenance-only XP accounting.
+counted as progression XP. Each carrier has its own durable result, so one
+same-boot miss does not make unrelated Sanctuary sources wait for a reboot. A
+reserve does not force a reboot wait when the current-band frontier is
+exhausted: one fresh top-up carrier may be selected after gear repair and quest
+gates, with the same live safety checks and maintenance-only XP accounting.
+After an area-reset boundary, each exact absent carrier may be rechecked once;
+a miss closes only that carrier for that boundary.
 
 The latest live progression segment killed source mobile **17504** (Rolf the
 Cook) for **3,132 XP** with all 10 Sanctuary charges preserved. Before that,
@@ -79,7 +83,7 @@ when its protection reserve was empty; persisted protected candidates now defer
 to Sanctuary maintenance instead of consuming a full hunt window. Independent
 Catacombs siblings remain eligible when protection is replenished. The active
 DD4 boot is **Fri Oct 23 07:05:19 2026** and the source mirror is
-**134bba170b762a19b3f8a7031ce3bac3071cdf77**, aligned with `origin/master`.
+**eb965f7d9a27b8a70b3cbd9d3f9d5240f15073ef**, aligned with `origin/master`.
 
 The linked run report may still say `objective=achieved` for run 19112 because
 its narrower run objective was the flight purchase. Campaign reports now keep
@@ -2492,6 +2496,20 @@ python -m dd4tester moria-research runs/heroes/dorrik/character.yaml `
 
 This command is maintenance evidence, not ordinary XP or fame progression;
 the autonomous `hero` campaign remains the production path.
+
+To audit every source-defined Sanctuary carrier, including carriers above the
+active character's ordinary XP band, use:
+
+```powershell
+python -m dd4tester show-resource-sources --level 40 --effect sanctuary `
+  --character Dorrik --source runs/dd4-source/server/area --all-areas `
+  --include-out-of-band
+```
+
+`--include-out-of-band` broadens the report only. It does not authorize a live
+fight: route, identity, isolation, `consider`, recovery, and required-loot
+checks still decide whether a maintenance hunt can run, and its kill is not
+credited as progression XP.
 
 `hero` is autonomous by default: it keeps opening one bounded worker at a time
 until the target is reached or the campaign reports a durable blocker. In this

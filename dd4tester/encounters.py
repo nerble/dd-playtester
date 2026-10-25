@@ -12,8 +12,10 @@ from .combat_timing import COMBAT_WAIT_SECONDS
 from .hunt_candidates import (
     ACT_SENTINEL,
     EX_WALL,
+    ITEM_STAFF,
     ITEM_WEAPON,
     WEAR_DUAL,
+    WEAR_HOLD,
     WEAR_WIELD,
     SourceCombatOutput,
     WorldSource,
@@ -651,6 +653,7 @@ def active_encounter_budget(
     allowed_adept_special_vnums: Collection[int] = (),
     allowed_caerlin_special_vnums: Collection[int] = (),
     allowed_hephaestus_special_vnums: Collection[int] = (),
+    allowed_red_dragon_fire_special_vnums: Collection[int] = (),
 ) -> EncounterBudget:
     """Estimate a short finish without granting permission to start combat.
 
@@ -680,6 +683,9 @@ def active_encounter_budget(
             allowed_adept_special_vnums=allowed_adept_special_vnums,
             allowed_caerlin_special_vnums=allowed_caerlin_special_vnums,
             allowed_hephaestus_special_vnums=allowed_hephaestus_special_vnums,
+            allowed_red_dragon_fire_special_vnums=(
+                allowed_red_dragon_fire_special_vnums
+            ),
         )
     members: list[tuple[int, int, int]] = []
     peak = critical = 0
@@ -784,6 +790,7 @@ def _active_level_encounter_budget(
     allowed_adept_special_vnums: Collection[int],
     allowed_caerlin_special_vnums: Collection[int],
     allowed_hephaestus_special_vnums: Collection[int],
+    allowed_red_dragon_fire_special_vnums: Collection[int],
 ) -> EncounterBudget:
     """Validate live source identities and levels without using enemy HP."""
     if not 1 <= len(enemies) <= 3:
@@ -811,6 +818,10 @@ def _active_level_encounter_budget(
             or level > character_level + maximum_offset
         ):
             return EncounterBudget(False, "live mobile level left its audited band")
+        red_dragon_allowed = bool(
+            vnum in allowed_red_dragon_fire_special_vnums
+            and _red_dragon_fire_reset_shape_allowed(world, vnum)
+        )
         if (
             mobile.programs or mobile.non_corporeal or mobile.costs_fame
             or not _encounter_special_is_allowed(
@@ -819,6 +830,7 @@ def _active_level_encounter_budget(
                 allowed_adept_special_vnums,
                 allowed_caerlin_special_vnums,
                 allowed_hephaestus_special_vnums,
+                allowed_red_dragon_fire_special_vnums,
             )
             or vnum in world.shopkeepers
         ):
@@ -826,7 +838,9 @@ def _active_level_encounter_budget(
         if not mobile.damage_modifier_known:
             return EncounterBudget(False, "source mobile damage modifier is unavailable")
         resets = [reset for reset in world.mob_resets if reset.mobile_vnum == vnum]
-        if not resets or any(
+        if not resets or (
+            not red_dragon_allowed
+            and any(
             slot in {WEAR_WIELD, WEAR_DUAL}
             and (
                 (item := world.objects.get(object_vnum)) is None
@@ -834,24 +848,45 @@ def _active_level_encounter_budget(
             )
             for reset in resets
             for slot, object_vnum in reset.equipment
+            )
         ):
             return EncounterBudget(False, "armed or unreset enemy retains its source gate")
+        wielding = bool(
+            red_dragon_allowed
+            and any(
+                slot == WEAR_WIELD
+                and (item := world.objects.get(object_vnum)) is not None
+                and item.item_type == ITEM_WEAPON
+                for reset in resets
+                for slot, object_vnum in reset.equipment
+            )
+        )
+        dual_wielding = bool(
+            red_dragon_allowed
+            and any(
+                slot == WEAR_DUAL
+                and (item := world.objects.get(object_vnum)) is not None
+                and item.item_type == ITEM_WEAPON
+                for reset in resets
+                for slot, object_vnum in reset.equipment
+            )
+        )
         vnums.append(vnum)
         expected += mobile_expected_round_damage(
             level,
-            wielding=False,
-            dual_wielding=False,
+            wielding=wielding,
+            dual_wielding=dual_wielding,
             damage_modifier=mobile.damage_modifier,
         )
         peak += _mobile_peak_round_damage(
             level,
-            wielding=False,
-            dual_wielding=False,
+            wielding=wielding,
+            dual_wielding=dual_wielding,
             damage_modifier=mobile.damage_modifier,
         )
         critical += _mobile_critical_hit_damage(
             level,
-            wielding=False,
+            wielding=wielding,
             damage_modifier=mobile.damage_modifier,
         )
 
@@ -872,12 +907,61 @@ def _active_level_encounter_budget(
     )
 
 
+def _red_dragon_fire_reset_shape_allowed(
+    world: WorldSource,
+    mobile_vnum: int,
+) -> bool:
+    """Match the exact armed fire-breath Sanctuary maintenance reset."""
+    if mobile_vnum != 7040:
+        return False
+    mobile = world.mobiles.get(mobile_vnum)
+    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == 7040]
+    orb = world.objects.get(7303)
+    weapon = world.objects.get(7216)
+    expected_equipment = {
+        (5, 7304),
+        (7, 7305),
+        (9, 7306),
+        (6, 7307),
+        (11, 7308),
+        (10, 7309),
+        (8, 7310),
+        (WEAR_WIELD, 7216),
+        (WEAR_HOLD, 7303),
+    }
+    return bool(
+        mobile is not None
+        and mobile.level == 30
+        and mobile.sentinel
+        and not mobile.wanders
+        and mobile.aggressive
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.attack_programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and set(world.mobile_specials.get(7040, ())) == {"spec_breath_fire"}
+        and len(resets) == 1
+        and resets[0].room_vnum == 7428
+        and resets[0].maximum_count == 1
+        and set(resets[0].equipment) == expected_equipment
+        and set(resets[0].object_vnums)
+        == {7304, 7305, 7306, 7307, 7308, 7309, 7310, 7216, 7303}
+        and weapon is not None
+        and weapon.item_type == ITEM_WEAPON
+        and orb is not None
+        and orb.item_type == ITEM_STAFF
+    )
+
+
 def _encounter_special_is_allowed(
     world: WorldSource,
     mobile_vnum: int,
     allowed_adept_special_vnums: Collection[int],
     allowed_caerlin_special_vnums: Collection[int] = (),
     allowed_hephaestus_special_vnums: Collection[int] = (),
+    allowed_red_dragon_fire_special_vnums: Collection[int] = (),
 ) -> bool:
     specials = set(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
@@ -950,7 +1034,17 @@ def _encounter_special_is_allowed(
             for _slot, object_vnum in reset.equipment
         )
     )
-    return adept_allowed or caerlin_allowed or hephaestus_allowed
+    red_dragon_allowed = (
+        mobile_vnum in allowed_red_dragon_fire_special_vnums
+        and specials == {"spec_breath_fire"}
+        and _red_dragon_fire_reset_shape_allowed(world, mobile_vnum)
+    )
+    return (
+        adept_allowed
+        or caerlin_allowed
+        or hephaestus_allowed
+        or red_dragon_allowed
+    )
 
 
 def source_multi_encounter_budget(

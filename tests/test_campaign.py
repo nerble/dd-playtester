@@ -56,6 +56,12 @@ from dd4tester.campaign import (
     _FIELD_CITY_ALTERNATE_ROUTE_REVALIDATION_KEY,
     _FIELD_CITY_CORRECTION_REVALIDATION_KEY,
     _SOURCE_REVISION_KEY,
+    _RESEARCH_RESET_WAIT_BOUNDARIES_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY,
+    _PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY,
+    _source_ranked_retry_exclusion,
     _SOURCE_RANKED_TRANSIT_HAZARDS_KEY,
     _SOURCE_RANKED_PRODUCTIVE_TRANSIT_REVALIDATION_KEY,
     _SOURCE_RANKED_FRESH_TRANSIT_PROBE_KEY,
@@ -332,6 +338,7 @@ from dd4tester.campaign import (
     _source_candidate_fits_movement,
     _source_ranked_hunt_stops,
     _source_ranked_hunt_route_invisibility_mobile_vnums,
+    _source_ranked_route_invisibility_unavailable,
     _source_ranked_route_program_fastwalk_options,
     _source_ranked_unarmed_aggressive_hp_fuzz_probe_allowed,
     _source_ranked_route_transit_recovery_plan,
@@ -396,6 +403,7 @@ from dd4tester.campaign import (
     _sanctuary_area_reset_recheck_spent_for_policy,
     _sanctuary_area_reset_recheck_dispatch_pending,
     _sanctuary_area_reset_recheck_failure_terminal,
+    _sanctuary_area_reset_recheck_rearm_after_success_available,
     _sanctuary_capacity_reset_probe_available,
     _source_capacity_reset_wait_available,
     _moria_deep_sanctuary_requires_flight,
@@ -845,6 +853,7 @@ def test_generic_moria_sanctuary_selection_is_exactly_bound() -> None:
     assert calls["spell_name"] == "sanctuary"
     assert calls["short_description"] == "a purple potion"
     assert calls["require_unarmed"] is True
+    assert calls["level_ceiling_offset"] == 100
     assert calls["required_reset"] == (4055, 4064)
 
 
@@ -4460,6 +4469,120 @@ def test_source_consumable_selector_retains_noncombat_resource_carrier(
         require_unarmed=True,
         required_reset=(916, 927),
     ) == (candidate, (905,))
+
+
+def test_out_of_band_sanctuary_selector_accepts_one_fixed_two_copy_carrier() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    state = {
+        "level": 40,
+        "max_hp": 962,
+        "character_class": "warrior",
+        "subclass": "knight",
+        "world_boot_id": "test-boot",
+        "currencies": {
+            "platinum": 0,
+            "gold": 0,
+            "silver": 0,
+            "copper": 0,
+            "electrum": 0,
+        },
+    }
+
+    assert (
+        _select_source_consumable_candidate(
+            state,
+            spell_name="sanctuary",
+            short_description=None,
+            source_directory=Path("runs/dd4-source/server/area"),
+            source_world=world,
+            require_unarmed=True,
+            required_reset=(29101, 29140),
+            level_ceiling_offset=5,
+        )
+        is None
+    )
+
+    selection = _select_source_consumable_candidate(
+        state,
+        spell_name="sanctuary",
+        short_description=None,
+        source_directory=Path("runs/dd4-source/server/area"),
+        source_world=world,
+        require_unarmed=True,
+        required_reset=(29101, 29140),
+        level_ceiling_offset=100,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (29101, 29140)
+    assert candidate.source_spawn_limit == 2
+    assert candidate.room_spawn_count == 1
+    assert object_vnums == (29102,)
+
+
+def test_out_of_band_sanctuary_selector_accepts_exact_red_dragon_fire_carrier() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    state = {
+        "level": 40,
+        "hp": 962,
+        "max_hp": 962,
+        "character_class": "warrior",
+        "subclass": "knight",
+        "alignment": -500,
+        "world_boot_id": "test-boot",
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "currencies": {
+            "platinum": 0,
+            "gold": 0,
+            "silver": 0,
+            "copper": 0,
+            "electrum": 0,
+        },
+    }
+    selector_kwargs = {
+        "state": state,
+        "spell_name": "sanctuary",
+        "short_description": None,
+        "source_directory": Path("runs/dd4-source/server/area"),
+        "source_world": world,
+        "require_unarmed": False,
+        "required_reset": (7040, 7428),
+        "level_ceiling_offset": 100,
+        "allowed_target_specials": ("spec_breath_fire",),
+    }
+
+    assert _select_source_consumable_candidate(**selector_kwargs) is None
+
+    selection = _select_source_consumable_candidate(
+        **selector_kwargs,
+        allow_red_dragon_fire_carrier=True,
+    )
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (7040, 7428)
+    assert candidate.specials == ("spec_breath_fire",)
+    assert object_vnums == (7303,)
+    assert not _audited_source_special_candidate_allowed(
+        candidate,
+        state=state,
+        character_max_hp=962,
+        source_world=world,
+    )
+    assert _audited_source_special_candidate_allowed(
+        candidate,
+        state=state,
+        character_max_hp=962,
+        source_world=world,
+        allow_red_dragon_fire_sanctuary=True,
+    )
 
 
 def test_source_ranked_two_copy_sentinel_builds_sequential_only_stop() -> None:
@@ -28030,6 +28153,186 @@ def test_campaign_protection_recovery_uses_olympus_after_generic_reserve_closes(
     assert runner._selected_source_consumable_object_vnums == (905,)
 
 
+def test_campaign_protection_recovery_prefers_out_of_band_sanctuary_maintenance(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._source_world = WorldSource()
+    candidate = _source_test_candidate(
+        target="a plain current-band target",
+        level_range=(38, 42),
+        mobile_vnum=917,
+        room_vnum=936,
+        status="fresh",
+    )
+    sanctuary_policy = replace(
+        _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
+        minimum_level=40,
+        maximum_level=40,
+    )
+    selected_hunt_policy = replace(
+        _SOURCE_RANKED_HUNT_POLICY,
+        policy_id=_source_ranked_policy_id(candidate, character_level=40),
+        minimum_level=40,
+        maximum_level=40,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_policy_without_learned_flight",
+        lambda _state: selected_hunt_policy,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_select_source_ranked_candidate",
+        lambda _state, **_kwargs: candidate,
+    )
+    monkeypatch.setattr(
+        campaign_module,
+        "_select_preferred_moria_sanctuary_recovery_candidate",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        campaign_module,
+        "_sanctuary_recovery_attempts_exhausted",
+        lambda *args, **kwargs: True,
+    )
+    sanctuary_calls: list[bool] = []
+
+    def select_sanctuary(_state, **_kwargs):
+        sanctuary_calls.append(True)
+        return sanctuary_policy
+
+    monkeypatch.setattr(
+        runner,
+        "_select_olympus_sanctuary_fallback",
+        select_sanctuary,
+    )
+    state = {
+        "level": 40,
+        "max_hp": 962,
+        "hp": 962,
+        "max_mana": 539,
+        "mana": 539,
+        "max_move": 653,
+        "move": 653,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "area": "Midgaard",
+        "world_boot_id": "boot-1",
+        "affects": [],
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "campaign_has_weapon": True,
+        "campaign_empty_equipment_categories": [],
+        "campaign_protection_recovery_required": {
+            "boot_id": "boot-1",
+            "level": 40,
+            "loss_count": 3,
+            "failed_route": "source-ranked hunt previous target",
+            "xp_delta": -1060,
+        },
+        "quest_status": {
+            "active": 0,
+            "complete": 0,
+            "countdown": 0,
+            "nextquest": 0,
+            "points": 18,
+            "total_points": 18,
+        },
+        "quest_points": 18,
+        "total_quest_points": 18,
+        "quest_level_qp_shortfall": 0,
+        _SOURCE_RANKED_CANDIDATE_KEY: _source_ranked_candidate_record(
+            candidate,
+            character_level=40,
+        ),
+    }
+
+    selected = runner._policy_for_state(state)
+
+    assert sanctuary_calls == [True]
+    assert selected is sanctuary_policy
+    assert "campaign_source_ranked_hunt_candidate" not in state
+
+
+def test_sanctuary_top_up_can_use_a_distinct_object_on_a_fixed_carrier(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config_path, _database = _write_campaign_files(tmp_path)
+    runner = CampaignRunner(load_campaign_spec(config_path), config_path)
+    runner._source_world = WorldSource()
+    candidate = _source_test_candidate(
+        target="the Alchemist",
+        level_range=(37, 41),
+        mobile_vnum=916,
+        room_vnum=927,
+        status="fresh",
+    )
+    candidate = replace(candidate, area_file="olympus.are")
+    for selector_name in (
+        "_select_source_ranked_olympus_sanctuary_candidate",
+        "_select_source_ranked_olympus_adept_sanctuary_candidate",
+        "_select_source_ranked_olympus_hephaestus_sanctuary_candidate",
+    ):
+        monkeypatch.setattr(
+            campaign_module,
+            selector_name,
+            lambda *args, **kwargs: None,
+        )
+    excluded_stops: list[object] = []
+
+    def select_maintenance(_state, **kwargs):
+        excluded_stops.append(kwargs["excluded_target_stops"])
+        return candidate, (926,)
+
+    monkeypatch.setattr(
+        campaign_module,
+        "_select_source_ranked_sanctuary_maintenance_candidate",
+        select_maintenance,
+    )
+    state = {
+        "level": 40,
+        "hp": 962,
+        "max_hp": 962,
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "area": "Midgaard",
+        "dead": False,
+        "in_combat": False,
+        "world_boot_id": "boot-1",
+        "inventory": [[{"short_desc": "a big pot pie"}]],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+        "quest_status": {
+            "active": 0,
+            "complete": 0,
+            "countdown": 0,
+            "nextquest": 0,
+            "points": 18,
+            "total_points": 18,
+        },
+        "quest_points": 18,
+        "total_quest_points": 18,
+        "quest_level_qp_shortfall": 0,
+    }
+
+    selected = runner._select_olympus_sanctuary_fallback(
+        state,
+        practice_skill=None,
+        allow_existing_reserve=True,
+    )
+
+    assert selected is not None
+    assert selected.policy_id == (
+        "source-ranked-hunt-olympus-916-927-40-sanctuary-maintenance"
+    )
+    assert runner._selected_source_consumable_candidate is candidate
+    assert runner._selected_source_consumable_object_vnums == (926,)
+    assert excluded_stops == [((4055, 4064), (4055, 4071))]
+
+
 def test_campaign_prepares_flight_for_sanctuary_recovery_without_candidate_policy_mixup(
     tmp_path,
     monkeypatch,
@@ -31170,7 +31473,7 @@ def test_policy_selects_the_reopened_moria_capacity_carrier(
         "dead": False,
         "in_combat": False,
         "enemies": [],
-        "affects": [],
+        "affects": [{"name": "fly", "duration": 3}],
         "inventory": [[{"short_desc": "a big pot pie"}]],
         "campaign_empty_equipment_categories": [],
         "campaign_has_weapon": True,
@@ -31198,6 +31501,10 @@ def test_policy_selects_the_reopened_moria_capacity_carrier(
     calls: list[dict[str, object]] = []
 
     def select_consumable(current_state, **kwargs):
+        if (4055, 4064) in set(kwargs.get("excluded_target_stops", ())):
+            return None
+        if kwargs.get("level_ceiling_offset") != 100:
+            return None
         calls.append({"state": current_state, **kwargs})
         return candidate, (4050,)
 
@@ -31227,7 +31534,6 @@ def test_policy_selects_the_reopened_moria_capacity_carrier(
         runner.reset_wait_completed = True
 
     selected = runner._policy_without_learned_flight(state)
-
     if spent_reset:
         assert selected.execution != "moria-sanctuary-hunt"
         assert runner._selected_source_consumable_candidate is None
@@ -37782,6 +38088,49 @@ def test_protection_fallback_closes_after_second_original_route_loss() -> None:
     ) is False
 
 
+def test_area_reset_reopens_unattempted_legacy_protection_fallback() -> None:
+    policy_id = "source-ranked-hunt-lotus-temple-10730-10822-40"
+    state = {
+        "world_boot_id": "boot-1",
+        _SOURCE_RANKED_RETRY_EXHAUSTED_KEY: policy_id,
+        _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY: "boot-1",
+        _PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY: {
+            "boot_id": "boot-1",
+            "level": 40,
+            "policy_id": policy_id,
+            "attempted_policy_ids": [],
+        },
+        _RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 120},
+        },
+    }
+
+    assert _source_ranked_retry_exclusion(state) == ""
+
+    state[_PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY]["attempted"] = True
+    assert _source_ranked_retry_exclusion(state) == policy_id
+
+
+def test_area_reset_reopens_retry_marker_using_recorded_segment() -> None:
+    policy_id = "source-ranked-hunt-lotus-temple-10730-10822-40"
+    state = {
+        "world_boot_id": "boot-1",
+        _SOURCE_RANKED_RETRY_EXHAUSTED_KEY: policy_id,
+        _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY: "boot-1",
+        _SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY: 120,
+        _RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 120},
+        },
+    }
+
+    assert _source_ranked_retry_exclusion(state) == ""
+
+    state[_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY] = 121
+    assert _source_ranked_retry_exclusion(state) == policy_id
+
+
 def test_protection_fallback_allows_fresh_plain_endpoint_after_second_loss() -> None:
     candidate = replace(
         _source_test_candidate(
@@ -40006,6 +40355,48 @@ def test_source_ranked_timeout_revalidation_reopens_one_safe_route() -> None:
         character_level=18,
         character_max_hp=264,
     ) is None
+
+
+def test_timeout_revalidation_can_probe_an_untried_reset_with_capacity() -> None:
+    timed_out = replace(
+        _source_test_candidate(
+            target="an untried reset sentinel",
+            level_range=(37, 41),
+            mobile_vnum=20012,
+            room_vnum=20012,
+            boot_kills=3,
+        ),
+        source_spawn_limit=4,
+    )
+    policy_id = _source_ranked_policy_id(timed_out, character_level=40)
+    state = {
+        "level": 40,
+        "max_hp": 961,
+        "world_boot_id": "boot-1",
+        _SOURCE_RANKED_TIMEOUT_POLICIES_KEY: [{
+            "boot_id": "boot-1",
+            "level": 40,
+            "policy_id": policy_id,
+            "reason": "Starter bot exceeded 120 second runtime",
+            "objective_kill_count": 0,
+        }],
+    }
+
+    assert _source_ranked_timeout_revalidation_candidate(
+        (timed_out,),
+        state,
+        character_level=40,
+        character_max_hp=961,
+    ) == timed_out
+
+    state[_SOURCE_RANKED_REVALIDATION_POLICY_KEY] = policy_id
+    assert _select_source_ranked_hunt_candidate(
+        (timed_out,),
+        state,
+        character_level=40,
+        character_max_hp=961,
+        allow_repeated_policy_ids={policy_id},
+    ) == timed_out
 
 
 def test_clean_interrupted_route_revalidates_from_healer_checkpoint() -> None:
@@ -44828,6 +45219,44 @@ def test_source_ranked_lucky_consider_probe_uses_live_level_without_output_gates
             if stop.target is not None
         )
         assert no_output_target_stop.allow_lucky_consider is True
+
+
+def test_source_ranked_passive_armed_singleton_opens_nominal_plus_five_band() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=40,
+            character_class="warrior",
+            character_subclass="knight",
+            known_skills=(),
+            known_skill_levels={},
+            character_alignment=0,
+            include_below_band=True,
+            character_max_hp=943,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=5,
+            include_all_areas=True,
+        )
+        if item.mobile_vnum == 19028
+    )
+
+    (stop,) = _source_ranked_hunt_stops(
+        candidate,
+        world,
+        character_level=40,
+        state={"level": 40, "hp": 962, "max_hp": 943, "affects": []},
+    )
+
+    assert candidate.level == 45
+    assert candidate.equipped_weapons == ("a kendo",)
+    assert stop.allow_lucky_consider is True
+    assert stop.maximum_level_offset == 5
+    assert stop.abort_after_consider_rejection is True
 
 
 def test_plain_unarmed_singleton_uses_live_withdrawal_floor_for_consider_probe(
@@ -66862,6 +67291,86 @@ def test_exhausted_sanctuary_route_arms_one_area_reset_recheck() -> None:
     assert _campaign_should_await_research_reset(armed) is True
 
 
+def test_dynamic_sanctuary_route_arms_and_reopens_after_area_reset() -> None:
+    state = _exhausted_sanctuary_reset_recheck_state()
+    fixed_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    dynamic_policy_id = (
+        "source-ranked-hunt-olympus-916-927-24-sanctuary-maintenance"
+    )
+    dynamic_result = dict(state["campaign_research_results"][fixed_policy_id])
+    dynamic_attempt = dict(state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][fixed_policy_id])
+    state["campaign_research_results"] = {dynamic_policy_id: dynamic_result}
+    state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY] = {
+        dynamic_policy_id: dynamic_attempt,
+    }
+
+    armed = _arm_sanctuary_resource_area_reset_recheck(state)
+
+    marker = armed[_SANCTUARY_AREA_RESET_RECHECK_KEY]
+    assert marker["policy_ids"] == [dynamic_policy_id]
+    reopened = _reopen_sanctuary_resource_after_reset_wait(
+        armed,
+        after_segment_id=17,
+    )
+    assert reopened["campaign_research_results"] == {}
+    assert (
+        reopened[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][dynamic_policy_id]["count"]
+        == 0
+    )
+
+
+def test_spent_reset_marker_adds_only_new_dynamic_sanctuary_route() -> None:
+    state = _exhausted_sanctuary_reset_recheck_state()
+    fixed_policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    dynamic_policy_id = (
+        "source-ranked-hunt-olympus-916-927-24-sanctuary-maintenance"
+    )
+    state["campaign_research_results"][dynamic_policy_id] = dict(
+        state["campaign_research_results"][fixed_policy_id]
+    )
+    state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][dynamic_policy_id] = dict(
+        state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][fixed_policy_id]
+    )
+    state[_SANCTUARY_AREA_RESET_RECHECK_KEY] = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "dispatch_started": True,
+        "after_segment_id": 11,
+        "policy_ids": [fixed_policy_id],
+    }
+
+    armed = _arm_sanctuary_resource_area_reset_recheck(state)
+
+    marker = armed[_SANCTUARY_AREA_RESET_RECHECK_KEY]
+    assert marker["status"] == "pending"
+    assert marker["policy_ids"] == [dynamic_policy_id]
+    assert marker["superseded_dispatch_policy_ids"] == [fixed_policy_id]
+
+
+def test_unstarted_stale_sanctuary_recheck_does_not_block_fresh_route() -> None:
+    state = _exhausted_sanctuary_reset_recheck_state()
+    state[_SANCTUARY_AREA_RESET_RECHECK_KEY] = {
+        "boot_id": "boot-1",
+        "level": 24,
+        "status": "attempted",
+        "policy_ids": ["otaar-local-sanctuary-reserve-40-100"],
+        "after_segment_id": 19319,
+    }
+
+    armed = _arm_sanctuary_resource_area_reset_recheck(state)
+
+    marker = armed[_SANCTUARY_AREA_RESET_RECHECK_KEY]
+    assert marker["status"] == "pending"
+    assert marker["policy_ids"] == [
+        _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    ]
+    assert marker["replaced_unstarted_policy_ids"] == [
+        "otaar-local-sanctuary-reserve-40-100"
+    ]
+    assert marker["replaced_unstarted_after_segment_id"] == 19319
+
+
 def test_unprotected_sanctuary_recheck_waits_until_frontier_is_unavailable() -> None:
     state = _exhausted_sanctuary_reset_recheck_state()
     state.pop("campaign_protection_recovery_required")
@@ -67030,6 +67539,153 @@ def test_reopened_sanctuary_area_reset_recheck_is_dispatchable_once() -> None:
     assert state[_SANCTUARY_AREA_RESET_RECHECK_KEY]["dispatch_started"] is True
     assert not _sanctuary_area_reset_recheck_dispatch_pending(state)
     assert not _consume_sanctuary_area_reset_recheck(state)
+
+
+def test_successful_sanctuary_refill_can_arm_one_later_reset_cycle() -> None:
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    state = _reopen_sanctuary_resource_after_reset_wait(
+        _arm_sanctuary_resource_area_reset_recheck(
+            _exhausted_sanctuary_reset_recheck_state()
+        ),
+        after_segment_id=17,
+    )
+    assert _consume_sanctuary_area_reset_recheck(state)
+    state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][policy_id]["count"] = 1
+    state["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "observed": True,
+            "viable": True,
+            "completed_kill": False,
+            "required_object_acquired": True,
+        }
+    }
+
+    assert _sanctuary_area_reset_recheck_rearm_after_success_available(state)
+    assert _arm_sanctuary_resource_area_reset_recheck(state) == state
+
+    rearmed = _arm_sanctuary_resource_area_reset_recheck(
+        state,
+        allow_successful_reacquisition=True,
+    )
+    marker = rearmed[_SANCTUARY_AREA_RESET_RECHECK_KEY]
+    assert marker["status"] == "pending"
+    assert marker["rearm_after_successful_acquisition"] is True
+
+    reopened = _reopen_sanctuary_resource_after_reset_wait(
+        rearmed,
+        after_segment_id=33,
+    )
+    assert policy_id not in reopened.get("campaign_research_results", {})
+    attempt = reopened[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][policy_id]
+    assert attempt["count"] == 0
+    assert attempt["prior_count"] == 1
+    assert attempt["area_reset_cycle"] == 2
+    assert _sanctuary_area_reset_recheck_dispatch_pending(reopened)
+
+
+def test_successful_sanctuary_refill_cannot_rearm_twice() -> None:
+    policy_id = _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    state = _reopen_sanctuary_resource_after_reset_wait(
+        _arm_sanctuary_resource_area_reset_recheck(
+            _exhausted_sanctuary_reset_recheck_state()
+        ),
+        after_segment_id=17,
+    )
+    assert _consume_sanctuary_area_reset_recheck(state)
+    state[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][policy_id]["count"] = 1
+    state["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "required_object_acquired": True,
+        }
+    }
+    rearmed = _arm_sanctuary_resource_area_reset_recheck(
+        state,
+        allow_successful_reacquisition=True,
+    )
+    second_cycle = _reopen_sanctuary_resource_after_reset_wait(
+        rearmed,
+        after_segment_id=33,
+    )
+    assert _consume_sanctuary_area_reset_recheck(second_cycle)
+    second_cycle[_SANCTUARY_RESOURCE_ATTEMPTS_KEY][policy_id]["count"] = 1
+    second_cycle["campaign_research_results"] = {
+        policy_id: {
+            "boot_id": "boot-1",
+            "level": 24,
+            "required_object_acquired": True,
+        }
+    }
+
+    assert not _sanctuary_area_reset_recheck_rearm_after_success_available(
+        second_cycle
+    )
+    assert _arm_sanctuary_resource_area_reset_recheck(
+        second_cycle,
+        allow_successful_reacquisition=True,
+    ) == second_cycle
+
+
+def test_unlearned_route_invisibility_is_not_replaced_by_detect_invis(
+    monkeypatch,
+) -> None:
+    candidate = _source_test_candidate(
+        target="the orca",
+        level_range=(38, 42),
+        mobile_vnum=17051,
+        room_vnum=17272,
+    )
+    state = {
+        "character_class": "Warrior",
+        "subclass": "Knight",
+        "campaign_known_skill_levels": {},
+        "affects": [],
+    }
+    monkeypatch.setattr(
+        campaign_module,
+        "_source_ranked_hunt_route_invisibility_mobile_vnums",
+        lambda *args, **kwargs: (3064,),
+    )
+    monkeypatch.setattr(
+        campaign_module,
+        "learned_invisibility_mana_cost",
+        lambda *args, **kwargs: None,
+    )
+
+    assert _source_ranked_route_invisibility_unavailable(
+        candidate,
+        state,
+        character_level=40,
+        source_world=None,
+    )
+
+    monkeypatch.setattr(
+        campaign_module,
+        "learned_invisibility_mana_cost",
+        lambda *args, **kwargs: 20,
+    )
+    assert not _source_ranked_route_invisibility_unavailable(
+        candidate,
+        state,
+        character_level=40,
+        source_world=None,
+    )
+
+    state["affects"] = [[{"name": "invis", "duration": "5"}]]
+    monkeypatch.setattr(
+        campaign_module,
+        "learned_invisibility_mana_cost",
+        lambda *args, **kwargs: None,
+    )
+    assert not _source_ranked_route_invisibility_unavailable(
+        candidate,
+        state,
+        character_level=40,
+        source_world=None,
+    )
 
 
 def test_spent_sanctuary_recheck_cannot_reenter_generic_fallback() -> None:
@@ -73677,6 +74333,262 @@ def test_area_reset_keeps_dynamic_sanctuary_carrier_absence_closed() -> None:
     )
 
 
+def test_dynamic_sanctuary_absence_reopens_once_after_area_reset() -> None:
+    candidate = _source_test_candidate(
+        target="the Apollo carrier",
+        level_range=(42, 46),
+        mobile_vnum=905,
+        room_vnum=926,
+    )
+    policy_id = campaign_module._source_ranked_sanctuary_maintenance_policy_id(
+        candidate,
+        character_level=40,
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        _SOURCE_REVISION_KEY: "source-1",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+                _SOURCE_REVISION_KEY: "source-1",
+                "last_attempt_segment_id": 10,
+            }
+        },
+        campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 20},
+        },
+    }
+
+    assert campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+    )
+
+    consumed = dict(state)
+    assert campaign_module._consume_source_ranked_sanctuary_area_reset_revalidation(
+        consumed,
+        candidate,
+        policy_id=policy_id,
+    )
+    assert not campaign_module._source_ranked_sanctuary_candidate_research_open(
+        consumed,
+        candidate,
+        policy_id=policy_id,
+    )
+    receipt = consumed[
+        campaign_module._SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY
+    ][policy_id]
+    assert receipt["reset_after_segment_id"] == 20
+    assert receipt["status"] == "attempted"
+
+
+def test_dynamic_sanctuary_absence_boundary_is_armed_after_reset() -> None:
+    policy_id = (
+        "source-ranked-hunt-olympus-905-926-40-sanctuary-maintenance"
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+                "last_attempt_segment_id": 10,
+            }
+        },
+    }
+
+    arm_state = dict(state)
+    arm_state.pop(campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY, None)
+    armed = campaign_module._arm_source_ranked_sanctuary_area_reset_revalidations(
+        arm_state,
+        after_segment_id=20,
+    )
+
+    assert armed[campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY] == {
+        "boot_id": "boot-1",
+        "policy_after_segment_ids": {policy_id: 20},
+    }
+
+
+def test_dynamic_sanctuary_absence_at_reset_boundary_is_reopened() -> None:
+    candidate = _source_test_candidate(
+        target="the Apollo carrier",
+        level_range=(42, 46),
+        mobile_vnum=905,
+        room_vnum=926,
+    )
+    policy_id = campaign_module._source_ranked_sanctuary_maintenance_policy_id(
+        candidate,
+        character_level=40,
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        _SOURCE_REVISION_KEY: "source-1",
+        "campaign_research_results": {
+            policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+                _SOURCE_REVISION_KEY: "source-1",
+                "last_attempt_segment_id": 20,
+            }
+        },
+        campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 20},
+        },
+    }
+
+    assert campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+    )
+    assert campaign_module._consume_source_ranked_sanctuary_area_reset_revalidation(
+        state,
+        candidate,
+        policy_id=policy_id,
+    )
+
+
+def test_fixed_sanctuary_absence_reopens_after_area_reset() -> None:
+    candidate = _source_test_candidate(
+        target="Hephaestus",
+        level_range=(36, 40),
+        mobile_vnum=908,
+        room_vnum=937,
+    )
+    policy_id = (
+        campaign_module._SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        _SOURCE_REVISION_KEY: "source-1",
+        "campaign_research_results": {
+            policy_id: {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+                _SOURCE_REVISION_KEY: "source-1",
+                "last_attempt_segment_id": 10,
+            }
+        },
+        campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 20},
+        },
+    }
+
+    assert campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+    )
+    assert campaign_module._sanctuary_policy_area_reset_revalidation_pending(
+        state,
+        policy_id=policy_id,
+    )
+    assert not campaign_module._sanctuary_policy_retry_terminal(
+        state,
+        policy_id,
+    )
+
+
+def test_fixed_sanctuary_absence_boundary_is_armed_after_reset() -> None:
+    policy_id = (
+        campaign_module._SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+                "last_attempt_segment_id": 10,
+            }
+        },
+    }
+
+    armed = campaign_module._arm_source_ranked_sanctuary_area_reset_revalidations(
+        state,
+        after_segment_id=20,
+    )
+
+    assert armed[campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY] == {
+        "boot_id": "boot-1",
+        "policy_after_segment_ids": {policy_id: 20},
+    }
+
+
+def test_fixed_sanctuary_absence_at_reset_boundary_is_reopened() -> None:
+    policy_id = (
+        campaign_module._SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+                "last_attempt_segment_id": 20,
+            }
+        },
+        campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 20},
+        },
+    }
+
+    assert campaign_module._sanctuary_policy_area_reset_revalidation_pending(
+        state,
+        policy_id=policy_id,
+    )
+
+
+def test_legacy_fixed_sanctuary_absence_reopens_after_area_reset() -> None:
+    policy_id = (
+        campaign_module._SOURCE_RANKED_OLYMPUS_HEPHAESTUS_SANCTUARY_POLICY.policy_id
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+            }
+        },
+        campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY: {
+            "boot_id": "boot-1",
+            "policy_after_segment_ids": {policy_id: 20},
+        },
+    }
+
+    assert campaign_module._sanctuary_policy_area_reset_revalidation_pending(
+        state,
+        policy_id=policy_id,
+    )
+    armed = campaign_module._arm_source_ranked_sanctuary_area_reset_revalidations(
+        state,
+        after_segment_id=20,
+    )
+    assert armed[campaign_module._RESEARCH_RESET_WAIT_BOUNDARIES_KEY] == {
+        "boot_id": "boot-1",
+        "policy_after_segment_ids": {policy_id: 20},
+    }
+
+
 def test_sanctuary_maintenance_accepts_a_below_band_carrier() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -73698,6 +74610,7 @@ def test_sanctuary_maintenance_accepts_a_below_band_carrier() -> None:
         source_world=world,
         require_unarmed=True,
         required_reset=(4055, 4064),
+        level_ceiling_offset=100,
     )
 
     assert selection is not None
@@ -73706,6 +74619,160 @@ def test_sanctuary_maintenance_accepts_a_below_band_carrier() -> None:
     assert candidate.room_vnum == 4064
     assert candidate.estimated_level_range[1] < 40
     assert object_vnums == (4050,)
+
+
+def test_forward_blindness_reserve_accepts_capacity_only_moria_carrier() -> None:
+    source_directory = Path("runs/dd4-source/server/area")
+    world = load_world_source(source_directory, include_all_areas=True)
+    state = {
+        "level": 40,
+        "max_hp": 962,
+        "character_class": "warrior",
+        "subclass": "knight",
+        "alignment": -266,
+        "world_boot_id": "forward-reserve-test",
+        "room_vnum": "3054",
+        "room_flags": ["safe", "healing"],
+        "campaign_research_results": {},
+        "campaign_source_resource_reserves": {
+            "sanctuary": {"charges_remaining": 3},
+        },
+    }
+
+    selection = campaign_module._select_preferred_moria_sanctuary_recovery_candidate(
+        state,
+        source_directory=source_directory,
+        source_world=world,
+    )
+
+    assert selection is not None
+    assert selection[0].status == "caution"
+    assert selection[0].autonomy_rejections == (
+        "target reset capacity exceeds one",
+    )
+    assert campaign_module._source_ranked_forward_blindness_reserve_allowed(
+        state,
+        carrier_selection=selection,
+    )
+
+    state[campaign_module._SANCTUARY_SECOND_RESERVE_REFILL_KEY] = {
+        "boot_id": "forward-reserve-test",
+        "level": 40,
+        "status": "attempted",
+    }
+    assert not campaign_module._source_ranked_forward_blindness_reserve_allowed(
+        state,
+        carrier_selection=selection,
+    )
+
+
+def test_sanctuary_maintenance_can_use_an_audited_out_of_band_special() -> None:
+    source_directory = Path("runs/dd4-source/server/area")
+    world = load_world_source(source_directory, include_all_areas=True)
+    level = 40
+    closed_carriers = {
+        f"source-ranked-hunt-olympus-{mobile_vnum}-{room_vnum}-{level}-"
+        "sanctuary-maintenance": {
+            "boot_id": "sanctuary-maintenance-test",
+            "observed": True,
+            "viable": False,
+        }
+        for mobile_vnum, room_vnum in ((907, 925), (916, 927), (903, 947))
+    }
+
+    selection = campaign_module._select_source_ranked_sanctuary_maintenance_candidate(
+        {
+            "level": level,
+            "max_hp": 962,
+            "character_class": "Warrior",
+            "subclass": "Knight",
+            "alignment": -882,
+            "world_boot_id": "sanctuary-maintenance-test",
+            "campaign_research_results": closed_carriers,
+            "combat_pouch_potions": {"purple": 1},
+            "verified_combat_pouch_potions": {"purple": 1},
+        },
+        source_directory=source_directory,
+        source_world=world,
+        require_unarmed=True,
+        level_ceiling_offset=100,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (908, 937)
+    assert candidate.estimated_level_range == (36, 40)
+    assert candidate.specials == ("spec_breath_lightning",)
+    assert object_vnums == (926,)
+
+
+def test_sanctuary_maintenance_reopens_safe_retryable_consider_miss() -> None:
+    candidate = _source_test_candidate(
+        target="the below-band carrier",
+        level_range=(8, 12),
+        mobile_vnum=4055,
+        room_vnum=4071,
+    )
+    policy_id = campaign_module._source_ranked_sanctuary_maintenance_policy_id(
+        candidate,
+        character_level=40,
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            policy_id: {
+                "boot_id": "boot-1",
+                "observed": True,
+                "retryable_failure": True,
+                "viable": False,
+            }
+        },
+    }
+
+    assert campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+        allow_consider_rejection=True,
+    )
+    assert not campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id=policy_id,
+        allow_consider_rejection=False,
+    )
+
+
+def test_fixed_sanctuary_selector_honors_dynamic_maintenance_receipt() -> None:
+    candidate = _source_test_candidate(
+        target="the Alchemist",
+        level_range=(37, 41),
+        mobile_vnum=916,
+        room_vnum=927,
+    )
+    maintenance_policy_id = campaign_module._source_ranked_sanctuary_maintenance_policy_id(
+        candidate,
+        character_level=40,
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "campaign_research_results": {
+            maintenance_policy_id: {
+                "boot_id": "boot-1",
+                "absent": True,
+                "observed": False,
+                "viable": False,
+            }
+        },
+    }
+
+    assert not campaign_module._source_ranked_sanctuary_candidate_research_open(
+        state,
+        candidate,
+        policy_id="source-ranked-sanctuary-olympus-37-100",
+    )
 
 
 def test_sanctuary_maintenance_rotates_to_a_below_band_carrier(
@@ -95563,6 +96630,37 @@ def test_source_ranked_reset_wait_ignores_prior_level_cooldowns() -> None:
     assert _active_source_ranked_reset_policy_id(state) == current_policy_id
 
 
+def test_source_ranked_reset_wait_ignores_sanctuary_maintenance_with_reserve() -> None:
+    maintenance_policy_id = (
+        "source-ranked-hunt-olympus-908-937-40-sanctuary-maintenance"
+    )
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+        "inventory": '[{"short_desc":"the Red DragonOrb"}]',
+        "campaign_source_resource_reserves": {
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": 7303,
+                "object_description": "red dragonorb",
+                "mode": "staff",
+                "charges_remaining": 10,
+            }
+        },
+        "campaign_research_results": {
+            maintenance_policy_id: {
+                "absent": True,
+                "boot_id": "boot-1",
+            }
+        },
+        "campaign_research_absence_cooldowns": {
+            maintenance_policy_id: 3,
+        },
+    }
+
+    assert _active_source_ranked_reset_policy_id(state) is None
+
+
 def test_crowd_wait_ignores_prior_level_source_cooldowns() -> None:
     old_policy_id = "source-ranked-hunt-eastern-desert-5006-5061-19"
     current_policy_id = "source-ranked-hunt-dwarven-home-20507-20510-24"
@@ -98451,6 +99549,37 @@ def test_exhausted_frontier_can_top_up_existing_sanctuary_reserve(
         "practice_skill": selected.practice_skill,
         "allow_existing_reserve": True,
     }]
+
+
+def test_existing_sanctuary_top_up_is_bounded_per_boot_and_level() -> None:
+    state = {
+        "level": 40,
+        "world_boot_id": "boot-1",
+    }
+    candidate = _source_test_candidate(
+        target="a source carrier",
+        level_range=(1, 100),
+        mobile_vnum=9400,
+        room_vnum=9401,
+    )
+
+    assert campaign_module._source_ranked_existing_reserve_top_up_allowed(state)
+
+    campaign_module._record_source_ranked_existing_reserve_top_up(
+        state,
+        policy_id="source-ranked-sanctuary-maintenance-9400-40",
+        candidate=candidate,
+    )
+
+    assert not campaign_module._source_ranked_existing_reserve_top_up_allowed(
+        state
+    )
+    assert campaign_module._source_ranked_existing_reserve_top_up_allowed(
+        {**state, "level": 41}
+    )
+    assert campaign_module._source_ranked_existing_reserve_top_up_allowed(
+        {**state, "world_boot_id": "boot-2"}
+    )
 
 
 @pytest.mark.parametrize("revalidation_pending", [False, True])

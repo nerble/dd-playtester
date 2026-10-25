@@ -416,6 +416,13 @@ def test_moria_source_refresh_revalidation_is_one_shot_and_keeps_old_attempt(
         lambda _state, *, source_world: True,
     )
 
+    recovery_receipt = campaign._moria_sanctuary_source_refresh_revalidation_evidence(
+        state,
+        campaign._SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+        source_world=object(),
+    )
+    assert recovery_receipt is not None
+
     receipt = campaign._moria_sanctuary_source_refresh_revalidation_evidence(
         state,
         policy,

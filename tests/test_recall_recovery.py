@@ -63,6 +63,22 @@ def test_adjacent_recall_escape_accepts_temple_text_before_room_info():
     assert escape.failure is None
 
 
+def test_adjacent_recall_escape_waits_for_authoritative_room_after_movement_prompt():
+    state = state_case()
+    escape = AdjacentRecallEscape("100", "north", "101")
+    assert escape.next_command(state, now=0) == "scan north"
+    escape.observe("You can't see anything to the north.\n" + PROMPT)
+    assert escape.next_command(state, now=1) == "north"
+
+    # The text prompt can arrive while CharacterState still has the origin;
+    # the later Room.Info packet is the authoritative movement receipt.
+    escape.observe("A quiet hallway.\n" + PROMPT)
+    assert escape.next_command(state, now=2) is None
+    assert escape.failure is None
+    state.room_vnum = "101"
+    assert escape.next_command(state, now=2.2) == "recall"
+
+
 @pytest.mark.parametrize("reply", [
     "A demon who is one room to the north.",
     "A closed door right here to the north.",

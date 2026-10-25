@@ -24,6 +24,7 @@ from dd4tester.equipment import (
     is_digging_tool,
     is_digging_weapon,
     is_equipment_object,
+    is_lance,
     is_piercing_weapon,
     normalize_item_name,
     plan_stance_swaps,
@@ -347,6 +348,7 @@ def test_rank_gear_sources_preserves_direct_route_program_preflight() -> None:
     assert placement.route_preflight_room_vnum == "3001"
     assert placement.route_preflight_command == "where drunk"
     assert placement.route_preflight_target == "the drunk"
+    assert placement.route_preflight_source_mobile_vnum == drunk.vnum
     assert placement.route_preflight_hard_hazard is True
     assert placement.route_preflight_route_room_names == (
         "recall",
@@ -1332,6 +1334,20 @@ def test_ambush_source_parser_retains_lance_flag_and_class_restriction() -> None
         character_class="warrior",
         subclass="knight",
     )
+
+
+def test_lance_is_source_classified_as_ranged_weapon() -> None:
+    ambush = parse_area_file(
+        Path("runs/dd4-source/server/area/ambush.are"),
+        include_resets=False,
+        include_entities=False,
+        include_objects=True,
+    )
+
+    spear = ambush.objects[4521]
+
+    assert is_lance(spear)
+    assert item_category(spear) == "ranged_weapon"
 
 
 def test_ambiguous_description_is_not_wearable_if_any_prototype_is_restricted() -> None:

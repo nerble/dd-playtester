@@ -200,12 +200,22 @@ class AdjacentRecallEscape:
     deadline: float | None = None
     failure: str | None = None
     commands_sent: int = 0
+    room_event_waited: bool = False
 
     def observe(self, text: str) -> None:
         if self.deadline is not None:
             self.response = (self.response + text)[-8000:]
 
     def expire(self, now: float) -> bool:
+        if (
+            self.room_event_waited
+            and self.deadline is not None
+            and now >= self.deadline
+        ):
+            self.failure = (
+                "adjacent recall escape did not receive its authoritative room event"
+            )
+            return True
         if self.deadline is not None and now >= self.deadline and not _DD4_PROMPT.search(self.response):
             self.failure = "adjacent recall escape response timed out after five seconds"
             return True
@@ -214,6 +224,7 @@ class AdjacentRecallEscape:
     def _send(self, command: str, stage: str, room: str, now: float) -> str:
         self.commands_sent += 1
         self.stage, self.pending_room = stage, room
+        self.room_event_waited = False
         self.response, self.deadline = "", now + 5
         return command
 
@@ -242,8 +253,17 @@ class AdjacentRecallEscape:
                 and _midgaard_recall_arrival(self.response)
             )
             if state.room_vnum != self.pending_room and not delayed_recall_room:
+                if self.stage == "stepping" and not self.room_event_waited:
+                    # DD4 can deliver the movement prompt before the
+                    # authoritative Room.Info packet. Give that packet one
+                    # short, bounded grace period before declaring the escape
+                    # route broken.
+                    self.room_event_waited = True
+                    self.deadline = now + 1
+                    return None
                 self.failure = "adjacent recall escape did not reach its exact expected room"
                 return None
+            self.room_event_waited = False
             self.deadline = None
             if self.stage == "recalling":
                 self.stage = "complete"
@@ -270,4 +290,5 @@ class AdjacentRecallEscape:
         return {"origin": self.origin, "direction": self.direction,
                 "destination": self.destination, "stage": self.stage,
                 "commands_sent": self.commands_sent, "failure": self.failure,
-                "scan_response": self.scan_response}
+                "scan_response": self.scan_response,
+                "room_event_waited": self.room_event_waited}

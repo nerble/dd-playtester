@@ -3,6 +3,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,7 @@ from dd4tester.observations import GameEvent
 from dd4tester.starter import StarterPolicy
 from dd4tester.state import CharacterState
 from dd4tester.storage import RunStorage
+from dd4tester.hunt_candidates import WorldSource
 
 
 @pytest.mark.parametrize("base,subclass,spell", [
@@ -182,6 +184,168 @@ def test_preparation_handoff_preserves_other_gates(monkeypatch, boundary):
     }
     state.update(changes[boundary])
     assert runner._policy_for_state(state) == selected
+
+
+def test_required_flight_preparation_survives_unknown_affects_after_reconnect(monkeypatch):
+    selected = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution="moria-sanctuary-hunt",
+        requires_flight_override=True,
+    )
+    runner, state, _ = campaign_fixture(monkeypatch, selected=selected)
+    state["affects"] = None
+
+    prepared = runner._policy_for_state(state)
+
+    assert prepared.execution == "cast-flight"
+    assert prepared.policy_id == "prepare-learned-flight"
+
+
+def test_protection_maintenance_keeps_flight_purchase_handoff(monkeypatch):
+    base = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution=None,
+        status="unavailable",
+    )
+    runner, state, _ = campaign_fixture(monkeypatch, selected=base)
+    warrior = replace(runner.spec.character, character_class="warrior", subclass="knight")
+    runner.spec = replace(runner.spec, character=warrior)
+    runner._source_world = WorldSource()
+    maintenance = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution="moria-sanctuary-hunt",
+        requires_flight_override=True,
+    )
+    monkeypatch.setattr(campaign, "_protection_recovery_required", lambda _state: True)
+    monkeypatch.setattr(campaign, "_state_has_sanctuary_reserve", lambda _state: False)
+    monkeypatch.setattr(campaign, "_has_campaign_food", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        runner,
+        "_select_olympus_sanctuary_fallback",
+        lambda _state, *, practice_skill: maintenance,
+    )
+    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state.pop("campaign_flight_funding_retry_pending", None)
+
+    prepared = runner._policy_for_state(state)
+
+    assert prepared.execution == "buy-flight"
+
+
+def test_missing_sanctuary_uses_out_of_band_maintenance_after_frontier_closes(
+    monkeypatch,
+):
+    base = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution=None,
+        status="unavailable",
+    )
+    runner, state, _ = campaign_fixture(monkeypatch, selected=base)
+    warrior = replace(runner.spec.character, character_class="warrior", subclass="knight")
+    runner.spec = replace(runner.spec, character=warrior)
+    runner._source_world = WorldSource()
+    maintenance = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution="moria-sanctuary-hunt",
+        requires_flight_override=True,
+    )
+    sanctuary_calls = []
+
+    def select_maintenance(_state, *, practice_skill):
+        sanctuary_calls.append(practice_skill)
+        return maintenance
+
+    monkeypatch.setattr(campaign, "_protection_recovery_required", lambda _state: False)
+    monkeypatch.setattr(campaign, "_state_has_sanctuary_reserve", lambda _state: False)
+    monkeypatch.setattr(campaign, "_has_campaign_food", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        runner,
+        "_select_olympus_sanctuary_fallback",
+        select_maintenance,
+    )
+    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state.pop("campaign_flight_funding_retry_pending", None)
+
+    prepared = runner._policy_for_state(state)
+
+    assert sanctuary_calls == [base.practice_skill]
+    assert prepared.execution == "buy-flight"
+
+
+def test_deep_sanctuary_maintenance_keeps_flight_purchase_handoff(monkeypatch):
+    base = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution=None,
+        status="unavailable",
+    )
+    runner, state, _ = campaign_fixture(monkeypatch, selected=base)
+    warrior = replace(runner.spec.character, character_class="warrior", subclass="knight")
+    runner.spec = replace(runner.spec, character=warrior)
+    runner._source_world = WorldSource()
+    maintenance = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution="moria-deep-sanctuary-hunt",
+        requires_flight_override=False,
+    )
+
+    def select_maintenance(_state, *, practice_skill):
+        runner._selected_source_consumable_candidate = SimpleNamespace(
+            requires_flight=True,
+        )
+        return maintenance
+
+    monkeypatch.setattr(campaign, "_protection_recovery_required", lambda _state: True)
+    monkeypatch.setattr(campaign, "_state_has_sanctuary_reserve", lambda _state: False)
+    monkeypatch.setattr(campaign, "_has_campaign_food", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        runner,
+        "_select_olympus_sanctuary_fallback",
+        select_maintenance,
+    )
+    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state.pop("campaign_flight_funding_retry_pending", None)
+
+    prepared = runner._policy_for_state(state)
+
+    assert prepared.execution == "buy-flight"
+
+
+def test_generic_deep_sanctuary_binds_carrier_before_flight_handoff(monkeypatch):
+    base = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution=None,
+        status="unavailable",
+    )
+    runner, state, _ = campaign_fixture(monkeypatch, selected=base)
+    warrior = replace(runner.spec.character, character_class="warrior", subclass="knight")
+    runner.spec = replace(runner.spec, character=warrior)
+    runner._source_world = WorldSource()
+    maintenance = replace(
+        campaign._PROVISION_FUNDING_POLICY,
+        execution="moria-deep-sanctuary-hunt",
+        requires_flight_override=False,
+    )
+    carrier = SimpleNamespace(requires_flight=True)
+
+    monkeypatch.setattr(campaign, "_protection_recovery_required", lambda _state: True)
+    monkeypatch.setattr(campaign, "_state_has_sanctuary_reserve", lambda _state: False)
+    monkeypatch.setattr(campaign, "_has_campaign_food", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        runner,
+        "_select_olympus_sanctuary_fallback",
+        lambda _state, *, practice_skill: maintenance,
+    )
+    monkeypatch.setattr(
+        campaign,
+        "_select_source_consumable_candidate",
+        lambda *args, **kwargs: (carrier, (926,)),
+    )
+    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state.pop("campaign_flight_funding_retry_pending", None)
+
+    prepared = runner._policy_for_state(state)
+
+    assert prepared.execution == "buy-flight"
 
 
 def test_failure_cooldown_survives_checkpoints_and_expires(monkeypatch):

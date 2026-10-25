@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +12,7 @@ from dd4tester.encounters import (
 )
 from dd4tester.hunt_candidates import (
     ACT_SENTINEL, ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
-    ObjectSource, SourceCombatOutput, WorldSource,
+    ObjectSource, SourceCombatOutput, WorldSource, load_world_source,
 )
 
 
@@ -93,6 +94,34 @@ def test_active_encounter_preserves_source_hazard_and_equipment_gates(hazard):
         if hazard == "weapon":
             world.objects[1000] = ObjectSource(1000, "knife", "a knife", ITEM_WEAPON, (0, 1, 4, 2), 10)
     assert not _budget(world=world).allowed
+
+
+def test_active_encounter_allows_only_the_audited_red_dragon_maintenance_reset():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    enemy = [{"isnpc": "7040", "name": "red dragon", "level": "30"}]
+    common = dict(
+        character_level=40,
+        hp=962,
+        max_hp=962,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 6),
+        maximum_level_offsets_by_vnum={7040: 100},
+    )
+
+    assert not active_encounter_budget(world, enemy, **common).allowed
+    budget = active_encounter_budget(
+        world,
+        enemy,
+        **common,
+        allowed_red_dragon_fire_special_vnums=(7040,),
+    )
+    assert budget.allowed
+    assert budget.mobile_vnums == (7040,)
+    assert budget.expected_incoming > 0
 
 
 def test_active_encounter_rejects_unknown_mobile_damage_modifier():

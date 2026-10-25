@@ -840,6 +840,7 @@ class RunStorage:
                 below_useful_band INTEGER NOT NULL DEFAULT 0,
                 objective_eligible INTEGER NOT NULL DEFAULT 1,
                 route_gate INTEGER NOT NULL DEFAULT 0,
+                transit_only INTEGER NOT NULL DEFAULT 0,
                 selector TEXT,
                 timestamp TEXT NOT NULL
             );
@@ -922,6 +923,9 @@ class RunStorage:
 
             CREATE INDEX IF NOT EXISTS idx_campaign_run_links_sequence
             ON campaign_run_links(campaign_id, first_sequence, run_id);
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_run_links_run_id
+            ON campaign_run_links(run_id, campaign_id);
 
             CREATE TABLE IF NOT EXISTS campaign_run_link_backfills (
                 campaign_id INTEGER PRIMARY KEY
@@ -1066,6 +1070,11 @@ class RunStorage:
         if "route_gate" not in mob_kill_columns:
             self.connection.execute(
                 "ALTER TABLE mob_kills ADD COLUMN route_gate "
+                "INTEGER NOT NULL DEFAULT 0"
+            )
+        if "transit_only" not in mob_kill_columns:
+            self.connection.execute(
+                "ALTER TABLE mob_kills ADD COLUMN transit_only "
                 "INTEGER NOT NULL DEFAULT 0"
             )
         if "selector" not in mob_kill_columns:
@@ -1826,6 +1835,7 @@ class RunStorage:
         except (KeyError, IndexError):
             segment_finished_at = None
         matches: list[int] = []
+        run_link_table_available = self._table_exists("campaign_run_links")
         for run in self.connection.execute(
             """
             SELECT id, scenario_name, scenario_path, started_at,
@@ -1860,14 +1870,27 @@ class RunStorage:
                 and "provision funding" not in scenario_name
             ):
                 continue
-            already_linked = self.connection.execute(
-                """
-                SELECT 1 FROM campaign_segments
-                WHERE run_id = ? AND campaign_id != ?
-                LIMIT 1
-                """,
-                (int(run["id"]), int(segment["campaign_id"])),
-            ).fetchone()
+            if run_link_table_available:
+                already_linked = self.connection.execute(
+                    """
+                    SELECT 1 FROM campaign_run_links
+                    WHERE run_id = ? AND campaign_id != ?
+                    LIMIT 1
+                    """,
+                    (int(run["id"]), int(segment["campaign_id"])),
+                ).fetchone()
+            else:
+                # Older databases may predate the compact link table. Keep a
+                # compatibility fallback, but never use the wide snapshot
+                # table on current databases during normal recovery.
+                already_linked = self.connection.execute(
+                    """
+                    SELECT 1 FROM campaign_segments
+                    WHERE run_id = ? AND campaign_id != ?
+                    LIMIT 1
+                    """,
+                    (int(run["id"]), int(segment["campaign_id"])),
+                ).fetchone()
             if already_linked is not None:
                 continue
             matches.append(int(run["id"]))
@@ -2782,6 +2805,7 @@ class RunStorage:
         below_useful_band: bool = False,
         objective_eligible: bool | None = None,
         route_gate: bool = False,
+        transit_only: bool = False,
         selector: str | None = None,
         timestamp: str | None = None,
     ) -> int:
@@ -2792,9 +2816,9 @@ class RunStorage:
             INSERT INTO mob_kills (
                 run_id, character_name, boot_id, mob_name, xp_gained,
                 source_mobile_vnum, source_policy_id, below_useful_band,
-                objective_eligible, route_gate, selector, timestamp
+                objective_eligible, route_gate, transit_only, selector, timestamp
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -2807,6 +2831,7 @@ class RunStorage:
                 int(below_useful_band),
                 int(objective_eligible),
                 int(route_gate),
+                int(transit_only),
                 selector,
                 timestamp or _now(),
             ),
@@ -2823,7 +2848,7 @@ class RunStorage:
             """
             SELECT id, run_id, character_name, boot_id, mob_name,
                    xp_gained, source_mobile_vnum, source_policy_id,
-                   below_useful_band, objective_eligible, route_gate,
+                   below_useful_band, objective_eligible, route_gate, transit_only,
                    selector, timestamp
             FROM mob_kills
             WHERE run_id = ?
@@ -2844,7 +2869,7 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       below_useful_band, objective_eligible, route_gate,
+                       below_useful_band, objective_eligible, route_gate, transit_only,
                        selector, timestamp
                 FROM mob_kills
                 WHERE character_name = ?
@@ -2857,7 +2882,7 @@ class RunStorage:
                 """
                 SELECT id, run_id, character_name, boot_id, mob_name,
                        xp_gained, source_mobile_vnum, source_policy_id,
-                       below_useful_band, objective_eligible, route_gate,
+                       below_useful_band, objective_eligible, route_gate, transit_only,
                        selector, timestamp
                 FROM mob_kills
                 WHERE character_name = ? AND boot_id = ?

@@ -673,6 +673,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="analyse every area file instead of the conservative starter-area set",
     )
+    resource_sources_parser.add_argument(
+        "--include-out-of-band",
+        action="store_true",
+        help=(
+            "include source carriers outside the normal level ceiling for "
+            "maintenance audits such as Sanctuary acquisition"
+        ),
+    )
     gear_sources_parser = subcommands.add_parser(
         "show-gear-sources",
         help="rank source-backed equipment placements for a class and stance",
@@ -1870,6 +1878,7 @@ def main(argv: list[str] | None = None) -> int:
             database=args.database,
             limit=args.limit,
             include_all_areas=args.all_areas,
+            include_out_of_band=args.include_out_of_band,
         )
 
     if args.command == "show-gear-sources":
@@ -3039,6 +3048,7 @@ def show_resource_sources(
     database: Path,
     limit: int,
     include_all_areas: bool = False,
+    include_out_of_band: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -3078,6 +3088,7 @@ def show_resource_sources(
             character_max_hp=character_max_hp,
             include_all_areas=include_all_areas,
             recall_origins=recall_origins,
+            include_out_of_band=include_out_of_band,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -3106,6 +3117,8 @@ def show_resource_sources(
     print(f"Character: {character}, level {level}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
+    if include_out_of_band:
+        print("Resource search: full source level range")
     if recall_origins:
         origin_names = []
         for index in sorted(recall_origins):

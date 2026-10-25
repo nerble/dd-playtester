@@ -161,6 +161,7 @@ from .hunt_candidates import (
     ACT_NO_EXPERIENCE,
     ACT_NO_FIGHT,
     WEAR_WIELD,
+    WEAR_HOLD,
     WEAR_DUAL,
     SECT_UNDERWATER,
     SECT_UNDERWATER_GROUND,
@@ -966,7 +967,10 @@ _SANCTUARY_END_TUNNEL_FLIGHT_DEFER_REVISION = 343
 # startup retained only a derived cleared marker.  A real same-boot live
 # absence, route hazard, or loss still closes that exact carrier; a marker
 # without its evidence must not prevent a bounded Sanctuary maintenance kill.
-_CAMPAIGN_POLICY_REVISION = 369
+# Revision 370 records dynamic Sanctuary carrier absence segments and permits
+# one exact post-area-reset recheck. This is a reset of the mobile population,
+# not a reboot requirement, and it never reopens a loss or terminal hazard.
+_CAMPAIGN_POLICY_REVISION = 370
 # Keep the selector's Green Dragon ceiling identical to the starter's finite
 # sanctuary-protected gas probe. Ordinary targets retain their 12-action
 # source estimate; this extension is only valid after sanctuary is observed.
@@ -991,6 +995,9 @@ _POUNDING_WEAPON_REARM_ROUTE_REVISION = 1
 _CAMPAIGN_INVENTORY_SOURCE_HINTS_KEY = "campaign_inventory_source_hints"
 _SOURCE_CONSUMABLE_SPELL_KEY = "campaign_source_consumable_spell"
 _SOURCE_RESOURCE_RESERVES_KEY = "campaign_source_resource_reserves"
+_SOURCE_RANKED_SANCTUARY_TOP_UP_ATTEMPT_KEY = (
+    "campaign_source_ranked_sanctuary_top_up_attempt"
+)
 _SOURCE_RESOURCE_DISPATCH_CONTRACT_REPAIR_KEY = (
     "campaign_source_resource_dispatch_contract_repair"
 )
@@ -1015,15 +1022,27 @@ _CAERLIN_STAFF_LOCATOR_MISS_PREFIXES = (
 )
 _MORIA_SANCTUARY_POTION_OBJECT_VNUM = 4050
 _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM = 4055
+# The purple-potion carrier is a maintenance target, not an XP target. Its
+# source reset has two copies across two rooms, so exact fixed-reset selection
+# must inspect its out-of-band level range.
+_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET = 100
 _OLYMPUS_SANCTUARY_CARRIER_MOBILE_VNUM = 916
 _OLYMPUS_SANCTUARY_CARRIER_ROOM_VNUM = 927
 _OLYMPUS_SANCTUARY_STAFF_OBJECT_VNUM = 905
 _OLYMPUS_ADEPT_SANCTUARY_CARRIER_MOBILE_VNUM = 907
 _OLYMPUS_ADEPT_SANCTUARY_CARRIER_ROOM_VNUM = 925
+_OLYMPUS_APOLLO_SANCTUARY_CARRIER_MOBILE_VNUM = 905
+_OLYMPUS_APOLLO_SANCTUARY_CARRIER_ROOM_VNUM = 926
+_OLYMPUS_APOLLO_BOW_OBJECT_VNUM = 907
 _OLYMPUS_HEPHAESTUS_SANCTUARY_CARRIER_MOBILE_VNUM = 908
 _OLYMPUS_HEPHAESTUS_SANCTUARY_CARRIER_ROOM_VNUM = 937
 _OLYMPUS_HEPHAESTUS_SANCTUARY_OBJECT_VNUM = 926
 _OLYMPUS_HEPHAESTUS_SANCTUARY_SPECIAL = "spec_breath_lightning"
+_RED_DRAGON_SANCTUARY_CARRIER_MOBILE_VNUM = 7040
+_RED_DRAGON_SANCTUARY_CARRIER_ROOM_VNUM = 7428
+_RED_DRAGON_SANCTUARY_OBJECT_VNUM = 7303
+_RED_DRAGON_SANCTUARY_WEAPON_VNUM = 7216
+_RED_DRAGON_SANCTUARY_SPECIAL = "spec_breath_fire"
 _NEW_OFCOL_ANCIENT_GOLD_DRAGON_MOBILE_VNUM = 631
 _NEW_OFCOL_ANCIENT_GOLD_DRAGON_ROOM_VNUM = 693
 _NEW_OFCOL_ANCIENT_GOLD_DRAGON_SPECIAL = "spec_breath_any"
@@ -1865,6 +1884,10 @@ _SANCTUARY_RESOURCE_MAX_ATTEMPTS = 2
 _SANCTUARY_AREA_RESET_RECHECK_KEY = (
     "campaign_sanctuary_area_reset_recheck"
 )
+_SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY = (
+    "campaign_sanctuary_carrier_area_reset_revalidations"
+)
+_SANCTUARY_CARRIER_AREA_RESET_REVALIDATION_REVISION = 1
 _SANCTUARY_FRONTIER_RESERVE_KEY = (
     "campaign_sanctuary_frontier_reserve"
 )
@@ -2063,6 +2086,9 @@ _SOURCE_RANKED_RETRY_EXHAUSTED_KEY = (
 )
 _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY = (
     "campaign_source_ranked_retry_exhausted_boot"
+)
+_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY = (
+    "campaign_source_ranked_retry_exhausted_segment_id"
 )
 _SOURCE_RANKED_PROTECTION_RETRY_REVALIDATION_KEY = (
     "campaign_source_ranked_protection_retry_revalidation"
@@ -3582,6 +3608,14 @@ def _sanctuary_policy_retry_terminal(
     ) is not None:
         return True
     result = _campaign_research_results(dict(state)).get(policy_id)
+    if _sanctuary_policy_area_reset_revalidation_pending(
+        state,
+        policy_id=policy_id,
+    ):
+        # The exact source reset has a newer area-reset boundary. Let the
+        # fixed carrier selector make its one fresh live check instead of
+        # treating the older absence as a permanent same-boot terminal.
+        return False
     return bool(
         isinstance(result, Mapping)
         and result.get("boot_id") == state.get("world_boot_id")
@@ -4786,6 +4820,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _SOURCE_RANKED_BELOW_BAND_CROWD_REVALIDATION_KEY,
     _SOURCE_CAPACITY_RESET_WAIT_KEY,
     _SANCTUARY_AREA_RESET_RECHECK_KEY,
+    _SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY,
     _SANCTUARY_FRONTIER_RESERVE_KEY,
     _SANCTUARY_END_TUNNEL_REVALIDATION_KEY,
     _MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY,
@@ -4806,6 +4841,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _SOURCE_REVISION_KEY,
     _SOURCE_CONSUMABLE_SPELL_KEY,
     _SOURCE_RESOURCE_RESERVES_KEY,
+    _SOURCE_RANKED_SANCTUARY_TOP_UP_ATTEMPT_KEY,
     _SOURCE_RESOURCE_DISPATCH_CONTRACT_REPAIR_KEY,
     _VAMP_VALE_GROUND_SANCTUARY_ATTEMPT_KEY,
     "combat_pouch_potions",
@@ -4911,6 +4947,7 @@ _CAMPAIGN_STICKY_METADATA_KEYS = (
     _SOURCE_DYNAMIC_WANDERER_REPEATABILITY_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_KEY,
     _SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY,
+    _SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY,
     _SOURCE_RANKED_PROTECTION_RETRY_REVALIDATION_KEY,
     _SOURCE_RANKED_SAFE_ABSENCE_REVALIDATION_KEY,
     _SOURCE_RANKED_XP_LOSS_POLICIES_KEY,
@@ -5039,6 +5076,7 @@ def _synchronize_source_revision(
     state.pop(_SOURCE_RANKED_FRONTIER_RETRY_KEY, None)
     state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
     state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+    state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
     state.pop(_SOURCE_RANKED_DAMAGE_WINDOW_REVALIDATION_KEY, None)
     state.pop(_SOURCE_RANKED_SPECIAL_HP_REVALIDATION_KEY, None)
     state.pop(_SOURCE_RANKED_COMBAT_OUTPUT_REVALIDATION_KEY, None)
@@ -8540,6 +8578,7 @@ def _repair_source_ranked_locator_rebase_revalidation(
         }
         updated.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
         updated.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+        updated.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
     results = dict(_campaign_research_results(updated))
     superseded_result = dict(results.pop(policy_id))
     if results:
@@ -9148,7 +9187,7 @@ def _carry_sanctuary_resource_attempts(
     policy_id: str | None,
 ) -> dict[str, Any]:
     """Keep same-frontier reserve-route limits through unrelated segments."""
-    if policy_id in _SANCTUARY_RESOURCE_POLICY_IDS:
+    if _is_sanctuary_resource_policy_id(policy_id):
         return current
     boot_id = current.get("world_boot_id")
     level = _level(current)
@@ -9397,6 +9436,7 @@ def _repair_source_special_level_ceiling_evidence(
         # leave unrelated retry markers untouched.
         repaired.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
         repaired.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+        repaired.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
     return repaired
 
 
@@ -11202,6 +11242,10 @@ class CampaignRunner:
                 [dict(segment) for segment in campaign_segments],
                 [dict(checkpoint) for checkpoint in campaign_checkpoints],
             )
+            state = _repair_source_ranked_sanctuary_absence_attempt_ids(
+                state,
+                [dict(segment) for segment in campaign_segments],
+            )
             state = _repair_sanctuary_resource_acquisition_history(
                 state,
                 [dict(segment) for segment in campaign_segments],
@@ -11257,6 +11301,12 @@ class CampaignRunner:
                 reset_wait_state = _reopen_sanctuary_resource_after_reset_wait(
                     reset_wait_state,
                     after_segment_id=reset_boundary_segment_id,
+                )
+                reset_wait_state = (
+                    _arm_source_ranked_sanctuary_area_reset_revalidations(
+                        reset_wait_state,
+                        after_segment_id=reset_boundary_segment_id,
+                    )
                 )
                 reset_wait_state = _arm_source_capacity_research_after_reset(
                     reset_wait_state
@@ -12314,6 +12364,9 @@ class CampaignRunner:
                     source_directory=current_source_directory(),
                     source_world=self._source_world,
                     require_unarmed=True,
+                    level_ceiling_offset=(
+                        _MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET
+                    ),
                     required_reset=(
                         _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
                         4064,
@@ -12470,6 +12523,9 @@ class CampaignRunner:
                     source_directory=current_source_directory(),
                     source_world=self._source_world,
                     require_unarmed=True,
+                    level_ceiling_offset=(
+                        _MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET
+                    ),
                     required_reset=(
                         _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
                         4071,
@@ -12559,6 +12615,54 @@ class CampaignRunner:
                     == f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{_level(state)}"
                     and _sanctuary_area_reset_recheck_failure_terminal(state)
                 ):
+                    if (
+                        self.defer_stall_for_reset
+                        and _sanctuary_area_reset_recheck_rearm_after_success_available(
+                            state
+                        )
+                        and _sanctuary_reset_recheck_checkpoint_safe(state)
+                    ):
+                        state = _arm_sanctuary_resource_area_reset_recheck(
+                            state,
+                            allow_successful_reacquisition=True,
+                        )
+                        message = (
+                            "The prior Sanctuary refill was acquired and then "
+                            "depleted. Campaign checkpointed while awaiting "
+                            "one bounded field area reset before trying that "
+                            "source-backed refill again."
+                        )
+                        latest_checkpoint = (
+                            storage.get_latest_campaign_checkpoint(campaign_id)
+                        )
+                        if not (
+                            latest_checkpoint is not None
+                            and str(latest_checkpoint["phase"]) == policy.policy_id
+                            and str(latest_checkpoint["reason"])
+                            == "sanctuary_recovery_after_successful_refill"
+                        ):
+                            checkpoint_id = self._checkpoint(
+                                storage,
+                                campaign_id,
+                                None,
+                                phase=policy.policy_id,
+                                reason="sanctuary_recovery_after_successful_refill",
+                                state=state,
+                            )
+                        else:
+                            checkpoint_id = int(latest_checkpoint["id"])
+                        storage.finish_campaign(
+                            campaign_id,
+                            status="ready",
+                            error=message,
+                        )
+                        return CampaignResult(
+                            campaign_id,
+                            "ready",
+                            checkpoint_id,
+                            message,
+                            state,
+                        )
                     independent_absence_policy_id = (
                         _next_pending_absent_research_retry_policy(
                             state,
@@ -12622,12 +12726,53 @@ class CampaignRunner:
                             message,
                             state,
                         )
+                    if (
+                        self.defer_stall_for_reset
+                        and _sanctuary_reset_recheck_checkpoint_safe(state)
+                    ):
+                        message = (
+                            "No Sanctuary carrier is currently observed after "
+                            "the last bounded retry. Campaign checkpointed "
+                            "while awaiting one more bounded area reset scan "
+                            "of the exact source-ranked carriers; this is not "
+                            "a reboot requirement, and same-boot losses remain "
+                            "closed."
+                        )
+                        latest_checkpoint = (
+                            storage.get_latest_campaign_checkpoint(campaign_id)
+                        )
+                        if not (
+                            latest_checkpoint is not None
+                            and str(latest_checkpoint["phase"]) == policy.policy_id
+                            and str(latest_checkpoint["reason"])
+                            == "awaiting_area_reset"
+                        ):
+                            checkpoint_id = self._checkpoint(
+                                storage,
+                                campaign_id,
+                                None,
+                                phase=policy.policy_id,
+                                reason="awaiting_area_reset",
+                                state=state,
+                            )
+                        else:
+                            checkpoint_id = int(latest_checkpoint["id"])
+                        storage.finish_campaign(
+                            campaign_id,
+                            status="ready",
+                            error=message,
+                        )
+                        return CampaignResult(
+                            campaign_id,
+                            "ready",
+                            checkpoint_id,
+                            message,
+                            state,
+                        )
                     message = (
-                        "The one post-reset sanctuary recheck was already "
-                        "dispatched without restoring a reserve. No further "
-                        "reset wait is authorized on this DD4 boot; the "
-                        "campaign is checkpointed until new route or resource "
-                        "evidence changes the choice."
+                        "The bounded Sanctuary carrier rotation is exhausted "
+                        "for this invocation. Campaign is checkpointed until "
+                        "new route or resource evidence changes the choice."
                     )
                     checkpoint_id = self._checkpoint(
                         storage,
@@ -12789,6 +12934,13 @@ class CampaignRunner:
                     state
                 )
                 if source_reset_policy_id is not None and not policy.executable:
+                    if self.defer_stall_for_reset:
+                        armed_state = _arm_sanctuary_resource_area_reset_recheck(
+                            state,
+                            allow_unprotected_exhaustion=True,
+                        )
+                        if _sanctuary_area_reset_recheck_pending(armed_state):
+                            state = armed_state
                     message = (
                         "No source-safe current-band route is available; "
                         f"{source_reset_policy_id} is on a current-reboot "
@@ -12826,6 +12978,10 @@ class CampaignRunner:
                                 "world_boot_id",
                             )
                         )
+                        and latest_state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                        == state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                        and latest_state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+                        == state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
                     )
                     if not (
                         latest_checkpoint is not None
@@ -12898,11 +13054,27 @@ class CampaignRunner:
                     latest_checkpoint = (
                         storage.get_latest_campaign_checkpoint(campaign_id)
                     )
+                    latest_state_matches = False
+                    if latest_checkpoint is not None:
+                        try:
+                            latest_state = json.loads(
+                                str(latest_checkpoint["state_json"])
+                            )
+                        except (TypeError, ValueError, KeyError):
+                            latest_state = None
+                        latest_state_matches = bool(
+                            isinstance(latest_state, Mapping)
+                            and latest_state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                            == state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                            and latest_state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+                            == state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+                        )
                     if not (
                         latest_checkpoint is not None
                         and str(latest_checkpoint["phase"]) == policy.policy_id
                         and str(latest_checkpoint["reason"])
                         == "awaiting_area_reset"
+                        and latest_state_matches
                     ):
                         checkpoint_id = self._checkpoint(
                             storage,
@@ -12951,11 +13123,27 @@ class CampaignRunner:
                     latest_checkpoint = (
                         storage.get_latest_campaign_checkpoint(campaign_id)
                     )
+                    latest_state_matches = False
+                    if latest_checkpoint is not None:
+                        try:
+                            latest_state = json.loads(
+                                str(latest_checkpoint["state_json"])
+                            )
+                        except (TypeError, ValueError, KeyError):
+                            latest_state = None
+                        latest_state_matches = bool(
+                            isinstance(latest_state, Mapping)
+                            and latest_state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                            == state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+                            and latest_state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+                            == state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+                        )
                     if not (
                         latest_checkpoint is not None
                         and str(latest_checkpoint["phase"]) == policy.policy_id
                         and str(latest_checkpoint["reason"])
                         == "awaiting_area_reset"
+                        and latest_state_matches
                     ):
                         checkpoint_id = self._checkpoint(
                             storage,
@@ -15593,6 +15781,16 @@ class CampaignRunner:
                     candidate
                 )
             ]
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not _source_ranked_route_invisibility_unavailable(
+                candidate,
+                state,
+                character_level=level,
+                source_world=world,
+            )
+        ]
         ranked_candidates = tuple(candidates)
         # Revalidation may need to revisit an exact target whose latest safe
         # preparation abort caused the fresh rank pass to label it reject.
@@ -20737,32 +20935,35 @@ class CampaignRunner:
                 f"{candidate.area_file}. Dispatching that separate "
                 "required-loot route now."
             )
+            if allow_existing_reserve:
+                _record_source_ranked_existing_reserve_top_up(
+                    state,
+                    policy_id=policy.policy_id,
+                    candidate=candidate,
+                )
             return replace(
                 policy,
                 minimum_level=_level(state),
                 maximum_level=_level(state),
                 practice_skill=practice_skill,
             )
-        fixed_stops = {
-            (
-                _OLYMPUS_SANCTUARY_CARRIER_MOBILE_VNUM,
-                _OLYMPUS_SANCTUARY_CARRIER_ROOM_VNUM,
-            ),
-            (
-                _OLYMPUS_ADEPT_SANCTUARY_CARRIER_MOBILE_VNUM,
-                _OLYMPUS_ADEPT_SANCTUARY_CARRIER_ROOM_VNUM,
-            ),
-            (
-                _OLYMPUS_HEPHAESTUS_SANCTUARY_CARRIER_MOBILE_VNUM,
-                _OLYMPUS_HEPHAESTUS_SANCTUARY_CARRIER_ROOM_VNUM,
-            ),
-        }
+        # A fixed carrier is fixed by its exact resource contract, not by the
+        # room alone.  For example, the Alchemist can carry both the fixed
+        # ivory staff and a distinct Sanctuary nectar.  A closed staff attempt
+        # must not hide that still-untried object on the same source reset.
+        # Moria's two-copy reset has its own one-time fixed-reset and source
+        # refresh contracts below. Keep the broad carrier rotation from
+        # silently spending that entitlement or reopening it after closure.
+        maintenance_excluded_stops: tuple[tuple[int, int], ...] = (
+            (_MORIA_SANCTUARY_CARRIER_MOBILE_VNUM, 4064),
+            (_MORIA_SANCTUARY_CARRIER_MOBILE_VNUM, 4071),
+        )
         maintenance_selection = (
             _select_source_ranked_sanctuary_maintenance_candidate(
                 state,
                 source_directory=current_source_directory(),
                 source_world=self._source_world,
-                excluded_target_stops=fixed_stops,
+                excluded_target_stops=maintenance_excluded_stops,
             )
         )
         if maintenance_selection is not None:
@@ -20783,6 +20984,12 @@ class CampaignRunner:
                 f"(source level {low}-{high}). This is a bounded "
                 "maintenance kill for Sanctuary, not an XP-band target."
             )
+            if allow_existing_reserve:
+                _record_source_ranked_existing_reserve_top_up(
+                    state,
+                    policy_id=policy_id,
+                    candidate=candidate,
+                )
             return replace(
                 _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
                 policy_id=policy_id,
@@ -20833,12 +21040,22 @@ class CampaignRunner:
                 },
                 True,
             ),
+            (
+                {
+                    "level_ceiling_offset": 100,
+                    "require_unarmed": False,
+                    "allowed_target_specials": (_RED_DRAGON_SANCTUARY_SPECIAL,),
+                    "allow_armed_carrier": True,
+                    "allow_red_dragon_fire_carrier": True,
+                },
+                True,
+            ),
         ):
             selection = _select_source_ranked_sanctuary_maintenance_candidate(
                 state,
                 source_directory=current_source_directory(),
                 source_world=self._source_world,
-                excluded_target_stops=fixed_stops,
+                excluded_target_stops=maintenance_excluded_stops,
                 **selector_kwargs,
             )
             if selection is not None:
@@ -20869,6 +21086,12 @@ class CampaignRunner:
                 "This is a bounded maintenance kill for Sanctuary, not an "
                 f"XP-band target.{armed_note}"
             )
+            if allow_existing_reserve:
+                _record_source_ranked_existing_reserve_top_up(
+                    state,
+                    policy_id=policy_id,
+                    candidate=candidate,
+                )
             return replace(
                 _SOURCE_RANKED_SANCTUARY_ALTERNATE_POLICY,
                 policy_id=policy_id,
@@ -20895,12 +21118,223 @@ class CampaignRunner:
             )
         return None
 
+    def _select_caerlin_source_revision_sanctuary_fallback(
+        self,
+        state: dict[str, Any],
+        *,
+        practice_skill: str | None,
+    ) -> ProgressionPolicy | None:
+        """Reach the exact Caerlin source-refresh retry from maintenance.
+
+        The normal Sanctuary recovery branch also handles this retry, but an
+        unavailable current-band frontier can be selected before that branch
+        is reached.  Keep the retry narrow: it is still the one source-bound
+        Caerlin carrier, not a general permission to fight special mobiles.
+        """
+        if (
+            self._source_world is None
+            or not _caerlin_staff_source_revision_retry_allowed(state)
+            or not _is_safe_healer_checkpoint(state)
+            or not _has_campaign_food(state, gear_catalog=self._gear_catalog)
+            or _campaign_needs_healer_recovery(state)
+            or _campaign_checkpoint_needs_return_home(state)
+            or state.get("dead") is True
+            or state.get("in_combat") is True
+            or _state_has_sanctuary_reserve(state)
+        ):
+            return None
+        selection = _select_source_consumable_candidate(
+            state,
+            spell_name="sanctuary",
+            short_description=None,
+            source_directory=current_source_directory(),
+            source_world=self._source_world,
+            require_unarmed=True,
+            required_reset=(
+                _CAERLIN_STAFF_CARRIER_MOBILE_VNUM,
+                _CAERLIN_STAFF_CARRIER_ROOM_VNUM,
+            ),
+        )
+        if (
+            selection is None
+            or not _source_caerlin_staff_candidate_shape_allowed(
+                selection[0],
+                self._source_world,
+            )
+            or not _source_sanctuary_carrier_output_allowed(
+                selection[0],
+                state,
+                policy_id=_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
+                character_level=_level(state),
+                source_world=self._source_world,
+            )
+        ):
+            return None
+
+        candidate, object_vnums = selection
+        self._selected_source_consumable_candidate = candidate
+        self._selected_source_consumable_object_vnums = object_vnums
+        prior_attempt = state.get(_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY)
+        try:
+            prior_retry_count = (
+                int(prior_attempt.get("retry_count") or 0)
+                if isinstance(prior_attempt, Mapping)
+                else 0
+            )
+        except (TypeError, ValueError):
+            prior_retry_count = 0
+        state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY] = {
+            "boot_id": state.get("world_boot_id"),
+            "level": _level(state),
+            "source_revision": state.get(_SOURCE_REVISION_KEY),
+            "status": "attempted",
+            "retry_count": max(1, prior_retry_count),
+            "mobile_vnum": candidate.mobile_vnum,
+            "room_vnum": candidate.room_vnum,
+            "object_vnums": list(object_vnums),
+            _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY: True,
+            "repair_reason": (
+                "one exact source-revision revalidation after the prior "
+                "Caerlin attempt was recorded against an older source "
+                "checkout"
+            ),
+        }
+        state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+        self._emit_progress(
+            "The current-band frontier is unavailable, so I am using the "
+            "already-authorized Caerlin Sanctuary source-refresh retry."
+        )
+        return replace(
+            _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
+            minimum_level=_level(state),
+            maximum_level=_level(state),
+            summary=(
+                "Revalidate the exact source-backed Caerlin Sanctuary staff "
+                "before reopening field combat; this maintenance attempt "
+                "earns no progression XP credit."
+            ),
+            practice_skill=practice_skill,
+        )
+
     def _policy_for_state(self, state: dict[str, Any]) -> ProgressionPolicy:
         self._emit_progress(
             f"Policy preparation: evaluating recovery, resource, and training "
             f"gates at level {_level(state)}."
         )
         selected = self._policy_without_learned_flight(state)
+        protection_maintenance_policy = None
+        no_current_band_route = bool(
+            getattr(selected, "status", None) == "unavailable"
+            and getattr(selected, "execution", None) is None
+        )
+        if (
+            self._source_world is not None
+            and (
+                _protection_recovery_required(state)
+                or (
+                    no_current_band_route
+                    and not _state_has_sanctuary_reserve(state)
+                )
+            )
+            and not _state_has_sanctuary_reserve(state)
+            and _is_safe_healer_checkpoint(state)
+            and not _campaign_needs_healer_recovery(state)
+            and not _campaign_checkpoint_needs_return_home(state)
+            and _has_campaign_food(state, gear_catalog=self._gear_catalog)
+            and not state.get("dead")
+            and not state.get("in_combat")
+            and selected.execution
+            not in (_HANDOFF_BLOCKING_EXECUTIONS - {"source-ranked-hunt"})
+            and not snapshot_quest_status(
+                state.get("quest_status")
+                if isinstance(state.get("quest_status"), Mapping)
+                else None
+            ).active
+            and (_source_quest_point_shortfall(state) or 0) == 0
+        ):
+            # Restore a protection reserve before another exposed field fight.
+            # This is a maintenance handoff, so its source-ranked selector may
+            # choose a carrier outside the ordinary XP band.
+            protection_maintenance_policy = (
+                self._select_olympus_sanctuary_fallback(
+                    state,
+                    practice_skill=selected.practice_skill,
+                )
+            )
+            if protection_maintenance_policy is None:
+                protection_maintenance_policy = (
+                    self._select_caerlin_source_revision_sanctuary_fallback(
+                        state,
+                        practice_skill=selected.practice_skill,
+                    )
+                )
+        if protection_maintenance_policy is not None:
+            state.pop(_SOURCE_RANKED_CANDIDATE_KEY, None)
+            # Keep the selected carrier in the normal preparation pipeline.
+            # In particular, a required-flight carrier must reach the buy/cast
+            # handoff below instead of being dispatched on foot.
+            selected = protection_maintenance_policy
+        if (
+            selected.execution in {
+                "moria-sanctuary-hunt",
+                "moria-deep-sanctuary-hunt",
+            }
+            and self._selected_source_consumable_candidate is None
+            and self._source_world is not None
+        ):
+            # Generic Sanctuary policies used to defer carrier selection until
+            # the executor. That hid a carrier's air-route requirement from
+            # policy preparation and could send the worker to the healer-side
+            # no-flight abort. Bind the same exact source contract here so
+            # buy/cast-flight can happen before the required-loot route.
+            if selected.policy_id in {
+                _MORIA_SANCTUARY_FIXED_RESET_POLICY_ID,
+                _MORIA_SANCTUARY_SECOND_FIXED_RESET_POLICY_ID,
+            }:
+                consumable_selection = _select_source_consumable_candidate(
+                    state,
+                    spell_name="sanctuary",
+                    short_description="a purple potion",
+                    source_directory=current_source_directory(),
+                    source_world=self._source_world,
+                    require_unarmed=True,
+                    level_ceiling_offset=(
+                        _MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET
+                    ),
+                    required_reset=(
+                        _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
+                        (
+                            4064
+                            if selected.policy_id
+                            == _MORIA_SANCTUARY_FIXED_RESET_POLICY_ID
+                            else 4071
+                        ),
+                    ),
+                )
+            elif selected.execution == "moria-sanctuary-hunt":
+                consumable_selection = _select_exact_moria_sanctuary_candidate(
+                    state,
+                    source_directory=current_source_directory(),
+                    source_world=self._source_world,
+                )
+            else:
+                consumable_selection = _select_source_consumable_candidate(
+                    state,
+                    spell_name="sanctuary",
+                    short_description=None,
+                    source_directory=current_source_directory(),
+                    source_world=self._source_world,
+                    exclude_object_vnums=(
+                        _MORIA_SANCTUARY_POTION_OBJECT_VNUM,
+                    ),
+                    require_unarmed=True,
+                )
+            if consumable_selection is not None:
+                (
+                    self._selected_source_consumable_candidate,
+                    self._selected_source_consumable_object_vnums,
+                ) = consumable_selection
+                self._selected_source_consumable_uses_capacity_reset_wait = False
         if (
             selected.execution == "provision-funding"
             and any(
@@ -21675,7 +22109,10 @@ class CampaignRunner:
         # applying its route requirements.
         selected_consumable_candidate = self._selected_source_consumable_candidate
         selected_sanctuary_resource_requires_flight = bool(
-            selected.execution == "moria-sanctuary-hunt"
+            selected.execution in {
+                "moria-sanctuary-hunt",
+                "moria-deep-sanctuary-hunt",
+            }
             and selected_consumable_candidate is not None
             and selected_consumable_candidate.requires_flight
         )
@@ -21775,7 +22212,10 @@ class CampaignRunner:
             or state.get("dead") or state.get("in_combat")
             or _campaign_needs_healer_recovery(state)
             or not _has_campaign_food(state, gear_catalog=self._gear_catalog)
-            or state.get("affects") is None
+            or (
+                state.get("affects") is None
+                and not (selected.requires_flight and spell is not None)
+            )
             or any(_state_has_active_affect(state.get("affects"), name)
                    for name in ("fly", "levitation"))
             or _numeric_progress(state, "mana") < spell.mana_cost
@@ -23741,6 +24181,7 @@ class CampaignRunner:
         if marker_boot and current_boot and marker_boot != current_boot:
             state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
             state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+            state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
         fame_source_marker = state.get(_FAME_RECOVERY_SOURCE_RANKED_KEY)
         if isinstance(fame_source_marker, Mapping):
             marker_level = fame_source_marker.get("level")
@@ -24173,6 +24614,32 @@ class CampaignRunner:
         quest_snapshot = snapshot_quest_status(
             quest_status if isinstance(quest_status, Mapping) else None
         )
+        # A protection loss must not wait for the general source frontier to
+        # rank every candidate before the already-audited Sanctuary handoff is
+        # considered.  Keep the shortcut narrow: food, recovery, and active
+        # funding emergencies still win, while the Moria selector and live
+        # required-loot runner retain their normal source and combat gates.
+        fast_protection_handoff = bool(
+            self._source_world is not None
+            and observed_healer_checkpoint
+            and has_food
+            and not needs_healer_recovery
+            and not needs_location_recovery
+            and state.get("dead") is not True
+            and state.get("in_combat") is not True
+            and _protection_recovery_required(state)
+            and not _state_has_sanctuary_reserve(state)
+            and not needs_food_funding
+            and not water_breathing_funding_required
+            and not needs_ticket_funding
+            and not (
+                state.get("magic_shop_purchase_failed") is True
+                and not can_attempt_flight_purchase
+                and _inventory_source_flight_potion(
+                    state.get("inventory"), self._gear_catalog,
+                ) is None
+            )
+        )
         policy_context = dict(
             subclass=_live_subclass(state),
             target_subclass=self.spec.character.subclass,
@@ -24473,6 +24940,7 @@ class CampaignRunner:
             handoff_policy_id=handoff_policy_id,
             source_ranked_fallback=(
                 _level(state) >= _DYNAMIC_SOURCE_FRONTIER_MINIMUM_LEVEL
+                and not fast_protection_handoff
             ),
         )
         selected = policy_for(
@@ -25987,13 +26455,21 @@ class CampaignRunner:
             # healthy character has stalled without a prior XP-loss marker.
             # Select it once through the required-loot executor, retaining
             # all normal live isolation, HP, movement, and item gates.
-            capacity_selection = _select_source_consumable_candidate(
-                state,
-                spell_name="sanctuary",
-                short_description=None,
-                source_directory=current_source_directory(),
-                source_world=self._source_world,
-                require_unarmed=True,
+            capacity_selection = (
+                _select_exact_moria_sanctuary_candidate(
+                    state,
+                    source_directory=current_source_directory(),
+                    source_world=self._source_world,
+                )
+                if _sanctuary_reset_capacity_revalidation_pending(state)
+                else _select_source_consumable_candidate(
+                    state,
+                    spell_name="sanctuary",
+                    short_description=None,
+                    source_directory=current_source_directory(),
+                    source_world=self._source_world,
+                    require_unarmed=True,
+                )
             )
             if capacity_selection is not None:
                 (
@@ -26377,6 +26853,11 @@ class CampaignRunner:
                                 state
                             )
                         )
+        if _source_ranked_forward_blindness_reserve_allowed(
+            state,
+            carrier_selection=preferred_second_reserve_selection,
+        ):
+            second_sanctuary_refill_allowed = True
         if (
             observed_healer_checkpoint
             and has_food
@@ -29894,6 +30375,7 @@ class CampaignRunner:
                     and has_food
                     and not quest.active
                     and (_source_quest_point_shortfall(state) or 0) == 0
+                    and _source_ranked_existing_reserve_top_up_allowed(state)
                 ):
                     sanctuary_top_up = self._select_olympus_sanctuary_fallback(
                         state,
@@ -29954,6 +30436,7 @@ class CampaignRunner:
                 and has_food
                 and not quest.active
                 and (_source_quest_point_shortfall(state) or 0) == 0
+                and _source_ranked_existing_reserve_top_up_allowed(state)
             ):
                 sanctuary_top_up = self._select_olympus_sanctuary_fallback(
                     state,
@@ -31103,6 +31586,7 @@ class CampaignRunner:
         sanctuary_source_safe_bystander_revalidation_started = False
         sanctuary_reset_capacity_revalidation_started = False
         sanctuary_area_reset_recheck_started = False
+        sanctuary_carrier_area_reset_revalidation_started = False
         sanctuary_capacity_reset_wait_started = False
         training_reaudit_for_segment = False
         provision_funding_boot_id = state.get("world_boot_id") or self._boot_id
@@ -31778,6 +32262,23 @@ class CampaignRunner:
                 sanctuary_area_reset_recheck_started = (
                     _consume_sanctuary_area_reset_recheck(state)
                 )
+            elif (
+                _is_sanctuary_resource_policy_id(policy.policy_id)
+                and source_consumable_candidate is not None
+                and _source_ranked_sanctuary_area_reset_revalidation_pending(
+                    state,
+                    source_consumable_candidate,
+                    policy_id=policy.policy_id,
+                )
+            ):
+                state = dict(state)
+                sanctuary_carrier_area_reset_revalidation_started = (
+                    _consume_source_ranked_sanctuary_area_reset_revalidation(
+                        state,
+                        source_consumable_candidate,
+                        policy_id=policy.policy_id,
+                    )
+                )
             elif self._selected_source_consumable_uses_capacity_reset_wait:
                 if source_consumable_candidate is not None:
                     state = dict(state)
@@ -31881,6 +32382,9 @@ class CampaignRunner:
                         source_directory=current_source_directory(),
                         source_world=self._source_world,
                         require_unarmed=True,
+                        level_ceiling_offset=(
+                            _MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET
+                        ),
                         required_reset=(
                             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
                             (
@@ -32407,6 +32911,15 @@ class CampaignRunner:
                 reason="sanctuary_area_reset_recheck_started",
                 state=state,
             )
+        if sanctuary_carrier_area_reset_revalidation_started:
+            self._checkpoint(
+                storage,
+                campaign_id,
+                segment_id,
+                phase=policy.policy_id,
+                reason="sanctuary_carrier_area_reset_revalidation_started",
+                state=state,
+            )
         if sanctuary_capacity_reset_wait_started:
             self._checkpoint(
                 storage, campaign_id, segment_id, phase=policy.policy_id,
@@ -32782,6 +33295,7 @@ class CampaignRunner:
                         state,
                         latest_state,
                         policy=policy,
+                        segment_id=segment_id,
                     )
                     latest_state = _merge_protection_recovery_metadata(
                         latest_state,
@@ -32864,6 +33378,7 @@ class CampaignRunner:
                         state,
                         latest_state,
                         policy=policy,
+                        segment_id=segment_id,
                     )
                     latest_state = _merge_protection_recovery_metadata(
                         latest_state,
@@ -33139,6 +33654,7 @@ class CampaignRunner:
                         state,
                         latest_state,
                         policy=policy,
+                        segment_id=segment_id,
                     )
                 self._policy_xp_deltas[policy.policy_id] = 0
                 storage.finish_campaign_segment(
@@ -33368,6 +33884,7 @@ class CampaignRunner:
                     state,
                     latest_state,
                     policy=policy,
+                    segment_id=segment_id,
                 )
                 self._policy_xp_deltas[policy.policy_id] = 0
                 storage.finish_campaign_segment(
@@ -33735,6 +34252,7 @@ class CampaignRunner:
                     state,
                     failed_state,
                     policy=policy,
+                    segment_id=segment_id,
                 )
             if retryable_visibility_failure:
                 failed_state[_MAGIC_SHOP_SEE_INVISIBLE_FAILED_KEY] = True
@@ -34279,6 +34797,7 @@ class CampaignRunner:
         ):
             end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
             end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+            end_state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
         if isinstance(objective_kills, list) and objective_kills:
             if policy.execution == "provision-funding":
                 # The live run's kill remains auditable, but funding combat
@@ -34436,6 +34955,7 @@ class CampaignRunner:
             state,
             end_state,
             policy=policy,
+            segment_id=segment_id,
         )
         if policy.execution == "recover-daycare-ring":
             # Below-band checks are expected for this required-loot route; its
@@ -34850,6 +35370,9 @@ class CampaignRunner:
             )
             checkpoint_state[_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY] = (
                 checkpoint_state.get("world_boot_id")
+            )
+            checkpoint_state[_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY] = (
+                segment_id
             )
         previous_liquidation_baseline = state.get(_LIQUIDATION_BASELINE_KEY)
         if policy.execution == "rearm-weapon":
@@ -39927,6 +40450,9 @@ async def _run_policy_segment(
             route_preflight_target=(
                 source_gear_placement.route_preflight_target
             ),
+            route_preflight_source_mobile_vnum=(
+                source_gear_placement.route_preflight_source_mobile_vnum
+            ),
             route_preflight_hard_hazard=(
                 source_gear_placement.route_preflight_hard_hazard
             ),
@@ -41028,6 +41554,9 @@ async def _run_policy_segment(
         dwarven_key_route = (
             policy.execution == "dwarven-catacombs-sanctuary-hunt"
         )
+        sanctuary_maintenance = _is_source_ranked_sanctuary_maintenance_policy_id(
+            policy.policy_id
+        )
         required_descriptions = (required_description,)
         source_loot_object_vnums = tuple(source_consumable_object_vnums)
         source_hunt_stops = _source_ranked_hunt_stops(
@@ -41166,8 +41695,12 @@ async def _run_policy_segment(
                 "route_gate_requires_sanctuary": route_gate_requires_sanctuary,
             }
         def required_loot_stop(template: FieldHuntStop) -> FieldHuntStop:
-            sanctuary_maintenance = _is_source_ranked_sanctuary_maintenance_policy_id(
-                policy.policy_id
+            red_dragon_fire_endpoint = bool(
+                required_spell == "sanctuary"
+                and _source_red_dragon_fire_sanctuary_candidate_shape_allowed(
+                    candidate,
+                    consumable_world,
+                )
             )
             return replace(
                 template,
@@ -41207,8 +41740,20 @@ async def _run_policy_segment(
                     if mobile.wanders
                     else str(candidate.room_vnum)
                 ),
+                source_policy_id=policy.policy_id,
                 source_loot_object_vnums=source_loot_object_vnums,
                 selective_loot_keywords=selective_loot_keywords,
+                require_sanctuary=(
+                    template.require_sanctuary or red_dragon_fire_endpoint
+                ),
+                allow_protected_special_hp_fuzz_probe=(
+                    template.allow_protected_special_hp_fuzz_probe
+                    or red_dragon_fire_endpoint
+                ),
+                allow_source_red_dragon_fire_endpoint=(
+                    template.allow_source_red_dragon_fire_endpoint
+                    or red_dragon_fire_endpoint
+                ),
                 **route_gate_kwargs,
             )
 
@@ -41296,7 +41841,9 @@ async def _run_policy_segment(
             ),
             require_fastwalk_kill=False,
             allow_safe_fastwalk_abort=True,
-            use_sanctuary_potions=dwarven_key_route,
+            use_sanctuary_potions=(
+                dwarven_key_route or sanctuary_maintenance
+            ),
             allow_bounded_city_shop_transit=bounded_city_shop_transit_available(
                 consumable_world,
                 current_state or {},
@@ -50698,6 +51245,11 @@ def _source_ranked_hunt_stops(
                 and candidate.estimated_level_range[0] > character_level - 5
                 and candidate.estimated_level_range[1] > character_level + 1
             )
+            or _source_ranked_passive_singleton_lucky_consider_allowed(
+                candidate,
+                character_level=character_level,
+                source_world=world,
+            )
             or _source_ranked_lucky_consider_probe_allowed(
                 candidate,
                 state,
@@ -51592,6 +52144,7 @@ def _clear_source_armed_duplicate_pair_selection_state(
     ):
         state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
         state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+        state.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
 
 
 def _reopen_source_armed_duplicate_pair(
@@ -60914,7 +61467,43 @@ def _source_ranked_retry_exclusion(state: Mapping[str, Any]) -> str:
     current_boot = state.get("world_boot_id")
     if marker_boot and current_boot and marker_boot != current_boot:
         return ""
+    if policy_id and _source_ranked_retry_reopened_after_area_reset(
+        state,
+        policy_id,
+    ):
+        # An area reset is a new source-population observation.  Reopen only
+        # the exact legacy protection fallback that was never dispatched;
+        # real attempts and XP-loss records remain closed by their own gates.
+        return ""
     return policy_id
+
+
+def _source_ranked_retry_reopened_after_area_reset(
+    state: Mapping[str, Any],
+    policy_id: str,
+) -> bool:
+    """Allow one reset-aged, unattempted fallback past a stale retry marker."""
+    if not policy_id:
+        return False
+    boundary = _research_policy_reset_boundary(state, policy_id)
+    if boundary is None:
+        return False
+    raw_segment_id = state.get(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY)
+    if raw_segment_id is not None:
+        try:
+            return int(raw_segment_id) <= boundary
+        except (TypeError, ValueError):
+            return False
+    fallback = state.get(_PROTECTION_RECOVERY_ORDINARY_FALLBACK_KEY)
+    if not isinstance(fallback, Mapping):
+        return False
+    if fallback.get("policy_id") != policy_id or fallback.get("attempted") is True:
+        return False
+    attempted_policy_ids = fallback.get("attempted_policy_ids")
+    return not (
+        isinstance(attempted_policy_ids, (list, tuple, set, frozenset))
+        and policy_id in {str(value) for value in attempted_policy_ids}
+    )
 
 
 def _source_ranked_retry_marker_should_clear(
@@ -64258,6 +64847,43 @@ def _source_ranked_lucky_consider_probe_allowed(
         target_has_sanctuary=bool(loadout is not None and loadout.target_sanctuary),
         allow_unarmed_singleton_withdrawal=not candidate.equipped_weapons,
     )
+
+
+def _source_ranked_passive_singleton_lucky_consider_allowed(
+    candidate: HuntCandidate,
+    *,
+    character_level: int,
+    source_world: WorldSource | None,
+) -> bool:
+    """Open the source-supported +2..+5 band for a passive singleton.
+
+    This is an admission to fresh live ``consider`` only.  It is intentionally
+    limited to one source reset, one room, no target special, and no hard route
+    hazard; the live identity, level, isolation, own-health, and combat gates
+    still decide whether the fight starts and whether it continues.
+    """
+    if source_world is None:
+        return False
+    mobile = source_world.mobiles.get(candidate.mobile_vnum)
+    if (
+        mobile is None
+        or candidate.specials
+        or source_world.mobile_specials.get(candidate.mobile_vnum)
+        or mobile.aggressive
+        or mobile.fear_aura
+        or mobile.programs
+        or mobile.attack_programs
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or candidate.source_spawn_limit != 1
+        or candidate.room_spawn_count != 1
+        or len(candidate.equipped_weapons) > 1
+        or candidate.route_preflight_hard_hazard
+        or candidate.route_hard_hazard_targets
+        or not character_level + 1 < candidate.level <= character_level + 5
+    ):
+        return False
+    return True
 
 
 def _source_ranked_aggressive_singleton_consider_allowed(
@@ -68520,6 +69146,33 @@ def _source_ranked_hunt_route_invisibility_mobile_vnums(
     return (candidate.mobile_vnum,)
 
 
+def _source_ranked_route_invisibility_unavailable(
+    candidate: HuntCandidate,
+    state: Mapping[str, Any],
+    *,
+    character_level: int,
+    source_world: WorldSource | None,
+) -> bool:
+    """Reject a route that needs true invisibility the character cannot cast."""
+    if _state_has_active_affect(state.get("affects"), "invis"):
+        return False
+    if not _source_ranked_hunt_route_invisibility_mobile_vnums(
+        candidate,
+        state,
+        character_level=character_level,
+        source_world=source_world,
+    ):
+        return False
+    return (
+        learned_invisibility_mana_cost(
+            str(state.get("character_class") or ""),
+            _live_subclass(state),
+            _skill_levels_from_state(state),
+        )
+        is None
+    )
+
+
 def _source_ranked_route_program_mobile_vnums(
     candidate: HuntCandidate,
     source_world: WorldSource | None,
@@ -68945,6 +69598,53 @@ def _source_ranked_adept_support_target_allowed(
             and item.item_type != ITEM_WEAPON
             for reset in resets
             for _slot, object_vnum in reset.equipment
+        )
+        and candidate.mobile_vnum not in source_world.shopkeepers
+    )
+
+
+def _source_ranked_apollo_armed_sanctuary_target_allowed(
+    candidate: HuntCandidate,
+    source_world: WorldSource | None,
+) -> bool:
+    """Prove Apollo's one-weapon, beneficial-adept Sanctuary endpoint."""
+    if source_world is None:
+        return False
+    mobile = source_world.mobiles.get(
+        _OLYMPUS_APOLLO_SANCTUARY_CARRIER_MOBILE_VNUM
+    )
+    resets = [
+        reset
+        for reset in source_world.mob_resets
+        if reset.mobile_vnum == _OLYMPUS_APOLLO_SANCTUARY_CARRIER_MOBILE_VNUM
+    ]
+    return bool(
+        candidate.mobile_vnum == _OLYMPUS_APOLLO_SANCTUARY_CARRIER_MOBILE_VNUM
+        and candidate.room_vnum == _OLYMPUS_APOLLO_SANCTUARY_CARRIER_ROOM_VNUM
+        and candidate.area_file.casefold() == "olympus.are"
+        and set(candidate.specials) == {"spec_cast_adept"}
+        and candidate.equipped_weapons == ("a silver bow",)
+        and candidate.sentinel
+        and not candidate.route_hard_hazard_targets
+        and candidate.source_spawn_limit == 1
+        and candidate.room_spawn_count == 1
+        and mobile is not None
+        and mobile.sentinel
+        and not mobile.aggressive
+        and not mobile.wanders
+        and not mobile.programs
+        and len(resets) == 1
+        and resets[0].room_vnum == candidate.room_vnum
+        and resets[0].maximum_count == 1
+        # The nectar is loaded by the reset's ordinary object command, while
+        # the bow is equipment.  Inspect both reset channels so the source
+        # contract matches DD4's actual load order.
+        and _OLYMPUS_HEPHAESTUS_SANCTUARY_OBJECT_VNUM in _reset_object_vnums(
+            resets[0]
+        )
+        and any(
+            object_vnum == _OLYMPUS_APOLLO_BOW_OBJECT_VNUM
+            for _slot, object_vnum in resets[0].equipment
         )
         and candidate.mobile_vnum not in source_world.shopkeepers
     )
@@ -72203,10 +72903,16 @@ def _source_ranked_level_admission_available(
     our callers and the combat controller.
     """
     minimum, maximum = candidate.estimated_level_range
+    # The source prototype level is the scouting boundary.  Area-file reset
+    # fuzz is deliberately retained as evidence, but using its upper bound
+    # here hid nominally eligible +5 targets (for example a level-45 mobile
+    # with a source-fuzz range of 43-47 from a level-40 pilot).  The live
+    # ``consider`` response remains the authority before combat dispatch.
+    nominal_level = candidate.level
     return bool(
         0 < minimum <= maximum
         and maximum > character_level - 5
-        and minimum <= character_level + 5
+        and nominal_level <= character_level + 5
     )
 
 
@@ -74603,6 +75309,38 @@ def _source_ranked_second_sanctuary_refill_allowed(
     )
 
 
+def _source_ranked_forward_blindness_reserve_allowed(
+    state: Mapping[str, Any],
+    *,
+    carrier_selection: tuple[HuntCandidate, tuple[int, ...]] | None,
+) -> bool:
+    """Allow one forward purple refill for a newly admitted special route.
+
+    The older recovery gate is intentionally tied to a prior protection loss.
+    A healthy Sanctuary reserve can still need a second, independent recovery
+    resource before the selector opens a blindness-capable target.  The exact
+    carrier and target are both source-ranked by the caller; this helper only
+    makes that maintenance handoff available once per current boot/level.
+    """
+    if carrier_selection is None:
+        return False
+    if not (
+        _state_has_sanctuary_reserve(state)
+        and not _state_has_blindness_recovery_reserve(state)
+        and _is_safe_healer_checkpoint(state)
+    ):
+        return False
+    marker = state.get(_SANCTUARY_SECOND_RESERVE_REFILL_KEY)
+    if (
+        isinstance(marker, Mapping)
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("level") == _level(state)
+        and marker.get("status") in {"pending", "attempted", "closed", "succeeded"}
+    ):
+        return False
+    return carrier_selection[0].status != "reject"
+
+
 def _sanctuary_resource_attempt_count(
     state: Mapping[str, Any],
     policy_id: str,
@@ -74667,7 +75405,10 @@ def _sanctuary_area_reset_recheck_dispatch_pending(
     for raw_policy_id in policy_ids:
         policy_id = str(raw_policy_id)
         attempt = attempts.get(policy_id) if isinstance(attempts, Mapping) else None
-        if not isinstance(attempt, Mapping) or attempt.get("area_reset_cycle") != 1:
+        if not isinstance(attempt, Mapping) or attempt.get("area_reset_cycle") not in {
+            1,
+            2,
+        }:
             return False
         if (
             _sanctuary_resource_attempt_count(
@@ -74704,6 +75445,49 @@ def _sanctuary_area_reset_recheck_spent_for_policy(
         and isinstance(policy_ids, (list, tuple, set, frozenset))
         and policy_id in {str(candidate_id) for candidate_id in policy_ids}
     )
+
+
+def _sanctuary_area_reset_recheck_rearm_after_success_available(
+    state: Mapping[str, Any],
+) -> bool:
+    """Return whether a successful refill can receive one later reset retry."""
+    marker = state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    policy_ids = marker.get("policy_ids") if isinstance(marker, Mapping) else ()
+    if not (
+        isinstance(marker, Mapping)
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("level") == _level(state)
+        and marker.get("status") == "attempted"
+        and marker.get("dispatch_started") is True
+        and marker.get("rearm_after_successful_acquisition") is not True
+        and marker.get("after_segment_id") is not None
+        and isinstance(policy_ids, (list, tuple, set, frozenset))
+        and policy_ids
+        and not _state_has_sanctuary_reserve(state)
+        and _protection_recovery_required(state)
+    ):
+        return False
+    attempts = state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY) or {}
+    results = _campaign_research_results(dict(state))
+    for raw_policy_id in policy_ids:
+        policy_id = str(raw_policy_id)
+        attempt = attempts.get(policy_id) if isinstance(attempts, Mapping) else None
+        if not isinstance(attempt, Mapping):
+            continue
+        try:
+            attempt_count = max(0, int(attempt.get("count") or 0))
+        except (TypeError, ValueError):
+            attempt_count = 0
+        result = results.get(policy_id)
+        if (
+            attempt_count > 0
+            and isinstance(result, Mapping)
+            and result.get("boot_id") == state.get("world_boot_id")
+            and result.get("level") in {None, _level(state)}
+            and result.get("required_object_acquired") is True
+        ):
+            return True
+    return False
 
 
 def _sanctuary_recovery_attempts_exhausted(
@@ -74823,6 +75607,7 @@ def _sanctuary_area_reset_recheck_policy_ids(
     state: Mapping[str, Any],
     *,
     allow_unprotected_exhaustion: bool = False,
+    allow_successful_reacquisition: bool = False,
 ) -> tuple[str, ...]:
     """Return exhausted sanctuary policies eligible for one area-reset retry."""
     if _state_has_sanctuary_reserve(state) or (
@@ -74834,13 +75619,37 @@ def _sanctuary_area_reset_recheck_policy_ids(
     level = _level(state)
     results = _campaign_research_results(state)
     policy_ids: list[str] = []
-    for policy_id in sorted(_SANCTUARY_RESOURCE_POLICY_IDS):
+    resource_policy_ids = set(_SANCTUARY_RESOURCE_POLICY_IDS)
+    attempts = state.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY)
+    if isinstance(attempts, Mapping):
+        resource_policy_ids.update(
+            str(policy_id)
+            for policy_id in attempts
+            if _is_source_ranked_sanctuary_maintenance_policy_id(policy_id)
+        )
+    for policy_id in sorted(resource_policy_ids):
         level_range = _SANCTUARY_RESOURCE_POLICY_LEVEL_RANGES.get(policy_id)
         if level_range is not None and not (
             level_range[0] <= level <= level_range[1]
         ):
             continue
         result = results.get(policy_id)
+        if (
+            allow_successful_reacquisition
+            and isinstance(result, Mapping)
+            and result.get("boot_id") == boot_id
+            and result.get("level") in {None, level}
+            and result.get("required_object_acquired") is True
+            and _sanctuary_resource_attempt_count(
+                state,
+                policy_id,
+                boot_id=boot_id,
+                level=level,
+            )
+            > 0
+        ):
+            policy_ids.append(policy_id)
+            continue
         if not (
             isinstance(result, Mapping)
             and result.get("boot_id") == boot_id
@@ -74913,7 +75722,7 @@ def _repair_sanctuary_area_reset_recheck_boundary(
     policy_ids = tuple(
         str(policy_id)
         for policy_id in marker.get("policy_ids", ())
-        if str(policy_id) in _SANCTUARY_RESOURCE_POLICY_IDS
+        if _is_sanctuary_resource_policy_id(str(policy_id))
     )
     attempts = dict(repaired.get(_SANCTUARY_RESOURCE_ATTEMPTS_KEY) or {})
     for policy_id in policy_ids:
@@ -74983,10 +75792,97 @@ def _sanctuary_reset_recheck_checkpoint_safe(state: Mapping[str, Any]) -> bool:
     )
 
 
+def _repair_source_ranked_sanctuary_absence_attempt_ids(
+    state: Mapping[str, Any],
+    campaign_segments: Collection[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Backfill segment identities for older dynamic carrier absences."""
+    boot_id = state.get("world_boot_id")
+    if not boot_id:
+        return dict(state)
+    character_level = _level(dict(state))
+    latest: dict[str, tuple[int, Mapping[str, Any]]] = {}
+    for raw_segment in campaign_segments:
+        try:
+            segment = dict(raw_segment)
+            segment_id = int(segment.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if segment_id <= 0:
+            continue
+        policy_id = str(segment.get("phase") or "")
+        if not _is_sanctuary_resource_policy_id(policy_id):
+            continue
+        raw_end_state = segment.get("end_state_json")
+        if not raw_end_state:
+            continue
+        try:
+            end_state = (
+                json.loads(raw_end_state)
+                if isinstance(raw_end_state, str)
+                else raw_end_state
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(end_state, Mapping):
+            continue
+        if (
+            end_state.get("world_boot_id") != boot_id
+            or _level(dict(end_state)) != character_level
+        ):
+            continue
+        result = _campaign_research_results(end_state).get(policy_id)
+        if not (
+            isinstance(result, Mapping)
+            and result.get("absent") is True
+            and result.get("boot_id") == boot_id
+        ):
+            continue
+        previous = latest.get(policy_id)
+        if previous is None or segment_id > previous[0]:
+            latest[policy_id] = (segment_id, end_state)
+    current_results = _campaign_research_results(state)
+    repaired_results = dict(current_results)
+    changed = False
+    for policy_id, result in current_results.items():
+        if not _is_sanctuary_resource_policy_id(policy_id):
+            continue
+        if not (
+            isinstance(result, Mapping)
+            and result.get("absent") is True
+            and result.get("boot_id") == boot_id
+        ):
+            continue
+        history = latest.get(policy_id)
+        if history is None:
+            continue
+        segment_id, end_state = history
+        try:
+            recorded_segment_id = int(result.get("last_attempt_segment_id"))
+        except (TypeError, ValueError):
+            recorded_segment_id = 0
+        if recorded_segment_id >= segment_id:
+            continue
+        repaired_result = dict(result)
+        repaired_result["last_attempt_segment_id"] = segment_id
+        repaired_result.setdefault(
+            _SOURCE_REVISION_KEY,
+            end_state.get(_SOURCE_REVISION_KEY) or state.get(_SOURCE_REVISION_KEY),
+        )
+        repaired_results[policy_id] = repaired_result
+        changed = True
+    if not changed:
+        return dict(state)
+    repaired = dict(state)
+    repaired["campaign_research_results"] = repaired_results
+    return repaired
+
+
 def _arm_sanctuary_resource_area_reset_recheck(
     state: Mapping[str, Any],
     *,
     allow_unprotected_exhaustion: bool = False,
+    allow_successful_reacquisition: bool = False,
 ) -> dict[str, Any]:
     """Arm one reset retry for an exhausted, source-backed sanctuary route."""
     if not _sanctuary_reset_recheck_checkpoint_safe(state):
@@ -74994,17 +75890,53 @@ def _arm_sanctuary_resource_area_reset_recheck(
     policy_ids = _sanctuary_area_reset_recheck_policy_ids(
         state,
         allow_unprotected_exhaustion=allow_unprotected_exhaustion,
+        allow_successful_reacquisition=allow_successful_reacquisition,
     )
     if not policy_ids or _sanctuary_area_reset_recheck_pending(state):
         return dict(state)
     existing = state.get(_SANCTUARY_AREA_RESET_RECHECK_KEY)
+    superseded_policy_ids: tuple[str, ...] = ()
     if (
         isinstance(existing, Mapping)
         and existing.get("boot_id") == state.get("world_boot_id")
         and existing.get("level") == _level(state)
         and existing.get("status") == "attempted"
     ):
-        return dict(state)
+        # ``attempted`` is written when a route is reopened, before the live
+        # worker starts.  A legacy marker can therefore survive without a
+        # matching attempt record when its route is no longer selectable (for
+        # example, a stale Ota'ar recall handoff).  Do not let that inert
+        # marker suppress a fresh source-backed Sanctuary retry.  A marker
+        # with either a dispatch receipt or a still-dispatchable attempt is
+        # genuinely one-shot and remains authoritative.
+        allow_rearm = bool(
+            allow_successful_reacquisition
+            and _sanctuary_area_reset_recheck_rearm_after_success_available(state)
+        )
+        if _sanctuary_area_reset_recheck_dispatch_pending(state):
+            return dict(state)
+        prior_policy_ids = existing.get("policy_ids")
+        if not isinstance(
+            prior_policy_ids,
+            (list, tuple, set, frozenset),
+        ):
+            prior_policy_ids = ()
+        prior_policy_ids = tuple(str(policy_id) for policy_id in prior_policy_ids)
+        if existing.get("dispatch_started") is True and not allow_rearm:
+            # A prior reset marker may have been consumed before this newer
+            # dynamic carrier identity was discovered.  Give only the new
+            # identities their first reset retry; never replay the spent set.
+            new_policy_ids = tuple(
+                policy_id
+                for policy_id in policy_ids
+                if policy_id not in set(prior_policy_ids)
+            )
+            if not new_policy_ids:
+                return dict(state)
+            policy_ids = new_policy_ids
+            superseded_policy_ids = prior_policy_ids
+    else:
+        prior_policy_ids = ()
     prior_counts = {
         policy_id: _sanctuary_resource_attempt_count(
             state,
@@ -75022,6 +75954,37 @@ def _arm_sanctuary_resource_area_reset_recheck(
         "policy_ids": list(policy_ids),
         "prior_attempt_counts": prior_counts,
         "reason": _SANCTUARY_AREA_RESET_RECHECK_REASON,
+        **(
+            {"rearm_after_successful_acquisition": True}
+            if allow_successful_reacquisition
+            else {}
+        ),
+        **(
+            {
+                "replaced_unstarted_policy_ids": [
+                    str(policy_id) for policy_id in prior_policy_ids
+                ],
+                "replaced_unstarted_after_segment_id": existing.get(
+                    "after_segment_id"
+                ),
+            }
+            if (
+                prior_policy_ids
+                and isinstance(existing, Mapping)
+                and existing.get("dispatch_started") is not True
+            )
+            else {}
+        ),
+        **(
+            {
+                "superseded_dispatch_policy_ids": list(superseded_policy_ids),
+                "superseded_dispatch_after_segment_id": existing.get(
+                    "after_segment_id"
+                ),
+            }
+            if superseded_policy_ids and isinstance(existing, Mapping)
+            else {}
+        ),
     }
     return armed
 
@@ -75038,24 +76001,34 @@ def _reopen_sanctuary_resource_after_reset_wait(
     policy_ids = tuple(
         str(policy_id)
         for policy_id in marker.get("policy_ids", ())
-        if str(policy_id) in _SANCTUARY_RESOURCE_POLICY_IDS
+        if _is_sanctuary_resource_policy_id(str(policy_id))
     )
     if not policy_ids:
         return dict(state)
     reopened = dict(state)
     results = dict(_campaign_research_results(state))
+    rearm_after_successful_acquisition = (
+        marker.get("rearm_after_successful_acquisition") is True
+    )
     for policy_id in policy_ids:
         result = results.get(policy_id)
         if (
             isinstance(result, Mapping)
             and result.get("boot_id") == state.get("world_boot_id")
-            and result.get("fatal_failure") is True
+            and (
+                result.get("fatal_failure") is True
+                or (
+                    rearm_after_successful_acquisition
+                    and result.get("required_object_acquired") is True
+                )
+            )
         ):
             results.pop(policy_id, None)
-    if results:
-        reopened["campaign_research_results"] = results
-    else:
-        reopened.pop("campaign_research_results", None)
+    # Keep the mapping present even when this reset consumed its last stale
+    # receipt.  Callers may append a fresh, independent absence result during
+    # the same preparation pass; an absent key would turn that ordinary state
+    # update into a special case.
+    reopened["campaign_research_results"] = results
     for cooldown_key in (
         _RESEARCH_ABSENCE_COOLDOWN_KEY,
         _RESEARCH_CROWD_COOLDOWN_KEY,
@@ -75079,7 +76052,9 @@ def _reopen_sanctuary_resource_after_reset_wait(
             prior_count = 0
         updated_attempt["prior_count"] = prior_count
         updated_attempt["count"] = 0
-        updated_attempt["area_reset_cycle"] = 1
+        updated_attempt["area_reset_cycle"] = (
+            2 if rearm_after_successful_acquisition else 1
+        )
         if after_segment_id is not None:
             updated_attempt["area_reset_after_segment_id"] = int(after_segment_id)
         attempts[policy_id] = updated_attempt
@@ -75105,6 +76080,7 @@ def _reopen_sanctuary_resource_after_reset_wait(
         reopened["campaign_last_policy"] = policy_ids[0]
     reopened.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
     reopened.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+    reopened.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
     for key in (
         "campaign_fastwalk_abort_reason",
         "campaign_fastwalk_target_absent",
@@ -76423,6 +77399,92 @@ def _source_hephaestus_sanctuary_candidate_shape_allowed(
             and not reset.equipment
             for reset in companion_resets
         )
+    )
+
+
+def _source_red_dragon_fire_sanctuary_candidate_shape_allowed(
+    candidate: HuntCandidate,
+    source_world: WorldSource | None,
+) -> bool:
+    """Match the exact Sewer red-dragon SanctuaryOrb maintenance reset.
+
+    Fire breath is deliberately excluded from ordinary XP selection. This
+    contract exists only for a separately selected Sanctuary carrier and
+    keeps the armed loadout and destructive carried-object risk explicit.
+    """
+    if source_world is None:
+        return False
+    mobile = source_world.mobiles.get(
+        _RED_DRAGON_SANCTUARY_CARRIER_MOBILE_VNUM
+    )
+    resets = [
+        reset
+        for reset in source_world.mob_resets
+        if reset.mobile_vnum == _RED_DRAGON_SANCTUARY_CARRIER_MOBILE_VNUM
+    ]
+    orb = source_world.objects.get(_RED_DRAGON_SANCTUARY_OBJECT_VNUM)
+    weapon = source_world.objects.get(_RED_DRAGON_SANCTUARY_WEAPON_VNUM)
+    expected_equipment = {
+        (5, 7304),
+        (7, 7305),
+        (9, 7306),
+        (6, 7307),
+        (11, 7308),
+        (10, 7309),
+        (8, 7310),
+        (WEAR_WIELD, _RED_DRAGON_SANCTUARY_WEAPON_VNUM),
+        (WEAR_HOLD, _RED_DRAGON_SANCTUARY_OBJECT_VNUM),
+    }
+    return bool(
+        candidate.mobile_vnum
+        == _RED_DRAGON_SANCTUARY_CARRIER_MOBILE_VNUM
+        and candidate.room_vnum == _RED_DRAGON_SANCTUARY_CARRIER_ROOM_VNUM
+        and candidate.area_file.casefold() == "sewer.are"
+        and candidate.level == 30
+        and candidate.estimated_level_range == _mobile_level_range(30)
+        and candidate.source_spawn_limit == 1
+        and candidate.room_spawn_count == 1
+        and len(candidate.equipped_weapons) == 1
+        and tuple(candidate.specials) == (_RED_DRAGON_SANCTUARY_SPECIAL,)
+        and not candidate.route_hard_hazard_targets
+        and mobile is not None
+        and mobile.level == 30
+        and mobile.sentinel
+        and not mobile.wanders
+        and mobile.aggressive
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.attack_programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and set(
+            source_world.mobile_specials.get(
+                _RED_DRAGON_SANCTUARY_CARRIER_MOBILE_VNUM,
+                (),
+            )
+        ) == {_RED_DRAGON_SANCTUARY_SPECIAL}
+        and len(resets) == 1
+        and resets[0].room_vnum == _RED_DRAGON_SANCTUARY_CARRIER_ROOM_VNUM
+        and resets[0].maximum_count == 1
+        and set(resets[0].equipment) == expected_equipment
+        and set(resets[0].object_vnums)
+        == {
+            7304,
+            7305,
+            7306,
+            7307,
+            7308,
+            7309,
+            7310,
+            _RED_DRAGON_SANCTUARY_WEAPON_VNUM,
+            _RED_DRAGON_SANCTUARY_OBJECT_VNUM,
+        }
+        and weapon is not None
+        and weapon.item_type == ITEM_WEAPON
+        and orb is not None
+        and orb.item_type == ITEM_STAFF
+        and resource_activation_for_object(orb, effect="sanctuary") is not None
     )
 
 
@@ -78229,6 +79291,7 @@ def _audited_source_special_candidate_allowed(
     source_world: WorldSource | None = None,
     protected_incoming_damage: bool = False,
     route_preflight_admitted: bool = False,
+    allow_red_dragon_fire_sanctuary: bool = False,
 ) -> bool:
     """Allow a source-audited, bounded special procedure as fallback."""
     specials = set(candidate.specials)
@@ -78242,7 +79305,22 @@ def _audited_source_special_candidate_allowed(
         if not route_rejections.issubset(_SOURCE_WANDERER_PREFLIGHT_REJECTIONS):
             return False
         rejections = target_rejections
-    if not specials or not specials <= _AUDITED_SOURCE_SPECIALS:
+    red_dragon_fire_sanctuary = bool(
+        allow_red_dragon_fire_sanctuary
+        and source_world is not None
+        and _source_red_dragon_fire_sanctuary_candidate_shape_allowed(
+            candidate,
+            source_world,
+        )
+        and _state_has_sanctuary_reserve(state)
+    )
+    if not specials or not (
+        specials <= _AUDITED_SOURCE_SPECIALS
+        or (
+            red_dragon_fire_sanctuary
+            and specials == {_RED_DRAGON_SANCTUARY_SPECIAL}
+        )
+    ):
         return False
     famous_gas_recovery = (
         source_world is not None
@@ -78430,6 +79508,18 @@ def _audited_source_special_candidate_allowed(
         # special.c delegates this variant to dragon(), and magic.c applies
         # only the direct hp/8+1..hp/4 lightning pulse plus save/resistance
         # mitigation. It does not damage carried objects or add an affect.
+        worst_special_damage = max(10, candidate.estimated_base_hp_range[1]) // 4
+    elif (
+        specials == {_RED_DRAGON_SANCTUARY_SPECIAL}
+        and red_dragon_fire_sanctuary
+        and rejections <= {
+            "target is aggressive",
+            f"target has special procedure {_RED_DRAGON_SANCTUARY_SPECIAL}",
+        }
+    ):
+        # This is a maintenance-only carrier. Fire breath can destroy carried
+        # objects, so Sanctuary protects the opener but does not remove the
+        # supply risk; the live executor records that risk explicitly.
         worst_special_damage = max(10, candidate.estimated_base_hp_range[1]) // 4
     elif specials == {"spec_cast_undead"} and rejections == {
         "target has special procedure spec_cast_undead"
@@ -78636,6 +79726,7 @@ def _audited_source_special_candidate_allowed(
             specials == {"spec_cast_druid"}
             and maximum_level >= 15
         )
+        or red_dragon_fire_sanctuary
     )
     if protected_incoming_damage and not _state_has_sanctuary_reserve(state):
         return False
@@ -79431,17 +80522,36 @@ def _source_ranked_timeout_revalidation_candidate(
             )
         except (TypeError, ValueError):
             previous_policy_xp = 0
-        productive_timeout_repeat = bool(
+        # ``boot_kills`` is counted per source mobile prototype, while this
+        # timeout receipt is bound to one reset room.  A prototype with a
+        # remaining source population slot can therefore have an untried
+        # reset even after three successful kills elsewhere.  Spend the
+        # existing one-shot timeout receipt on that exact reset; do not turn
+        # an old loss or a prior-level loss into permission to repeat it.
+        untried_reset_capacity_repeat = bool(
             candidate.boot_kills >= 3
-            and (
-                runtime_boundary_result
-                or (
-                    policy_id in recovered_route_policy_ids
-                    and runtime_boundary_consider_result
+            and candidate.source_spawn_limit > candidate.boot_kills
+            and _source_ranked_xp_loss_record(state, policy_id) is None
+            and _source_ranked_prior_level_loss_record(
+                state,
+                policy_id,
+                character_level=character_level,
+            ) is None
+        )
+        productive_timeout_repeat = bool(
+            untried_reset_capacity_repeat
+            or (
+                candidate.boot_kills >= 3
+                and (
+                    runtime_boundary_result
+                    or (
+                        policy_id in recovered_route_policy_ids
+                        and runtime_boundary_consider_result
+                    )
                 )
+                and previous_policy_xp
+                >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
             )
-            and previous_policy_xp
-            >= _SOURCE_RANKED_MIN_MEANINGFUL_KILL_XP
         )
         if not (_source_ranked_candidate_in_current_band(
             candidate,
@@ -85591,6 +86701,7 @@ def _select_source_consumable_candidate(
     excluded_target_stops: Collection[tuple[int, int]] = (),
     level_ceiling_offset: int = 1,
     allowed_target_specials: Collection[str] = (),
+    allow_red_dragon_fire_carrier: bool = False,
 ) -> tuple[HuntCandidate, tuple[int, ...]] | None:
     """Choose a bounded carrier by source effect rather than mobile identity."""
     character_level = _level(state)
@@ -85598,11 +86709,11 @@ def _select_source_consumable_candidate(
         return None
     if not isinstance(level_ceiling_offset, int) or level_ceiling_offset < 0:
         raise ValueError("source consumable level ceiling must be non-negative")
+    required_spell = spell_name.casefold()
     world = source_world or load_world_source(
         source_directory,
         include_all_areas=True,
     )
-    required_spell = spell_name.casefold()
     required_description = (
         normalize_item_name(short_description)
         if short_description
@@ -85659,12 +86770,6 @@ def _select_source_consumable_candidate(
                 character_alignment=_state_alignment(state),
             )
         )
-        and _source_resource_command_keyword(
-            world,
-            item,
-            required_spell=required_spell,
-        )
-        is not None
     }
     if not object_vnums:
         return None
@@ -85767,11 +86872,30 @@ def _select_source_consumable_candidate(
                 if object_vnum in object_vnums
             )
         )
+        matching_vnums = tuple(
+            object_vnum
+            for object_vnum in matching_vnums
+            if (
+                _source_resource_command_keyword(
+                    world,
+                    world.objects[object_vnum],
+                    required_spell=required_spell,
+                )
+                is not None
+                or _source_carrier_local_resource_keyword(
+                    world,
+                    world.objects[object_vnum],
+                    candidate_for_selection,
+                )
+                is not None
+            )
+        )
+        if not matching_vnums:
+            continue
         remaining_rejections = set(
             candidate_for_selection.autonomy_rejections
         ).difference(
             {
-                "target reset capacity exceeds one",
                 # Utility scavengers are resource endpoints rather than
                 # ordinary XP targets. Required-loot acquisition still has
                 # its own exact carrier, isolation, and live confirmation
@@ -85790,6 +86914,14 @@ def _select_source_consumable_candidate(
             for special in allowed_target_specials
             if str(special).strip()
         }
+        red_dragon_fire_endpoint = bool(
+            required_spell == "sanctuary"
+            and allow_red_dragon_fire_carrier
+            and _source_red_dragon_fire_sanctuary_candidate_shape_allowed(
+                candidate_for_selection,
+                world,
+            )
+        )
         if allowed_specials and {
             str(special).casefold().strip()
             for special in candidate_for_selection.specials
@@ -85799,6 +86931,55 @@ def _select_source_consumable_candidate(
             remaining_rejections.discard(
                 f"target has special procedure {special}"
             )
+        if (
+            required_spell == "sanctuary"
+            and level_ceiling_offset > 5
+            and candidate_for_selection.specials
+            and not allowed_specials
+            and _audited_source_special_candidate_allowed(
+                candidate_for_selection,
+                state=state,
+                character_max_hp=(
+                    int(max_hp)
+                    if isinstance(max_hp, (int, float)) and max_hp > 0
+                    else None
+                ),
+                source_world=world,
+            )
+        ):
+            # Sanctuary maintenance may use an out-of-band special carrier,
+            # but only when the special audit is the sole remaining target
+            # rejection. Route hazards and unreviewed specials stay closed.
+            special_rejections = {
+                f"target has special procedure {special}"
+                for special in candidate_for_selection.specials
+            }
+            if remaining_rejections.issubset(special_rejections):
+                remaining_rejections.difference_update(special_rejections)
+        if red_dragon_fire_endpoint:
+            # This exact aggressive/armed source reset is a Sanctuary
+            # maintenance carrier, not an XP target. Its route and identity
+            # checks remain separate; only the two audited target rejections
+            # are cleared here.
+            red_dragon_rejections = {
+                "target is aggressive",
+                f"target has special procedure {_RED_DRAGON_SANCTUARY_SPECIAL}",
+            }
+            if remaining_rejections.issubset(red_dragon_rejections):
+                remaining_rejections.difference_update(red_dragon_rejections)
+        if (
+            required_spell == "sanctuary"
+            and level_ceiling_offset > 5
+            and not candidate_for_selection.specials
+            and candidate_for_selection.source_spawn_limit <= 2
+            and candidate_for_selection.room_spawn_count == 1
+        ):
+            # A plain source reset with two possible copies is still a
+            # bounded maintenance carrier when it has one registered reset
+            # room. The required-loot executor locates one exact live
+            # instance and keeps its isolation/identity checks; ordinary XP
+            # selection keeps the capacity rejection.
+            remaining_rejections.discard("target reset capacity exceeds one")
         if caerlin_staff_endpoint:
             if not _audited_source_special_candidate_allowed(
                 candidate_for_selection,
@@ -85864,6 +87045,7 @@ def _select_exact_moria_sanctuary_candidate(
         source_directory=source_directory,
         source_world=source_world,
         require_unarmed=True,
+        level_ceiling_offset=_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET,
         required_reset=(
             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
             4064,
@@ -85894,6 +87076,17 @@ def _is_source_ranked_sanctuary_maintenance_policy_id(
     )
 
 
+def _is_sanctuary_resource_policy_id(policy_id: object) -> bool:
+    """Recognize fixed and dynamically named Sanctuary resource policies."""
+    return bool(
+        isinstance(policy_id, str)
+        and (
+            policy_id in _SANCTUARY_RESOURCE_POLICY_IDS
+            or _is_source_ranked_sanctuary_maintenance_policy_id(policy_id)
+        )
+    )
+
+
 def _select_source_ranked_sanctuary_maintenance_candidate(
     state: Mapping[str, Any],
     *,
@@ -85904,6 +87097,7 @@ def _select_source_ranked_sanctuary_maintenance_candidate(
     require_unarmed: bool = True,
     allowed_target_specials: Collection[str] = (),
     allow_armed_carrier: bool = False,
+    allow_red_dragon_fire_carrier: bool = False,
 ) -> tuple[HuntCandidate, tuple[int, ...]] | None:
     """Find the next exact source carrier, including out-of-band carriers.
 
@@ -85926,6 +87120,7 @@ def _select_source_ranked_sanctuary_maintenance_candidate(
             excluded_target_stops=excluded_stops,
             level_ceiling_offset=level_ceiling_offset,
             allowed_target_specials=allowed_target_specials,
+            allow_red_dragon_fire_carrier=allow_red_dragon_fire_carrier,
         )
         if selection is None:
             return None
@@ -85947,18 +87142,50 @@ def _select_source_ranked_sanctuary_maintenance_candidate(
             # The out-of-band armed exception is deliberately one weapon only;
             # a dual-wield or unarmed special target is a different contract.
             continue
-        if candidate.specials and not _audited_source_special_candidate_allowed(
-            candidate,
-            state=state,
-            character_max_hp=(
-                int(state.get("max_hp"))
-                if isinstance(state.get("max_hp"), (int, float))
-                and state.get("max_hp") > 0
-                else None
-            ),
-            source_world=source_world,
-        ):
-            continue
+        if candidate.specials:
+            armed_adept_allowed = (
+                allow_armed_carrier
+                and _source_ranked_apollo_armed_sanctuary_target_allowed(
+                    candidate,
+                    source_world,
+                )
+            )
+            red_dragon_fire_allowed = bool(
+                allow_red_dragon_fire_carrier
+                and _source_red_dragon_fire_sanctuary_candidate_shape_allowed(
+                    candidate,
+                    source_world,
+                )
+            )
+            if (
+                not armed_adept_allowed
+                and not red_dragon_fire_allowed
+                and not _audited_source_special_candidate_allowed(
+                    candidate,
+                    state=state,
+                    character_max_hp=(
+                        int(state.get("max_hp"))
+                        if isinstance(state.get("max_hp"), (int, float))
+                        and state.get("max_hp") > 0
+                        else None
+                    ),
+                    source_world=source_world,
+                )
+            ):
+                continue
+            if red_dragon_fire_allowed and not _audited_source_special_candidate_allowed(
+                candidate,
+                state=state,
+                character_max_hp=(
+                    int(state.get("max_hp"))
+                    if isinstance(state.get("max_hp"), (int, float))
+                    and state.get("max_hp") > 0
+                    else None
+                ),
+                source_world=source_world,
+                allow_red_dragon_fire_sanctuary=True,
+            ):
+                continue
         if not _source_sanctuary_carrier_output_allowed(
             candidate,
             state,
@@ -85970,6 +87197,169 @@ def _select_source_ranked_sanctuary_maintenance_candidate(
             continue
         return candidate, object_vnums
     return None
+
+
+def _source_ranked_sanctuary_area_reset_revalidation_pending(
+    state: Mapping[str, Any],
+    candidate: HuntCandidate | None,
+    *,
+    policy_id: str,
+) -> bool:
+    """Allow one exact dynamic carrier check after a mobile-area reset."""
+    if (
+        candidate is None
+        or not _is_sanctuary_resource_policy_id(policy_id)
+    ):
+        return False
+    current_boot_id = state.get("world_boot_id")
+    if not current_boot_id:
+        return False
+    result = _campaign_research_results(state).get(policy_id)
+    if not (
+        isinstance(result, Mapping)
+        and result.get("absent") is True
+        and result.get("boot_id") == current_boot_id
+        and result.get("level") in {None, _level(dict(state))}
+    ):
+        return False
+    result_source_revision = result.get(_SOURCE_REVISION_KEY)
+    current_source_revision = state.get(_SOURCE_REVISION_KEY)
+    if (
+        result_source_revision
+        and current_source_revision
+        and result_source_revision != current_source_revision
+    ):
+        return False
+    reset_boundary = _research_policy_reset_boundary(state, policy_id)
+    if reset_boundary is None:
+        return False
+    try:
+        last_attempt_segment_id = int(result.get("last_attempt_segment_id"))
+    except (TypeError, ValueError):
+        # Older fixed-carrier receipts may not have a segment identity. A
+        # newer bounded reset is still sufficient to authorize one exact
+        # carrier recheck; the per-carrier receipt below prevents repeats.
+        last_attempt_segment_id = None
+    if (
+        last_attempt_segment_id is not None
+        and last_attempt_segment_id > reset_boundary
+    ):
+        return False
+    raw_receipts = state.get(
+        _SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY
+    )
+    receipt = (
+        raw_receipts.get(policy_id)
+        if isinstance(raw_receipts, Mapping)
+        else None
+    )
+    if not isinstance(receipt, Mapping):
+        return True
+    same_reset_receipt = bool(
+        receipt.get("boot_id") == current_boot_id
+        and receipt.get("level") == _level(dict(state))
+        and receipt.get("source_revision")
+        in {None, current_source_revision}
+        and receipt.get("mobile_vnum") == candidate.mobile_vnum
+        and receipt.get("room_vnum") == candidate.room_vnum
+        and receipt.get("reset_after_segment_id") == reset_boundary
+    )
+    if same_reset_receipt:
+        return False
+    if (
+        receipt.get("boot_id") == current_boot_id
+        and receipt.get("level") == _level(dict(state))
+        and receipt.get("reset_after_segment_id") is not None
+    ):
+        try:
+            return int(receipt["reset_after_segment_id"]) < reset_boundary
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _sanctuary_policy_area_reset_revalidation_pending(
+    state: Mapping[str, Any],
+    *,
+    policy_id: str,
+) -> bool:
+    """Return whether a fixed Sanctuary policy has a fresh reset boundary."""
+    if not _is_sanctuary_resource_policy_id(policy_id):
+        return False
+    current_boot_id = state.get("world_boot_id")
+    if not current_boot_id:
+        return False
+    result = _campaign_research_results(state).get(policy_id)
+    if not (
+        isinstance(result, Mapping)
+        and result.get("absent") is True
+        and result.get("boot_id") == current_boot_id
+    ):
+        return False
+    boundary = _research_policy_reset_boundary(state, policy_id)
+    if boundary is None:
+        return False
+    try:
+        last_attempt_segment_id = int(result.get("last_attempt_segment_id"))
+    except (TypeError, ValueError):
+        # Preserve compatibility with legacy same-boot fixed-carrier results
+        # whose absence evidence predates the segment-id field.
+        last_attempt_segment_id = None
+    if (
+        last_attempt_segment_id is not None
+        and last_attempt_segment_id > boundary
+    ):
+        return False
+    receipt = (
+        (state.get(_SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY) or {}).get(
+            policy_id
+        )
+        if isinstance(
+            state.get(_SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY),
+            Mapping,
+        )
+        else None
+    )
+    return not (
+        isinstance(receipt, Mapping)
+        and receipt.get("boot_id") == current_boot_id
+        and receipt.get("reset_after_segment_id") == boundary
+        and receipt.get("status") == "attempted"
+    )
+
+
+def _consume_source_ranked_sanctuary_area_reset_revalidation(
+    state: dict[str, Any],
+    candidate: HuntCandidate | None,
+    *,
+    policy_id: str,
+) -> bool:
+    """Consume the exact post-reset carrier check before live dispatch."""
+    if candidate is None or not _source_ranked_sanctuary_area_reset_revalidation_pending(
+        state,
+        candidate,
+        policy_id=policy_id,
+    ):
+        return False
+    reset_boundary = _research_policy_reset_boundary(state, policy_id)
+    if reset_boundary is None:
+        return False
+    receipts = dict(
+        state.get(_SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY) or {}
+    )
+    receipts[policy_id] = {
+        "boot_id": state.get("world_boot_id"),
+        "level": _level(state),
+        "source_revision": state.get(_SOURCE_REVISION_KEY),
+        "mobile_vnum": candidate.mobile_vnum,
+        "room_vnum": candidate.room_vnum,
+        "reset_after_segment_id": reset_boundary,
+        "status": "attempted",
+        "policy_revision": _SANCTUARY_CARRIER_AREA_RESET_REVALIDATION_REVISION,
+        "attempted_at": datetime.now(timezone.utc).isoformat(),
+    }
+    state[_SANCTUARY_CARRIER_AREA_RESET_REVALIDATIONS_KEY] = receipts
+    return True
 
 
 def _source_ranked_sanctuary_candidate_research_open(
@@ -86009,17 +87399,25 @@ def _source_ranked_sanctuary_candidate_research_open(
     policy_id = policy_id or candidate_policy_id
     research_results = _campaign_research_results(state)
     result = research_results.get(policy_id)
-    if (
-        result is None
-        and candidate_policy_id is not None
-        and policy_id != candidate_policy_id
-    ):
-        # Required-loot segments are recorded under their maintenance policy,
-        # while older candidate-specific evidence uses the dynamic hunt key.
-        # Honor either form so a same-boot absence cannot reopen the exact
-        # carrier merely because its segment was routed through the alternate
-        # Sanctuary policy.
-        result = research_results.get(candidate_policy_id)
+    if result is None and candidate_policy_id is not None:
+        # Required-loot segments may be recorded under the maintenance suffix,
+        # while fixed-carrier selectors use their own policy id and older
+        # evidence uses the plain dynamic hunt key. Honor all three identities
+        # so a same-boot absence cannot reopen the exact carrier merely because
+        # its segment was routed through another Sanctuary policy.
+        candidate_policy_ids = (
+            candidate_policy_id,
+            _source_ranked_sanctuary_maintenance_policy_id(
+                candidate,
+                character_level=_level(state),
+            ),
+        )
+        for candidate_result_policy_id in candidate_policy_ids:
+            if candidate_result_policy_id == policy_id:
+                continue
+            result = research_results.get(candidate_result_policy_id)
+            if result is not None:
+                break
     if not isinstance(result, Mapping):
         return True
     result_boot_id = result.get("boot_id")
@@ -86086,9 +87484,29 @@ def _source_ranked_sanctuary_candidate_research_open(
     if result.get("completed_kill") is True:
         return False
     if (
+        result.get("absent") is True
+        and policy_id is not None
+        and _source_ranked_sanctuary_area_reset_revalidation_pending(
+            state,
+            candidate,
+            policy_id=policy_id,
+        )
+    ):
+        return True
+    retryable_observed_maintenance_miss = bool(
+        allow_consider_rejection
+        and result.get("retryable_failure") is True
+        and result.get("observed") is True
+        and result.get("viable") is False
+        and not result.get("route_hazard")
+    )
+    if (
         allow_consider_rejection
         and result.get("viable") is False
-        and result.get("consider_viable") is False
+        and (
+            result.get("consider_viable") is False
+            or retryable_observed_maintenance_miss
+        )
         and result.get("observed") is True
         and not any(
             result.get(key) is True
@@ -86182,11 +87600,33 @@ def _select_source_ranked_olympus_adept_sanctuary_candidate(
             _OLYMPUS_ADEPT_SANCTUARY_CARRIER_MOBILE_VNUM,
             _OLYMPUS_ADEPT_SANCTUARY_CARRIER_ROOM_VNUM,
         ),
+        # Athena's source procedure is a beneficial adept routine, not a
+        # combat special. Pass it through the required-loot selector so the
+        # dedicated support-target audit below can decide the route.
+        allowed_target_specials=("spec_cast_adept",),
         # Athena is source level 43 while this carrier route opens at the
         # level-38 frontier. The broader scout band is limited to this exact,
         # passive, singleton source identity and is repeated by the live stop.
         level_ceiling_offset=5,
     )
+    if selection is None:
+        # The staff has an alignment restriction. A negatively aligned
+        # character can still use Athena's source-loaded nectar, so keep this
+        # exact carrier useful without weakening the special or route audit.
+        selection = _select_source_consumable_candidate(
+            state,
+            spell_name="sanctuary",
+            short_description="nectar",
+            source_directory=source_directory,
+            source_world=source_world,
+            require_unarmed=True,
+            required_reset=(
+                _OLYMPUS_ADEPT_SANCTUARY_CARRIER_MOBILE_VNUM,
+                _OLYMPUS_ADEPT_SANCTUARY_CARRIER_ROOM_VNUM,
+            ),
+            allowed_target_specials=("spec_cast_adept",),
+            level_ceiling_offset=5,
+        )
     if selection is None:
         return None
     candidate, object_vnums = selection
@@ -86194,7 +87634,10 @@ def _select_source_ranked_olympus_adept_sanctuary_candidate(
         candidate.mobile_vnum != _OLYMPUS_ADEPT_SANCTUARY_CARRIER_MOBILE_VNUM
         or candidate.room_vnum != _OLYMPUS_ADEPT_SANCTUARY_CARRIER_ROOM_VNUM
         or candidate.area_file.casefold() != "olympus.are"
-        or _OLYMPUS_SANCTUARY_STAFF_OBJECT_VNUM not in object_vnums
+        or not {
+            _OLYMPUS_SANCTUARY_STAFF_OBJECT_VNUM,
+            _OLYMPUS_HEPHAESTUS_SANCTUARY_OBJECT_VNUM,
+        }.intersection(object_vnums)
         or not _source_ranked_adept_support_target_allowed(candidate, source_world)
     ):
         return None
@@ -86326,6 +87769,10 @@ def _select_source_ranked_moria_4071_reacquisition_candidate(
         source_directory=source_directory,
         source_world=source_world,
         require_unarmed=True,
+        # This is a fixed, source-verified maintenance reset. Its two-copy
+        # capacity is allowed here because the live executor still locates
+        # one exact carrier and retains the ordinary identity/isolation gates.
+        level_ceiling_offset=_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET,
         required_reset=(
             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
             4071,
@@ -86409,6 +87856,7 @@ def _select_preferred_moria_sanctuary_recovery_candidate(
         source_directory=source_directory,
         source_world=source_world,
         require_unarmed=True,
+        level_ceiling_offset=_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET,
         required_reset=(
             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
             4064,
@@ -86425,7 +87873,19 @@ def _select_preferred_moria_sanctuary_recovery_candidate(
         source_world=source_world,
     ):
         return None
-    return selection
+    if (
+        candidate.status == "reject"
+        and candidate.source_spawn_limit <= 2
+        and candidate.room_spawn_count == 1
+        and set(candidate.autonomy_rejections)
+        == {"target reset capacity exceeds one"}
+    ):
+        # Ordinary XP ranking keeps a two-copy reset closed.  This exact
+        # required-loot route already locates one carrier and verifies the
+        # item instance, so the capacity note is evidence rather than a
+        # reason to discard the maintenance handoff.
+        candidate = replace(candidate, status="caution")
+    return candidate, selection[1]
 
 
 def _moria_sanctuary_frontier_refill_ready(
@@ -86984,6 +88444,7 @@ def _moria_sanctuary_fixed_reset_current_source_audit(
         source_directory=current_source_directory(),
         source_world=source_world,
         require_unarmed=True,
+        level_ceiling_offset=_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET,
         required_reset=(
             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
             4064,
@@ -87013,6 +88474,7 @@ def _moria_sanctuary_second_fixed_reset_current_source_audit(
         source_directory=current_source_directory(),
         source_world=source_world,
         require_unarmed=True,
+        level_ceiling_offset=_MORIA_SANCTUARY_MAINTENANCE_LEVEL_CEILING_OFFSET,
         required_reset=(
             _MORIA_SANCTUARY_CARRIER_MOBILE_VNUM,
             4071,
@@ -87054,10 +88516,20 @@ def _moria_sanctuary_source_refresh_revalidation_evidence(
     source_revision = state.get(_SOURCE_REVISION_KEY)
     attempt = state.get(_MORIA_SANCTUARY_FIXED_RESET_ATTEMPT_KEY)
     existing = state.get(_MORIA_SANCTUARY_SOURCE_REFRESH_REVALIDATION_KEY)
+    recovery_handoff = bool(
+        policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+        or _is_source_ranked_sanctuary_maintenance_policy_id(policy.policy_id)
+    )
     if (
-        policy.status != "unavailable"
-        or policy.execution is not None
-        or policy.policy_id != f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{level}"
+        not (
+            recovery_handoff
+            or (
+                policy.status == "unavailable"
+                and policy.execution is None
+                and policy.policy_id
+                == f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{level}"
+            )
+        )
         or not _protection_recovery_required(state)
         or _state_has_sanctuary_reserve(state)
         or not _is_safe_healer_checkpoint(state)
@@ -87154,10 +88626,20 @@ def _moria_sanctuary_second_source_refresh_revalidation_evidence(
     existing = state.get(
         _MORIA_SANCTUARY_SECOND_SOURCE_REFRESH_REVALIDATION_KEY
     )
+    recovery_handoff = bool(
+        policy.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+        or _is_source_ranked_sanctuary_maintenance_policy_id(policy.policy_id)
+    )
     if (
-        policy.status != "unavailable"
-        or policy.execution is not None
-        or policy.policy_id != f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{level}"
+        not (
+            recovery_handoff
+            or (
+                policy.status == "unavailable"
+                and policy.execution is None
+                and policy.policy_id
+                == f"{_SOURCE_RANKED_POLICY_PREFIX}unavailable-{level}"
+            )
+        )
         or not _moria_sanctuary_source_refresh_miss(state)
         or not _protection_recovery_required(state)
         or _state_has_sanctuary_reserve(state)
@@ -88245,7 +89727,7 @@ def _source_carrier_local_resource_keyword(
         for reset in world.mob_resets
         if reset.mobile_vnum == candidate.mobile_vnum
         and reset.room_vnum == candidate.room_vnum
-        and reset.maximum_count == 1
+        and reset.maximum_count <= 2
         and int(item.vnum) in _reset_object_vnums(reset)
     )
     if len(matching_resets) != 1:
@@ -88311,7 +89793,7 @@ def _source_resource_reserve_record(
         item,
         required_spell=required_spell,
     )
-    if not keyword and activation.mode == "potion":
+    if not keyword and activation.mode in {"potion", "pill"}:
         keyword = _source_carrier_local_resource_keyword(
             world,
             item,
@@ -92216,6 +93698,56 @@ def _is_safe_healer_checkpoint(state: Mapping[str, Any]) -> bool:
         and not bool(state.get("dead"))
         and not bool(state.get("in_combat"))
     )
+
+
+def _source_ranked_existing_reserve_top_up_allowed(
+    state: Mapping[str, Any],
+) -> bool:
+    """Allow one healthy-reserve carrier probe per boot and level.
+
+    The probe is useful when the current-band frontier is empty, but repeated
+    successful selections can otherwise turn an unavailable checkpoint into a
+    long rotation of maintenance kills.  Reserve recovery without a reserve
+    and the separate second-reserve controller do not use this guard.
+    """
+    marker = state.get(_SOURCE_RANKED_SANCTUARY_TOP_UP_ATTEMPT_KEY)
+    if not isinstance(marker, Mapping):
+        # Older checkpoints predate the marker. Treat their immediately prior
+        # Sanctuary segment as the consumed probe so a resumed campaign does
+        # not spend one more segment rebuilding the same durable evidence.
+        last_policy = state.get("campaign_last_policy")
+        if (
+            last_policy in _SANCTUARY_RESOURCE_POLICY_IDS
+            or _is_source_ranked_sanctuary_maintenance_policy_id(last_policy)
+        ):
+            return False
+    return not (
+        isinstance(marker, Mapping)
+        and marker.get("boot_id") == state.get("world_boot_id")
+        and marker.get("level") == _level(dict(state))
+        and marker.get("status") in {"attempted", "completed"}
+    )
+
+
+def _record_source_ranked_existing_reserve_top_up(
+    state: dict[str, Any],
+    *,
+    policy_id: str,
+    candidate: HuntCandidate,
+) -> None:
+    """Persist the healthy-reserve top-up before its live segment opens."""
+    state[_SOURCE_RANKED_SANCTUARY_TOP_UP_ATTEMPT_KEY] = {
+        "boot_id": state.get("world_boot_id"),
+        "level": _level(state),
+        "policy_id": policy_id,
+        "mobile_vnum": candidate.mobile_vnum,
+        "room_vnum": candidate.room_vnum,
+        "status": "attempted",
+        "reason": (
+            "one out-of-band Sanctuary top-up after the current-band "
+            "frontier was exhausted"
+        ),
+    }
 
 
 def _is_source_ranked_recall_recovery_failure(error: Any) -> bool:
@@ -96500,7 +98032,7 @@ def _repair_sanctuary_resource_acquisition_history(
         if not segment_is_after_reset(segment):
             continue
         phase = str(segment.get("phase") or "")
-        if phase in _SANCTUARY_RESOURCE_POLICY_IDS:
+        if _is_sanctuary_resource_policy_id(phase):
             if _source_resource_dispatch_contract_repair_applies(
                 state,
                 segment,
@@ -96622,7 +98154,7 @@ def _repair_sanctuary_resource_acquisition_history(
         if not segment_is_after_reset(segment):
             continue
         phase = str(segment.get("phase") or "")
-        if phase not in _SANCTUARY_RESOURCE_POLICY_IDS:
+        if not _is_sanctuary_resource_policy_id(phase):
             continue
         try:
             start = json.loads(segment.get("start_state_json") or "{}")
@@ -99807,6 +101339,7 @@ def _merge_campaign_research_result(
     *,
     policy: ProgressionPolicy,
     preserve_prior_result: bool = False,
+    segment_id: int | None = None,
 ) -> dict[str, Any]:
     """Persist one reboot-scoped live consideration for research promotion."""
     merged = dict(current)
@@ -99875,6 +101408,18 @@ def _merge_campaign_research_result(
             attempt_record["crowded_circuit"] = crowded_circuit
             source_ranked_crowd_attempts[crowded_policy_id] = attempt_record
     recorded_current_result = False
+
+    def annotate_sanctuary_absence(result: dict[str, Any]) -> None:
+        if not _is_source_ranked_sanctuary_maintenance_policy_id(
+            policy.policy_id
+        ):
+            return
+        source_revision = current.get(_SOURCE_REVISION_KEY)
+        if source_revision:
+            result[_SOURCE_REVISION_KEY] = source_revision
+        if segment_id is not None:
+            result["last_attempt_segment_id"] = int(segment_id)
+
     if policy.status == "research":
         outcomes = current.get("campaign_fastwalk_consider_outcomes")
         viable = None
@@ -100478,12 +102023,14 @@ def _merge_campaign_research_result(
             and viable is None
             and not target_present_observed
         ):
-            results[policy.policy_id] = {
+            result = {
                 "observed": False,
                 "viable": False,
                 "absent": True,
                 "boot_id": current.get("world_boot_id"),
             }
+            annotate_sanctuary_absence(result)
+            results[policy.policy_id] = result
             recorded_current_result = True
             retry_cooldown = _research_absence_retry_cooldown(
                 policy.policy_id
@@ -100497,12 +102044,14 @@ def _merge_campaign_research_result(
             # a ``-hunt`` execution, so it does not enter ``unobserved_hunt``.
             # Preserve an explicit absence record or policy revision cleanup
             # will erase the failed probe and immediately reopen it.
-            results[policy.policy_id] = {
+            result = {
                 "observed": False,
                 "viable": False,
                 "absent": True,
                 "boot_id": current.get("world_boot_id"),
             }
+            annotate_sanctuary_absence(result)
+            results[policy.policy_id] = result
             recorded_current_result = True
             retry_cooldown = _research_absence_retry_cooldown(
                 policy.policy_id,
@@ -102532,6 +104081,17 @@ def _clear_absent_research_results(
             cooldowns.pop(policy_id, None)
             crowd_cooldowns.pop(policy_id, None)
             cleared_research_policies.add(policy_id)
+    if after_area_reset:
+        retry_policy_id = str(
+            merged.get(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY) or ""
+        )
+        if retry_policy_id in reset_aged_policy_ids:
+            # The reset ages the exact no-progress route that created this
+            # marker. Keep the new segment identity so a later no-progress
+            # result cannot be mistaken for the pre-reset attempt.
+            merged.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_KEY, None)
+            merged.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_BOOT_KEY, None)
+            merged.pop(_SOURCE_RANKED_RETRY_EXHAUSTED_SEGMENT_KEY, None)
     if retained:
         merged["campaign_research_results"] = retained
     else:
@@ -102566,6 +104126,62 @@ def _clear_absent_research_results(
             "policy_after_segment_ids": boundaries,
         }
     return merged
+
+
+def _arm_source_ranked_sanctuary_area_reset_revalidations(
+    state: Mapping[str, Any],
+    *,
+    after_segment_id: int | None,
+) -> dict[str, Any]:
+    """Expose one fresh dynamic carrier check after an area reset."""
+    if after_segment_id is None or not state.get("world_boot_id"):
+        return dict(state)
+    try:
+        reset_boundary = int(after_segment_id)
+    except (TypeError, ValueError):
+        return dict(state)
+    if reset_boundary <= 0:
+        return dict(state)
+    results = _campaign_research_results(state)
+    boundaries_marker = state.get(_RESEARCH_RESET_WAIT_BOUNDARIES_KEY)
+    boundaries = dict(
+        boundaries_marker.get("policy_after_segment_ids") or {}
+        if isinstance(boundaries_marker, Mapping)
+        and boundaries_marker.get("boot_id") == state.get("world_boot_id")
+        else {}
+    )
+    changed = False
+    for policy_id, result in results.items():
+        if not _is_sanctuary_resource_policy_id(policy_id):
+            continue
+        if not (
+            isinstance(result, Mapping)
+            and result.get("absent") is True
+            and result.get("boot_id") == state.get("world_boot_id")
+        ):
+            continue
+        try:
+            last_attempt_segment_id = int(result.get("last_attempt_segment_id"))
+        except (TypeError, ValueError):
+            # Legacy fixed-carrier absence rows can be missing the segment
+            # identity. The reset boundary still makes one exact recheck safe.
+            last_attempt_segment_id = None
+        if (
+            last_attempt_segment_id is not None
+            and last_attempt_segment_id > reset_boundary
+        ):
+            continue
+        if boundaries.get(policy_id) != reset_boundary:
+            boundaries[policy_id] = reset_boundary
+            changed = True
+    if not changed:
+        return dict(state)
+    armed = dict(state)
+    armed[_RESEARCH_RESET_WAIT_BOUNDARIES_KEY] = {
+        "boot_id": state.get("world_boot_id"),
+        "policy_after_segment_ids": boundaries,
+    }
+    return armed
 
 
 def _campaign_should_await_research_reset(state: dict[str, Any]) -> bool:
@@ -104221,6 +105837,16 @@ def _active_source_ranked_reset_policy_id(
                 not policy_id.startswith(_SOURCE_RANKED_POLICY_PREFIX)
                 or policy_id == excluded_policy_id
             ):
+                continue
+            if (
+                policy_id.endswith("-sanctuary-maintenance")
+                and _state_has_sanctuary_reserve(state)
+            ):
+                # A missed out-of-band carrier must not pause ordinary XP
+                # progression once a verified Sanctuary reserve is already
+                # available. The carrier can be reconsidered later as
+                # maintenance; it is not a prerequisite for current-band
+                # hunting.
                 continue
             if character_level is not None:
                 level_match = re.search(r"-(\d+)$", policy_id)

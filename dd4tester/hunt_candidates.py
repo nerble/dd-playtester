@@ -2025,6 +2025,7 @@ class HuntCandidate:
     route_preflight_room_vnum: str | None = None
     route_preflight_command: str | None = None
     route_preflight_target: str | None = None
+    route_preflight_source_mobile_vnum: int | None = None
     # Ordered exact source identities to check when one route crosses more
     # than one wandering mobile prototype.
     route_preflight_checks: tuple[tuple[str, str], ...] = ()
@@ -2608,6 +2609,7 @@ def rank_resource_sources(
     character_max_hp: int | None = None,
     include_all_areas: bool = False,
     recall_origins: Mapping[int, int] | None = None,
+    include_out_of_band: bool = False,
 ) -> list[ResourcePlacement]:
     """List source resource placements with routes and hazard evidence.
 
@@ -2616,7 +2618,9 @@ def rank_resource_sources(
     ground-stash candidate contributes the same route, status, and hazard
     annotations used by campaign selection; a source placement without a
     current-level candidate remains visible as ``source-only`` rather than
-    being silently discarded.
+    being silently discarded. ``include_out_of_band`` expands the mobile
+    search to the full source level range for maintenance audits such as
+    Sanctuary acquisition; it does not make any placement executable.
     """
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
@@ -2645,16 +2649,21 @@ def rank_resource_sources(
         return []
     selected_vnums = {item.vnum for item in selected_objects}
 
-    candidates = rank_hunt_candidates(
-        world,
-        character_level=character_level,
-        include_xp_only=True,
-        include_below_band=True,
-        character_max_hp=character_max_hp,
-        include_all_areas=include_all_areas,
-        required_loot_object_vnums=selected_vnums,
-        recall_origins=recall_origins,
-    )
+    candidate_kwargs: dict[str, Any] = {
+        "character_level": character_level,
+        "include_xp_only": True,
+        "include_below_band": True,
+        "character_max_hp": character_max_hp,
+        "include_all_areas": include_all_areas,
+        "required_loot_object_vnums": selected_vnums,
+        "recall_origins": recall_origins,
+    }
+    if include_out_of_band:
+        candidate_kwargs.update(
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=100,
+        )
+    candidates = rank_hunt_candidates(world, **candidate_kwargs)
     candidates_by_source = {
         (candidate.mobile_vnum, candidate.room_vnum): candidate
         for candidate in candidates
@@ -5458,6 +5467,9 @@ def rank_hunt_candidates(
                 route_preflight_room_vnum=route_preflight_room_vnum,
                 route_preflight_command=route_preflight_command,
                 route_preflight_target=route_preflight_target,
+                route_preflight_source_mobile_vnum=(
+                    program_vnums[0] if len(program_vnums) == 1 else None
+                ),
                 route_preflight_level_range=route_preflight_level_range,
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
                 route_preflight_route_room_names=route_preflight_route_room_names,
@@ -8642,6 +8654,11 @@ def _rank_direct_ground_stashes(
                 route_preflight_room_vnum=route_preflight_room_vnum,
                 route_preflight_command=route_preflight_command,
                 route_preflight_target=route_preflight_target,
+                route_preflight_source_mobile_vnum=(
+                    probabilistic_programs[0]
+                    if len(probabilistic_programs) == 1
+                    else None
+                ),
                 route_preflight_level_range=route_preflight_level_range,
                 route_preflight_hard_hazard=route_preflight_hard_hazard,
                 route_preflight_route_room_names=route_preflight_route_room_names,

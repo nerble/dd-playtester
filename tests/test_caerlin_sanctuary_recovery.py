@@ -452,6 +452,29 @@ def test_olympus_adept_policy_selects_athena_after_alchemist_closes() -> None:
     )
 
 
+def test_olympus_adept_policy_uses_athena_nectar_for_negative_alignment() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "level": 40,
+            "alignment": -766,
+            "campaign_source_revision": "test-source",
+        }
+    )
+
+    selection = _select_source_ranked_olympus_adept_sanctuary_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (907, 925)
+    assert object_vnums == (926,)
+
+
 def test_olympus_adept_policy_keeps_its_own_fatal_result_closed() -> None:
     world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
     state = _level_39_healer_state()
@@ -1331,6 +1354,69 @@ def test_caerlin_source_revision_retry_preempts_exhausted_alternate_policy() -> 
     assert state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY][
         _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY
     ] is True
+
+
+def test_caerlin_source_revision_retry_is_available_to_maintenance_selector() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = None
+    runner._gear_catalog = None
+    runner._source_world = world
+    runner._selected_source_consumable_candidate = None
+    runner._selected_source_consumable_object_vnums = ()
+    state = _level_39_healer_state()
+    state.update(
+        {
+            "inventory": [[{"short_desc": "a big pot pie"}]],
+            _SOURCE_REVISION_KEY: "new-source",
+            "campaign_source_resource_reserves": {},
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "old-source",
+                "status": "closed",
+                "outcome": "reserve_reacquisition_missed",
+                "retry_count": 1,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+                _CAERLIN_STAFF_RESERVE_REACQUISITION_KEY: True,
+            },
+        }
+    )
+
+    selected = runner._select_caerlin_source_revision_sanctuary_fallback(
+        state,
+        practice_skill="enhanced damage",
+    )
+
+    assert selected is not None
+    assert selected.policy_id == _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id
+    assert runner._selected_source_consumable_candidate is not None
+    assert runner._selected_source_consumable_candidate.mobile_vnum == 19004
+    assert runner._selected_source_consumable_object_vnums == (19173,)
+    assert state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY]["status"] == "attempted"
+
+
+def test_out_of_band_sanctuary_maintenance_admits_apollo_armed_carrier() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+
+    selection = _select_source_ranked_sanctuary_maintenance_candidate(
+        state,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+        level_ceiling_offset=100,
+        require_unarmed=False,
+        allowed_target_specials=("spec_cast_adept",),
+        allow_armed_carrier=True,
+    )
+
+    assert selection is not None
+    candidate, object_vnums = selection
+    assert (candidate.mobile_vnum, candidate.room_vnum) == (905, 926)
+    assert object_vnums == (926,)
+    assert candidate.equipped_weapons == ("a silver bow",)
 
 
 def test_newer_live_liquidation_loss_reopens_caerlin_reacquisition() -> None:
