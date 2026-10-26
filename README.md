@@ -3,12 +3,52 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 25, 2026
+## Current Status: October 26, 2026
 
-Latest durable campaign checkpoint **62654** (campaign **35**; latest completed
-campaign segment **19620**, live run **20226**): Dorrik is a level **40 Dwarf
-Knight** with **1,467,761 XP**, **18 quest points**, and is back at the Midgaard
-healer. HERO remains unproved, and Dorrik remains the sole progression pilot.
+Latest durable campaign checkpoint **64223** (campaign **35**; latest completed
+segment **2348**, live run **20604**): Dorrik is a level **41 Dwarf Knight**
+with **1,525,558 XP**, **18 quest points**, and no current level-up shortfall.
+He is safely at the Midgaard healer (room **3054**) with **1 Sanctuary charge**
+in the red dragonorb, **3 pies**, and **145 copper, 54 silver, and 6 gold**.
+HERO remains unproved, and Dorrik remains the sole progression pilot.
+
+Runs **20558-20563** completed the bounded Sanctuary rotation and several
+current-band hunts; run **20561** acquired the source-verified red dragonorb
+from mobile **7040** in room **7428**, while run **20562** added **3,201 XP**
+before a same-room second mob forced a health-floor withdrawal and **1,125 XP**
+loss. Runs **20569-20577** then added several clean kills, including Clive,
+the Receptionist, the Astral Guardian, and Mr. Teece. Out-of-band carriers
+remain valid maintenance objectives when their exact source, live identity,
+route, consider, health, and required-loot gates pass; their XP is never
+counted as progression. A separate 12-second command-ack watchdog now
+reconnects stalled live commands instead of allowing a dead movement to consume
+the whole segment.
+
+Run **20563** killed the Kerofk Receptionist for **2,105 XP** with no safety
+loss. Since then, runs **20584-20599** mixed one bounded-command-budget
+Receptionist kill, safe recovery and provisioning, three further clean kills,
+and several correct health-floor withdrawals. Run **20601** safely completed
+source-backed coin-stash funding without claiming progression XP. The
+current work remains focused on level-by-level progression with Dorrik as the
+sole pilot. Segments **2347-2348** safely checked the Lotus Temple target and
+the Freeport warehouse overseer; the former was absent and the latter failed
+live `consider`, so neither opened combat or changed XP.
+
+Run **20590** and run **20591** recorded safe health-floor losses against Clive
+and the Astral Guardian. Runs **20593**, **20595**, and **20598** then recovered
+with clean Teece, Hawklord, and Receptionist kills; runs **20594**, **20597**,
+and **20599** correctly closed the corresponding exact targets after further
+losses. The current Sanctuary reserve is **1 charge**. The plain-instrument
+loadout fix also closes the banjo gear loop that previously consumed a whole
+segment.
+
+Run **20560** returned Dorrik safely to the healer. Checkpoint **64076** then
+recorded a protection-recovery wait without opening another live connection.
+The Sanctuary ledger now leaves an unresolved viable carrier receipt retryable;
+only terminal outcomes such as a loss, absence, hazard, or confirmed
+acquisition close that exact stop. The direct selector again identifies the
+sewer red dragon (mobile **7040**, room **7428**, object **7303**) as a possible
+out-of-band maintenance route. No worker is running.
 
 Runs **20224-20226** continued the bounded live Sanctuary-maintenance rotation.
 The Freeport carrier was absent, flight preparation completed safely, and the
@@ -22,12 +62,12 @@ Run **20219** acquired the Moria Sanctuary resource as maintenance. Run
 **20220** remains a safe loss record, and run **20223** safely returned from a
 Lotus route without claiming objective XP. The active DD4 boot is **Fri Oct 23
 07:05:19 2026** and the source mirror is
-**eb965f7d9a27b8a70b3cbd9d3f9d5240f15073ef**, aligned with `origin/master`.
+**0fc7d3aac3ce3464a8e565c656bd179cbafa8ea8**, aligned with `origin/master`.
 
 Run **19999** acquired the source-verified Staff of the Bard from Caerlin as an
-out-of-band Sanctuary maintenance objective. Subsequent live hunts consumed
-four charges while recording one useful Cyclops kill and several safe losses;
-the current reserve is **6 charges**. Run **20006** tested an alternate reserve
+out-of-band Sanctuary maintenance objective. Subsequent live hunts consumed or
+lost that reserve while recording one useful Cyclops kill and several safe
+losses; no Sanctuary reserve is currently carried. Run **20006** tested an alternate reserve
 route without finding a new charge, and run **20007** performed a safe world-time
 probe. Runs **20008-20011** safely checked fresh source-ranked locations, but
 the observed targets were below-band or absent, so the retry-stalled rotation

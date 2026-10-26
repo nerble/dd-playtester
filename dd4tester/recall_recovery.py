@@ -193,6 +193,7 @@ class AdjacentRecallEscape:
     origin: str
     direction: str
     destination: str
+    destination_name: str | None = None
     stage: str = "new"
     pending_room: str | None = None
     response: str = ""
@@ -252,7 +253,18 @@ class AdjacentRecallEscape:
                 and str(self.pending_room) == "3001"
                 and _midgaard_recall_arrival(self.response)
             )
-            if state.room_vnum != self.pending_room and not delayed_recall_room:
+            source_room_header = bool(
+                self.destination_name
+                and re.search(
+                    rf"(?mi)^\s*{re.escape(self.destination_name)}\s*$",
+                    self.response,
+                )
+            )
+            if (
+                state.room_vnum != self.pending_room
+                and not delayed_recall_room
+                and not source_room_header
+            ):
                 if self.stage == "stepping" and not self.room_event_waited:
                     # DD4 can deliver the movement prompt before the
                     # authoritative Room.Info packet. Give that packet one

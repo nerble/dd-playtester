@@ -2,15 +2,39 @@
 
 ## Current Target-Selection Policy
 
-The current durable checkpoint is **62654** (campaign **35**). Dorrik is level
-**40** with **1,467,761 XP**, 18 quest points, and a safe healer checkpoint.
-The latest completed live segment is **19620** (run **20226**). Runs
-**20224-20226** safely checked two exact out-of-band Sanctuary carriers and
-completed one flight-preparation segment; the carriers were absent and no new
-XP loss was recorded.
+The current durable checkpoint is **64223** (campaign **35**). Dorrik is level
+**41** with **1,525,558 XP**, 18 quest points, no level-up shortfall, and a safe
+healer checkpoint in room **3054**. One Sanctuary charge remains in the red
+dragonorb; food and currency reserves are three pies, 145 copper, 54 silver,
+and 6 gold. The latest completed segment is **2348** (run **20604**), a safe
+source-ranked Freeport target-check run. The source mirror is
+**0fc7d3aac3ce3464a8e565c656bd179cbafa8ea8**, aligned with `origin/master`.
+Out-of-band kills remain allowed when acquiring or restoring Sanctuary, but
+their XP is recorded as maintenance rather than progression. Segments
+**2347-2348** safely checked an absent Lotus Temple target and a present
+Freeport target that failed live `consider`; neither changed XP.
+Run **20563** killed the Kerofk Receptionist for **2,105 XP** without a safety
+loss. Runs **20569-20577** mixed clean Clive, Receptionist, Astral Guardian,
+and Mr. Teece kills with correctly recorded health-floor losses. Runs
+**20584-20599** continued that pattern, including the bounded-command-budget
+Receptionist segment, recovery, provisioning, Hawklord and Teece progress,
+and exact-target loss closures. The plain-instrument loadout fix now prevents
+the banjo from reopening that gear loop. A viable unresolved Sanctuary receipt
+remains retryable; only a terminal outcome closes its exact carrier.
+Run **20569** recorded Athena's safe **1,125 XP** health-floor loss; run
+**20570** then killed Clive the Weapons Master for **2,957 XP** safely, leaving
+**4 Sanctuary charges**.
+Run **20572** then killed the Kerofk Receptionist for **1,804 XP** safely,
+leaving **3 Sanctuary charges**.
+Runs **20573**, **20575**, and **20577** then added **3,678**, **2,600**, and
+**4,017 XP** without safety losses, leaving **1 Sanctuary charge**.
+An observed viable Sanctuary research receipt without a completed kill,
+acquired object, absence, loss, hazard, or other terminal outcome is unresolved
+and must not exclude that exact carrier from a later bounded maintenance retry.
 Run **19999** acquired the Staff of the Bard as an out-of-band Sanctuary
-maintenance objective; after four protected hunts, the persisted reserve has
-**6 charges**. Runs **20006-20007** safely tested an alternate reserve route
+maintenance objective; later protected hunts consumed or lost that earlier
+reserve. Run **20561** acquired a fresh 10-charge red dragonorb. Runs
+**20006-20007** safely tested an alternate reserve route
 and a world-time probe without claiming progression XP. Runs **20008-20011**
 then checked fresh source-ranked locations; each was safely below-band or
 absent, so the retry-stalled rotation also checkpointed without opening
@@ -24,6 +48,18 @@ source reset and live `consider` still decide whether it is fightable, while a
 confirmed kill is recorded as maintenance rather than progression XP. After a
 bounded area-reset boundary, recheck each exact absent carrier once. One miss
 does not make unrelated carriers wait for a reboot.
+Windows hidden workers must report the actual Python PID through
+`tools/launch_hidden_worker.py`. If a live attempt produces no durable
+checkpoint by the five-minute worker boundary, stop that worker tree, preserve
+the last healer checkpoint, record the interruption, and continue local work;
+never leave a detached command wrapper running or start a second gameplay
+connection.
+After login, a dispatched command must receive a prompt or authoritative room
+acknowledgement within 12 seconds. The longer general inactivity timeout still
+applies while deliberately sleeping or otherwise waiting without a command in
+flight. A missing command acknowledgement gets one bounded `look` probe and a
+reconnect, rather than consuming the rest of the live segment; record the
+command, probe, reconnect, and resulting checkpoint as transport evidence.
 Run **19955** closed a Smugglers Ship transit interception by armed Crewman
 mobile **17517** after a safe **1,060 XP** loss; the source audit now covers its
 paired **17503/17517** family. Run **19956** reached One-eye (mobile **17500**)
@@ -102,6 +138,13 @@ movement and recovery checks, and the character's own health withdrawal floor.
 Historical rejection records remain evidence for their exact target and boot;
 they are not permission to reject an otherwise valid current target merely
 because an old predicted output estimate was unfavorable.
+An exact current-level XP loss still closes that reset. After ordinary
+current-band selection is exhausted, one
+`campaign_source_ranked_prior_level_loss_revalidation` may reopen an exact
+same-boot loss from the immediately previous level when the new level has no
+loss for that reset and the source-safe/current-band gates pass. Consume the
+receipt before dispatch, retain the original loss, and close it on any failed
+or mismatched attempt; it is not a general cooldown reset.
 
 Sanctuary acquisition is a maintenance objective rather than an XP-band hunt.
 When the fixed recovery sources are exhausted, the source-ranked maintenance
@@ -4420,6 +4463,12 @@ even when a passive endpoint can reveal live HP before the opener. It must also
 pass the live route, movement, consider, and healer-return gates. Same-boot
 below-band evidence for that exact source mobile remains a hard exclusion; the
 fallback never converts a known low-XP target into progression credit.
+After one source-gear placement is acquired successfully, defer further gear
+research for that character level and MUD boot. This prevents successive
+successful or failed upgrade trips from consuming the progression session;
+reconsider the loadout after a level transition or a new boot, while each
+individual placement still keeps its own exact item, route, carrying, and live
+verification rules.
 
 ### Daycare Ring Recovery
 
@@ -4560,6 +4609,15 @@ inventory containing the deep green key reopens the route; a level or reboot
 change also invalidates the old blocker. Startup repair may recover this
 blocker only from the matching linked, successful, safe segment with the exact
 locked-exit evidence and no objective kill.
+
+The route-gate loot handoff is source-aware: after each exact guard kill it
+checks the guard corpse for the source-loaded deep green key before sacrificing
+the corpse. The controller records gate kills as maintenance, never progression
+XP. One startup revalidation is allowed for the earlier current-level,
+same-boot ``locked after open`` result that predates this handoff fix; it
+preserves the old segment and consumes the fresh marker before dispatch. A
+different route failure, missing source identity, or another locked-door result
+does not reopen the route.
 
 Revision 340 is a narrow implementation revalidation, not a general retry:
 only the exact revision-339 fatal result and its linked successful, safe,
@@ -4892,7 +4950,9 @@ remains.
 Run **19086** was a bounded world-time probe and confirmed that the DD4 boot had
 not reset. Run **19087** then used the exact source-bounded, two-to-four-reset
 economic-transit exception to reach Orion, mobile **9311**, room **9328**. The
-fresh two-potion Sanctuary refill permitted one exact revalidation of the prior
+fresh two-potion Sanctuary refill, or a carried charged source Sanctuary staff
+whose acquisition receipt had been compacted, permitted one exact
+revalidation of the prior
 unprotected loss; live identity and `consider` passed, and Dorrik killed Orion
 for **3,103 XP** before returning to healer room **3054**. Run **19089** later
 re-tested that productive route, passed the same fresh identity and `consider`

@@ -6756,6 +6756,10 @@ def policy_for(
             and _moria_sanctuary_recovery_is_incomplete(context)
         )
         or (
+            selected.policy_id == _REARM_WEAPON_POLICY.policy_id
+            and not context.has_weapon
+        )
+        or (
             selected.policy_id == _THALOS_LONG_DAGGER_UPGRADE_POLICY.policy_id
             and context.intermediate_piercing_weapon_upgrade_source_safe
             and context.has_sanctuary_potion

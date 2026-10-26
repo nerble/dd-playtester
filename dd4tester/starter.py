@@ -577,6 +577,11 @@ _CONSIDER_REJECTED_FRAGMENTS = (
 # not turn a recoverable route pause into a needless login cycle.
 _CONNECTION_INACTIVITY_RETRY_LIMIT = 1
 _CONNECTION_INACTIVITY_PROBE_COMMAND = "look"
+# A command acknowledgement should arrive promptly even when a deliberate
+# sleep or other idle period is allowed to keep the socket open longer. Keep
+# this separate from the general inactivity timeout so a dead movement or
+# combat command cannot consume most of a bounded gameplay segment.
+_COMMAND_ACK_TIMEOUT_SECONDS = 12.0
 # A socket that has not produced a login/creation prompt cannot make useful
 # gameplay progress. Fail over promptly instead of spending the full gameplay
 # inactivity budget on each silent connection.
@@ -2531,6 +2536,23 @@ def _connection_inactivity_timeout(
     if not bool(getattr(policy, "in_world", False)):
         return min(default, _LOGIN_INACTIVITY_TIMEOUT_SECONDS)
     return default
+
+
+def _connection_command_ack_timeout(
+    policy: object,
+    default: float,
+    *,
+    connection_semantic_activity: bool = True,
+) -> float:
+    """Bound a missing in-world command prompt independently from idle time."""
+    return min(
+        _connection_inactivity_timeout(
+            policy,
+            default,
+            connection_semantic_activity=connection_semantic_activity,
+        ),
+        _COMMAND_ACK_TIMEOUT_SECONDS,
+    )
 
 
 def _runtime_boundary_safe_healer(
@@ -4766,6 +4788,10 @@ class StarterPolicy:
                 self.magic_shop_water_breathing_price = price
                 self.magic_shop_water_breathing_price_boot_id = self.world_boot_id
         recent = cleaned.casefold()
+        if "you are too full to eat more" in recent:
+            # The server has authoritative nutrition state; do not replay a
+            # stale hunger request while capacity relief is still pending.
+            self.needs_food = False
         if self.shifter_form_recovery_pending:
             if any(
                 marker in recent
@@ -8990,7 +9016,12 @@ class StarterPolicy:
                 capacity_reply.command.startswith("eat ")
                 and capacity.food_relief_attempted
             ):
+                food_reply = capacity_reply.buffer.casefold()
                 capacity.food_relief_failure = reason
+                # A full character cannot consume the reserve, but can still
+                # release one surplus pie before the next capacity audit.
+                if "you are too full to eat more" in food_reply:
+                    capacity.food_relief_attempted = False
                 capacity_reply.clear()
                 capacity.step = 0
             else:
@@ -16328,7 +16359,12 @@ class StarterPolicy:
             or stop.maximum_target_count != 1
             or stop.source_mobile_vnum != 7040
             or stop.source_target_armed is not True
-            or not stop.require_sanctuary
+            or not (
+                stop.require_sanctuary
+                or str(stop.source_policy_id or "").endswith(
+                    "-sanctuary-maintenance"
+                )
+            )
             or tuple(stop.source_specials) != ("spec_breath_fire",)
             or self.source_world is None
         ):
@@ -26994,6 +27030,7 @@ class StarterPolicy:
         ):
             selective_loot_keywords: tuple[str, ...] = ()
             current_stop: FieldHuntStop | None = None
+            route_gate_corpse = False
             if (
                 self.fastwalk_selective_loot
                 and self.fastwalk_last_kill_target is not None
@@ -27010,6 +27047,32 @@ class StarterPolicy:
                     )
                 ):
                     selective_loot_keywords = current_stop.selective_loot_keywords
+                elif current_stop.route_gate_source_mobile_vnums:
+                    latest_kill = (
+                        self.completed_kills[-1]
+                        if self.completed_kills
+                        else None
+                    )
+                    latest_source_vnum = (
+                        _int_or_none(latest_kill.get("source_mobile_vnum"))
+                        if isinstance(latest_kill, Mapping)
+                        else None
+                    )
+                    route_gate_corpse = bool(
+                        isinstance(latest_kill, Mapping)
+                        and latest_kill.get("route_gate") is True
+                        and latest_source_vnum in set(
+                            current_stop.route_gate_source_mobile_vnums
+                        )
+                    )
+                    if route_gate_corpse:
+                        # The gate mobile is not the later required-loot
+                        # carrier.  Keep the source-approved loot selectors
+                        # active so a key carried by that gate is collected
+                        # before its corpse is sacrificed.
+                        selective_loot_keywords = (
+                            current_stop.selective_loot_keywords
+                        )
             if self.fastwalk_loot_step == 0:
                 if not self.fastwalk_collect_loot:
                     self.fastwalk_loot_step = 4
@@ -27033,10 +27096,16 @@ class StarterPolicy:
                 ):
                     required_loot_missing = None
                     if current_stop is not None and current_stop.required_items:
+                        required_items = (
+                            current_stop.route_gate_required_items
+                            if route_gate_corpse
+                            and current_stop.route_gate_required_items
+                            else current_stop.required_items
+                        )
                         required_loot_missing = (
                             self._missing_required_carried_or_worn_items(
                                 state,
-                                current_stop.required_items,
+                                required_items,
                             )
                         )
                     while self.fastwalk_selective_loot_index < len(
@@ -31299,6 +31368,36 @@ class StarterPolicy:
             )
         return None
 
+    def _source_resource_is_carried(
+        self,
+        state: CharacterState,
+        record: Mapping[str, Any],
+    ) -> bool:
+        """Confirm that a durable resource record still names a live item."""
+        try:
+            object_vnum = int(record.get("object_vnum"))
+        except (TypeError, ValueError):
+            return False
+        description = normalize_item_name(
+            str(record.get("object_description") or "")
+        )
+        if object_vnum <= 0 or not description:
+            return False
+        if any(item.vnum == object_vnum for item in self.gear_worn):
+            return True
+        inventory_descriptions = {
+            normalize_item_name(value)
+            for value in _inventory_descriptions(state.inventory)
+        }
+        if description not in inventory_descriptions:
+            return False
+        if self.gear_catalog is None:
+            return True
+        candidates = self.gear_catalog.candidates(description)
+        if candidates and all(candidate.vnum != object_vnum for candidate in candidates):
+            return False
+        return not (len(candidates) > 1)
+
     def _source_resource_record(
         self,
         state: CharacterState,
@@ -31337,39 +31436,7 @@ class StarterPolicy:
                 charges = 0
             if charges <= 0:
                 continue
-            try:
-                object_vnum = int(record.get("object_vnum"))
-            except (TypeError, ValueError):
-                object_vnum = 0
-            description = normalize_item_name(
-                str(record.get("object_description") or "")
-            )
-            if object_vnum <= 0 or not description:
-                continue
-            worn_match = next(
-                (
-                    item
-                    for item in self.gear_worn
-                    if item.vnum == object_vnum
-                ),
-                None,
-            )
-            inventory_descriptions = {
-                normalize_item_name(value)
-                for value in _inventory_descriptions(state.inventory)
-            }
-            carried = description in inventory_descriptions
-            if self.gear_catalog is not None:
-                candidates = self.gear_catalog.candidates(description)
-                if candidates and all(
-                    candidate.vnum != object_vnum for candidate in candidates
-                ):
-                    carried = False
-                elif len(candidates) > 1 and worn_match is None:
-                    # Text-only inventory cannot prove which duplicate
-                    # prototype is being activated.
-                    carried = False
-            if worn_match is None and not carried:
+            if not self._source_resource_is_carried(state, record):
                 continue
             if not isinstance(record.get("command"), str):
                 continue
@@ -31494,6 +31561,14 @@ class StarterPolicy:
         resources: dict[str, dict[str, Any]] = {}
         for effect, record in self.verified_source_resources.items():
             if not isinstance(record, Mapping):
+                continue
+            if state is not None and not self._source_resource_is_carried(
+                state,
+                record,
+            ):
+                # A prior run's receipt is historical evidence, not a carried
+                # reserve.  Drop it when the live login inventory no longer
+                # contains the exact source object.
                 continue
             normalized_effect = str(effect).casefold()
             if normalized_effect == "flight" and not any(
@@ -44780,7 +44855,17 @@ class StarterPolicy:
             if plan is not None:
                 if _is_sleeping(state):
                     return BotDecision("stand", "wake before the scanned one-room recall escape")
-                adjacent = AdjacentRecallEscape(str(room_vnum), *plan)
+                destination_name = None
+                if self.source_world is not None:
+                    try:
+                        destination_name = self.source_world.rooms[int(plan[1])].name
+                    except (KeyError, TypeError, ValueError):
+                        destination_name = None
+                adjacent = AdjacentRecallEscape(
+                    str(room_vnum),
+                    *plan,
+                    destination_name=destination_name,
+                )
                 self._recovery_session.adjacent_recall_escape = adjacent
         if adjacent is not None and adjacent.stage != "complete":
             command = adjacent.next_command(state, now=time.monotonic())
@@ -45043,7 +45128,11 @@ class StarterPolicy:
                 if source_room_vnum is not None
                 else None
             )
-            if source_room is not None and source_room.no_recall:
+            cursed_field_room = (
+                room_vnum not in _MIDGAARD_CITY_HEALER_ROOMS
+                and _has_named_affect(state.affects, "curse")
+            )
+            if source_room is not None and (source_room.no_recall or cursed_field_room):
                 source_path = _shortest_paths_from(
                     self.source_world.rooms,
                     source_room_vnum,
@@ -45052,9 +45141,10 @@ class StarterPolicy:
                     str(command).casefold().startswith(("pick ", "unlock "))
                     for command in source_path[0]
                 ):
-                    # A live recall can be refused in a no-recall room after
-                    # a productive kill. Follow the source graph to recall
-                    # first, then let the ordinary healer route take over.
+                    # A live recall can be refused in a no-recall room or by
+                    # a curse after a productive kill. Follow the source
+                    # graph to recall first, then let the ordinary healer
+                    # route take over.
                     self.return_home_recovery_commands = tuple(source_path[0])
                     self.return_home_recovery_index = 0
         if (
@@ -49251,6 +49341,11 @@ class StarterBotRunner:
                     self.inactivity_timeout,
                     connection_semantic_activity=connection_semantic_activity_seen,
                 )
+                effective_command_ack_timeout = _connection_command_ack_timeout(
+                    policy,
+                    self.inactivity_timeout,
+                    connection_semantic_activity=connection_semantic_activity_seen,
+                )
                 runtime_boundary_safe_healer = _runtime_boundary_safe_healer(
                     policy,
                     self.character_state,
@@ -49574,7 +49669,7 @@ class StarterBotRunner:
                     and (
                         asyncio.get_running_loop().time()
                         - command_ack_started_at
-                        >= effective_inactivity_timeout
+                        >= effective_command_ack_timeout
                     )
                 ):
                     # GMCP can keep a combat socket active while the text
@@ -49633,7 +49728,7 @@ class StarterBotRunner:
                             command_ack_probe_sent = True
                             command_ack_started_at = (
                                 asyncio.get_running_loop().time()
-                                - effective_inactivity_timeout
+                                - effective_command_ack_timeout
                             )
                             connection_inactivity_probe_sent = True
                         else:
@@ -49647,7 +49742,7 @@ class StarterBotRunner:
                                     "state": "command_ack_probe",
                                     "command": _CONNECTION_INACTIVITY_PROBE_COMMAND,
                                     "in_flight_command": command_ack_command,
-                                    "timeout_seconds": effective_inactivity_timeout,
+                                    "timeout_seconds": effective_command_ack_timeout,
                                 },
                             )
                         continue
@@ -49657,7 +49752,7 @@ class StarterBotRunner:
                         {
                             "state": "command_ack_reconnect",
                             "in_flight_command": command_ack_command,
-                            "timeout_seconds": effective_inactivity_timeout,
+                            "timeout_seconds": effective_command_ack_timeout,
                         },
                     )
                     try:
@@ -57666,6 +57761,12 @@ def _capacity_relief_inventory_keyword(
             and item.vnum not in set_vnums
             and not worn_duplicate
         )
+        redundant_weapon = _inferior_carried_weapon(
+            item,
+            gear_catalog,
+            tuple(peer.short_description for peer in worn_source_items),
+            character_class=character_class,
+        )
         if (
             duplicate_counts[normalized] <= 1
             and not unusable_for_character
@@ -57673,6 +57774,7 @@ def _capacity_relief_inventory_keyword(
             and not plain_instrument
             and not plain_unprotected_armor
             and not redundant_stat_gear
+            and not redundant_weapon
         ):
             continue
         if (
@@ -57683,11 +57785,14 @@ def _capacity_relief_inventory_keyword(
                 and not worn_duplicate
                 and not surplus_equipment_copy
                 and not redundant_stat_gear
+                and not redundant_weapon
             )
             or is_capacity_infrastructure(item)
             or item.vnum in set_vnums
         ):
             continue
+        if redundant_weapon:
+            return item_command_keyword(item)
         if item.item_type == ITEM_PAINT:
             return item_command_keyword(item)
         if plain_instrument:

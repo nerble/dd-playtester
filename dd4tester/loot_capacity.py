@@ -41,6 +41,7 @@ class LootCapacityReply:
             marker in self.buffer.casefold()
             for marker in (
                 "you are full",
+                "you are too full to eat more",
                 "you can't eat",
                 "you cannot eat",
                 "you don't have",

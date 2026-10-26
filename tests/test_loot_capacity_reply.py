@@ -54,6 +54,11 @@ def test_eating_requires_a_confirmed_consumption_and_rejects_fullness() -> None:
     assert reply.acknowledged()
     assert reply.failure is None
 
+    reply.begin("eat pie", now=14)
+    reply.observe("You are too full to eat more.\n", now=15)
+    assert reply.failure is not None
+    assert not reply.acknowledged()
+
 
 def test_inventory_needs_its_own_header_and_complete_capacity_line() -> None:
     reply = LootCapacityReply()

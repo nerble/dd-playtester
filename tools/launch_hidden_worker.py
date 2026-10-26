@@ -3,66 +3,37 @@
 from __future__ import annotations
 
 import argparse
-import ctypes
-from ctypes import wintypes
 import json
 import os
 from pathlib import Path
 import subprocess
 
 
-def _launch_with_windows_shell(
+def _launch_with_windows(
     command: list[str],
     *,
     cwd: Path,
     stdout_path: Path,
     stderr_path: Path,
 ) -> int:
-    launcher_path = stdout_path.with_suffix(stdout_path.suffix + ".launcher.cmd")
-    command_line = subprocess.list2cmdline(command)
-    launcher_path.write_text(
-        "@echo off\r\n"
-        f'cd /d "{cwd}"\r\n'
-        f'{command_line} 1>>"{stdout_path}" 2>>"{stderr_path}"\r\n'
-        'del "%~f0"\r\n',
-        encoding="ascii",
+    # Keep the reported PID attached to the actual worker so watchdog cleanup
+    # cannot strand a hidden command-wrapper process.
+    creationflags = (
+        subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
     )
-
-    class ShellExecuteInfo(ctypes.Structure):
-        _fields_ = [
-            ("cbSize", wintypes.DWORD),
-            ("fMask", wintypes.ULONG),
-            ("hwnd", wintypes.HWND),
-            ("lpVerb", wintypes.LPCWSTR),
-            ("lpFile", wintypes.LPCWSTR),
-            ("lpParameters", wintypes.LPCWSTR),
-            ("lpDirectory", wintypes.LPCWSTR),
-            ("nShow", ctypes.c_int),
-            ("hInstApp", wintypes.HINSTANCE),
-            ("lpIDList", ctypes.c_void_p),
-            ("lpClass", wintypes.LPCWSTR),
-            ("hkeyClass", wintypes.HANDLE),
-            ("dwHotKey", wintypes.DWORD),
-            ("hIcon", wintypes.HANDLE),
-            ("hProcess", wintypes.HANDLE),
-        ]
-
-    execute = ShellExecuteInfo()
-    execute.cbSize = ctypes.sizeof(execute)
-    execute.fMask = 0x00000040  # SEE_MASK_NOCLOSEPROCESS
-    execute.lpVerb = "open"
-    execute.lpFile = str(launcher_path)
-    execute.lpDirectory = str(cwd)
-    execute.nShow = 0  # SW_HIDE
-    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(execute)):
-        raise ctypes.WinError()
-    try:
-        process_id = ctypes.windll.kernel32.GetProcessId(execute.hProcess)
-        if not process_id:
-            raise ctypes.WinError()
-        return int(process_id)
-    finally:
-        ctypes.windll.kernel32.CloseHandle(execute.hProcess)
+    with stdout_path.open("ab", buffering=0) as stdout_file, stderr_path.open(
+        "ab", buffering=0
+    ) as stderr_file:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            close_fds=False,
+            creationflags=creationflags,
+        )
+    return process.pid
 
 
 def main() -> int:
@@ -84,7 +55,7 @@ def main() -> int:
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
     stderr_path.parent.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
-        process_id = _launch_with_windows_shell(
+        process_id = _launch_with_windows(
             command,
             cwd=args.cwd.resolve(),
             stdout_path=stdout_path,

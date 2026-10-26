@@ -8,6 +8,7 @@ from dd4tester.equipment import (
     ITEM_ANTI_EVIL,
     ITEM_ANTI_GOOD,
     ITEM_ANTI_NEUTRAL,
+    ITEM_INSTRUMENT,
     ITEM_KEY,
     STANCE_COMBAT,
     STANCE_PRE_LEVEL,
@@ -25,6 +26,7 @@ from dd4tester.equipment import (
     is_digging_weapon,
     is_equipment_object,
     is_lance,
+    is_plain_instrument,
     is_piercing_weapon,
     normalize_item_name,
     plan_stance_swaps,
@@ -417,6 +419,39 @@ def test_rank_executable_ground_gear_sources_keeps_only_safe_current_upgrades() 
     assert placements[0].route == ("south",)
 
 
+def test_rank_executable_ground_gear_sources_rejects_neutral_hold_dead_weight() -> None:
+    barbell = ObjectSource(
+        4414,
+        "barbell",
+        "a barbell",
+        12,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 14),
+        weight=120,
+    )
+    world = WorldSource(
+        objects={barbell.vnum: barbell},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        room_object_resets=[RoomObjectReset(barbell.vnum, 200)],
+    )
+
+    assert rank_executable_ground_gear_sources(
+        world,
+        character_level=10,
+        character_class="warrior",
+        include_all_areas=True,
+    ) == []
+
+
 def test_rank_executable_carrier_gear_sources_keeps_exact_safe_carriers() -> None:
     current = _item(40, "small dagger", wear_bit=13)
     upgrade = ObjectSource(
@@ -555,6 +590,28 @@ def test_keys_are_not_added_to_or_retained_by_stance_gear() -> None:
 
     removals, additions = plan_stance_swaps([], [key], STANCE_COMBAT)
     assert removals == [key]
+    assert additions == []
+
+
+def test_plain_instrument_is_not_selected_as_stance_gear() -> None:
+    banjo = ObjectSource(
+        19156,
+        "banjo",
+        "a banjo",
+        ITEM_INSTRUMENT,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1 | (1 << 14),
+        extra_flags=2,
+    )
+
+    assert is_plain_instrument(banjo) is True
+    removals, additions = plan_stance_swaps([banjo], [], STANCE_COMBAT)
+    assert removals == []
+    assert additions == []
+
+    removals, additions = plan_stance_swaps([], [banjo], STANCE_COMBAT)
+    assert removals == [banjo]
     assert additions == []
 
 
@@ -1080,6 +1137,37 @@ def test_combat_stance_prefers_piercing_weapon_for_backstab() -> None:
     assert additions == [dagger]
 
 
+def test_combat_stance_keeps_damage_weapon_with_noncombat_stat_penalty() -> None:
+    sledgehammer = ObjectSource(
+        4013,
+        "massive sledgehammer",
+        "a massive sledgehammer",
+        5,
+        (0, 4, 8, 8),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((2, -2), (18, -3), (19, 10)),
+    )
+    neutral_piercing = ObjectSource(
+        4014,
+        "neutral bishop piece",
+        "a neutral bishop piece",
+        5,
+        (0, 5, 9, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+
+    removals, additions = plan_stance_swaps(
+        [neutral_piercing],
+        [sledgehammer],
+        STANCE_COMBAT,
+    )
+
+    assert removals == []
+    assert additions == []
+
+
 def test_required_worn_weapon_survives_combat_stance_reconciliation() -> None:
     jewel = ObjectSource(
         3701,
@@ -1143,6 +1231,38 @@ def test_recovery_stance_keeps_a_thief_piercing_primary() -> None:
 
     assert removals == []
     assert additions == []
+
+
+def test_recovery_stance_keeps_primary_when_replacement_has_no_resources() -> None:
+    stat_penalty_primary = ObjectSource(
+        4010,
+        "heavy sledgehammer",
+        "a heavy sledgehammer",
+        5,
+        (0, 4, 8, 8),
+        100,
+        wear_flags=1 | (1 << 13),
+        affects=((2, -2), (18, -3), (19, 10)),
+    )
+    neutral_piercing = ObjectSource(
+        4011,
+        "sharp bishop piece",
+        "a sharp bishop piece",
+        5,
+        (0, 5, 9, 11),
+        100,
+        wear_flags=1 | (1 << 13),
+    )
+    strength_ring = _item(4012, "strength ring", (1, 2), wear_bit=1)
+
+    removals, additions = plan_stance_swaps(
+        [neutral_piercing],
+        [stat_penalty_primary, strength_ring],
+        STANCE_RECOVERY,
+    )
+
+    assert stat_penalty_primary not in removals
+    assert neutral_piercing not in additions
 
 
 def test_all_stances_remove_strength_penalty_rings_even_if_slot_is_empty() -> None:

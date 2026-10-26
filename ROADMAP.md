@@ -8,17 +8,51 @@ and autonomously reach the requested level, up to HERO 100. Preserve progress,
 explain the experience, and support direct Telnet and visible Mudlet operation.
 
 **Not complete:** no HERO character is proved. The highest actual frontier is
-level 40 (Dorrik). Per the current focus instruction, breadth is deferred until
+level 41 (Dorrik). Per the current focus instruction, breadth is deferred until
 one character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 25, 2026
+### Current campaign status: October 26, 2026
 
-Campaign **35**, checkpoint **62654**, keeps Dorrik as the only progression
-pilot. Dorrik is a level **40 Dwarf Knight** at **1,467,761 XP** with **18 QP**
-and no current level-up shortfall. The current DD4 boot is **Fri Oct 23 07:05:19
-2026** and the parsed source is **eb965f7d9a27b8a70b3cbd9d3f9d5240f15073ef**.
+Campaign **35**, checkpoint **64223**, keeps Dorrik as the only progression
+pilot. Dorrik is a level **41 Dwarf Knight** at **1,525,558 XP** with **18 QP**,
+no current level-up shortfall, and a safe healer checkpoint in room **3054**.
+One Sanctuary charge remains in the red dragonorb; the state also has three
+pies and 145 copper, 54 silver, and 6 gold. The current DD4 boot is **Fri Oct
+23 07:05:19 2026** and the parsed source is
+**0fc7d3aac3ce3464a8e565c656bd179cbafa8ea8**.
+
+Segments **2302-2307** completed the bounded Sanctuary rotation and several
+current-band hunts; segment **2305** / run **20561** acquired a 10-charge
+Sanctuary red dragonorb from the out-of-band sewer carrier. Run **20562** then
+killed the current-band Dwarven Home target for **3,201 XP** before a second
+same-room mob forced a 20-percent-floor withdrawal and **1,125 XP** loss.
+Runs **20563**, **20570**, **20572**, **20573**, **20575**, and **20577** added
+clean current-band kills. Segments **2322-2345** then covered recovery,
+provisioning, further kills, and correctly bounded losses; segment **2345** /
+run **20601** safely completed source-backed coin-stash funding. Out-of-band
+Sanctuary carriers remain valid maintenance objectives when their exact source
+and live safety gates pass; their XP is not progression XP. No worker remains
+running. Segments **2347-2348** then checked the Lotus Temple target and the
+Freeport warehouse overseer; the first was absent and the second failed live
+`consider`, both safely and without XP change.
+Segment **2309** / run **20565** found a Lotus target absent. Segment **2310** /
+run **20566** then closed a crowded Kerofk repeat safely; segments **2311-2312**
+completed see-invisible and loot liquidation preparation. Segment **2313** / run
+**20569** recorded Athena's safe **1,125 XP** health-floor loss. Segment **2314**
+/ run **20570** then killed Clive the Weapons Master for **2,957 XP** safely;
+**4 Sanctuary charges** remain. Segment **2316** / run **20572** then killed the
+Kerofk Receptionist for **1,804 XP** safely; **3 Sanctuary charges** remain.
+Segments **2317**, **2319**, and **2321** then killed The Astral Guardian,
+the Kerofk Receptionist, and Mr. Teece for **3,678**, **2,600**, and **4,017 XP**
+without safety losses. **1 Sanctuary charge** remains.
+Run **20560** returned Dorrik safely to the healer, and checkpoint **64076**
+recorded a protection-recovery wait without opening a new connection. A viable
+but unfinished Sanctuary research receipt no longer suppresses its exact carrier
+from later rotation; only terminal outcomes close that stop. The selector again
+finds the sewer red dragon (mobile **7040**, room **7428**) as an out-of-band
+maintenance candidate.
 
 Runs **20224-20226** continued live Sanctuary maintenance. The Freeport carrier
 was absent, flight preparation completed safely, and the next Olympus carrier
@@ -35,7 +69,7 @@ reboot-scoped. The latest segment is **19620** / run **20226**.
 Run **19999** acquired the source-verified Staff of the Bard as an out-of-band
 Sanctuary maintenance objective. Runs **20001-20005** then consumed four
 charges across protected hunts, including one useful Cyclops kill and several
-safe losses. The current carried reserve is **6 charges**. Run **20006** tested
+safe losses. That earlier checkpoint carried **6 charges**. Run **20006** tested
 an alternate reserve route without finding another charge; run **20007** safely
 checked world time, and runs **20008-20011** checked fresh source-ranked
 locations without opening combat. The latest retry-stalled rotation found only

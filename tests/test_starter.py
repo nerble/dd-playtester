@@ -3722,6 +3722,17 @@ def test_red_dragon_fire_sanctuary_stop_is_identity_bound() -> None:
         stop,
         room_vnum="7428",
     )
+    first_reserve_stop = replace(
+        stop,
+        require_sanctuary=False,
+        source_policy_id=(
+            "source-ranked-hunt-sewer-7040-7428-41-sanctuary-maintenance"
+        ),
+    )
+    assert policy._source_stop_has_red_dragon_fire_sanctuary_special(
+        first_reserve_stop,
+        room_vnum="7428",
+    )
     assert not policy._source_stop_has_red_dragon_fire_sanctuary_special(
         replace(stop, source_target_armed=False),
         room_vnum="7428",
@@ -9944,6 +9955,39 @@ def test_source_scroll_is_held_recited_and_consumed_once() -> None:
     policy.observe_text("You recite a sanctuary scroll.")
     assert policy.verified_source_resources == {}
     assert policy.pending_source_resource_effect is None
+
+
+def test_source_resource_checkpoint_drops_missing_durable_item() -> None:
+    staff = ObjectSource(
+        7303,
+        "red dragonorb",
+        "a red dragonorb",
+        4,
+        (40, 0, 0, 0),
+        0,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        gear_catalog=GearCatalog({staff.vnum: staff}),
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": staff.vnum,
+                "object_description": "a red dragonorb",
+                "spell": "sanctuary",
+                "command": "brandish",
+                "mode": "staff",
+                "requires_hold": True,
+                "consumes_charge": True,
+                "charges_remaining": 2,
+            }
+        },
+    )
+
+    assert policy.source_resource_checkpoint(
+        CharacterState(inventory=[[{"short_desc": "a big pot pie"}]])
+    ) == {}
 
 
 def test_source_sanctuary_staff_can_refresh_once_after_expiry() -> None:
@@ -18132,7 +18176,7 @@ def test_required_loot_capacity_preflight_aborts_before_last_two_pies() -> None:
     state = CharacterState(
         level=8,
         room_vnum="3001",
-        inventory=[[{"short_desc": "a big pot pie", "quan": "2"}]],
+        inventory=[[{"short_desc": "a big pot pie", "quan": "3"}]],
         stats={"carry_wt": 111, "maxcarry_wt": 115},
     )
 
@@ -20509,7 +20553,7 @@ def test_healer_capacity_eats_one_surplus_pie_and_verifies_the_freed_slot() -> N
         position=7,
         hunger=34,
         max_hunger=48,
-        inventory=[[{"short_desc": "a big pot pie", "quan": "2"}]],
+        inventory=[[{"short_desc": "a big pot pie", "quan": "3"}]],
         stats={"carry_num": 41, "maxcarry_num": 41},
     )
 
@@ -20589,6 +20633,57 @@ def test_healer_capacity_drops_one_surplus_pie_when_already_full() -> None:
     assert handled is True
     assert sacrifice is not None
     assert sacrifice.command == "sacrifice pie"
+
+
+def test_healer_capacity_falls_back_to_dropping_pie_after_full_eat_reply() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route_named("moria"),
+    )
+    policy.in_world = True
+    policy.fastwalk_required_loot_capacity_preflight_complete = False
+    policy.needs_food = True
+    not_full = CharacterState(
+        level=36,
+        room_vnum="3054",
+        position=7,
+        hunger=34,
+        max_hunger=48,
+        inventory=[[{"short_desc": "a big pot pie", "quan": "3"}]],
+        stats={"carry_num": 41, "maxcarry_num": 41},
+    )
+
+    handled, eat = policy._healer_carrying_capacity_preflight_decision(
+        not_full,
+        required_slots=1,
+    )
+    assert handled is True
+    assert eat is not None
+    assert eat.command == "eat pie"
+
+    policy.observe_text("You are too full to eat more.\n")
+    assert policy.needs_food is False
+    full = CharacterState(
+        level=36,
+        room_vnum="3054",
+        position=7,
+        hunger=48,
+        max_hunger=48,
+        inventory=[[{"short_desc": "a big pot pie", "quan": "3"}]],
+        stats={"carry_num": 41, "maxcarry_num": 41},
+    )
+    policy.next_decision(full)
+    assert policy._recovery_session.carrying_capacity.food_relief_attempted is False
+    handled, drop = policy._healer_carrying_capacity_preflight_decision(
+        full,
+        required_slots=1,
+    )
+
+    assert handled is True
+    assert drop is not None
+    assert drop.command == "drop pie"
+    assert policy._recovery_session.carrying_capacity.food_relief_attempted is True
 
 
 def test_healer_capacity_does_not_eat_the_last_food_reserve() -> None:
@@ -32537,6 +32632,73 @@ def test_fastwalk_continues_to_requested_target_after_safe_incidental_loot() -> 
     assert policy.fastwalk_attack_started is False
 
 
+def test_route_gate_corpse_loot_collects_source_required_key() -> None:
+    key = ObjectSource(
+        6502,
+        "key green",
+        "a deep green key",
+        1,
+        (0, 0, 0, 0),
+        1,
+    )
+    holy_water = ObjectSource(
+        2008,
+        "holy water flask",
+        "a flask of holy water",
+        1,
+        (0, 0, 0, 0),
+        1,
+    )
+    stop = FieldHuntStop(
+        (),
+        "grand templar",
+        required_items=("a flask of holy water",),
+        allow_below_band_for_required_loot=True,
+        route_gate_source_mobile_vnums=(6500,),
+        route_gate_allow_below_band=True,
+        route_gate_required_items=("a deep green key",),
+        selective_loot_keywords=("key", "holy"),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk("dwarven gate loot", 1, 100, "1n"),
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({key.vnum: key, holy_water.vnum: holy_water}),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.fastwalk_hunt_stop_index = 0
+    policy.fastwalk_last_kill_target = "dwarven guard"
+    policy.current_room = "6505"
+    policy.pending_loot_rooms.add("6505")
+    policy.completed_kills.append(
+        {
+            "mob_name": "the dwarven guard",
+            "route_gate": True,
+            "source_mobile_vnum": 6500,
+        }
+    )
+    state = CharacterState(
+        level=41,
+        hp=900,
+        max_hp=988,
+        mana=500,
+        max_mana=566,
+        move=500,
+        max_move=663,
+        room_vnum="6505",
+        position=7,
+        inventory=[],
+    )
+
+    decision = policy._fastwalk_research_decision(state)
+
+    assert decision is not None
+    assert decision.command == "get all.key corpse"
+
+
 def test_outbound_incidental_intercept_resumes_route_after_loot() -> None:
     route = Fastwalk(
         "outbound incidental intercept",
@@ -36296,6 +36458,45 @@ def test_return_home_uses_source_route_from_no_recall_summoning_room() -> None:
     assert decision.command == "south"
     assert policy.return_home_recovery_commands is not None
     assert "open west" in policy.return_home_recovery_commands
+
+
+def test_return_home_uses_source_route_when_curse_blocks_recall() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        source_world=world,
+        return_home=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    state = CharacterState(
+        area="Mirror Realm",
+        room_name="Path to the Forest",
+        room_vnum="19065",
+        room_flags=[],
+        exits={"n": "19064", "e": "19057", "s": "19131"},
+        position=7,
+        level=41,
+        hp=733,
+        max_hp=969,
+        move=598,
+        max_move=598,
+        mana=509,
+        max_mana=509,
+        affects=[[{"name": "curse"}]],
+    )
+
+    decision = policy._return_home_decision(state)
+
+    assert decision is not None
+    assert decision.command == "east"
+    assert policy.return_home_recovery_commands is not None
+    assert policy.return_home_recovery_commands[-1] == "north"
+    assert policy.failure is None
 
 
 def test_local_recall_reaudits_persisted_sanctuary_before_quaffing() -> None:
@@ -41976,6 +42177,27 @@ def test_silent_login_uses_short_timeout_without_changing_gameplay_timeout() -> 
         )
         == 5.0
     )
+
+
+def test_command_ack_watchdog_is_shorter_than_general_gameplay_inactivity() -> None:
+    policy = StarterPolicy(_spec(), "swordfish")
+    policy.in_world = True
+
+    assert starter._connection_inactivity_timeout(policy, 45.0) == 45.0
+    assert starter._connection_command_ack_timeout(policy, 45.0) == 12.0
+
+    policy.runtime_boundary_requested = True
+    policy.midgaard_logout_pending = True
+    healer = CharacterState(
+        hp=100,
+        max_hp=100,
+        position=7,
+        room_vnum="3054",
+        in_combat=False,
+        enemies=None,
+    )
+    assert starter._connection_command_ack_timeout(policy, 45.0) == 5.0
+    assert starter._runtime_boundary_safe_healer(policy, healer) is True
 
 
 def test_resumed_in_world_policy_cannot_probe_a_silent_new_socket(

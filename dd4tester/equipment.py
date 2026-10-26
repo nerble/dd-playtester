@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .hunt_candidates import (
+    ITEM_INSTRUMENT,
     LOW_LEVEL_AREA_FILES,
     RECALL_VNUM,
     WorldSource,
@@ -344,6 +345,7 @@ def rank_gear_sources(
         item
         for item in world.objects.values()
         if is_equipment_object(item)
+        and not is_plain_instrument(item)
         and (category := item_category(item)) is not None
         and character_can_use_item(
             item,
@@ -480,7 +482,14 @@ def rank_gear_sources(
                 weapon_preference=weapon_preference,
             ),
         )
-        better_than_current = comparison_score > current_score
+        better_than_current = (
+            comparison_score > current_score
+            and _has_positive_gear_utility(
+                item,
+                stance,
+                level_gain_priorities=level_gain_priorities,
+            )
+        )
         if candidate is None:
             path = direct_paths.get(room.vnum)
             route = path[0] if path is not None else ()
@@ -852,6 +861,11 @@ def weapon_damage_score(item: ObjectSource) -> int:
     """Rank ordinary source weapons by conservative generated range damage."""
     if item.item_type != ITEM_WEAPON or item.extra_flags & ITEM_BODY_PART:
         return 0
+    if item.effective_level <= 0 and len(item.values) > 2:
+        # Synthetic and incomplete source fixtures may not carry a reset-derived
+        # level. Keep their prototype damage useful for relative ranking while
+        # retaining generated load damage for real area-file objects.
+        return max(0, item.values[1]) + max(0, item.values[2])
     damage = generated_weapon_damage_floor(item.effective_level)
     # fight.c:one_hit draws uniformly between the live endpoints, not dice.
     # Prototype values are neither those live endpoints nor a dice recipe.
@@ -871,6 +885,25 @@ def stance_score(
         level_gain_priorities=level_gain_priorities,
         armor=item.values[0] if item.item_type == 9 and item.values else 0,
         weapon=weapon_damage_score(item),
+    )
+
+
+def _has_positive_gear_utility(
+    item: ObjectSource,
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...],
+) -> bool:
+    """Keep source-upgrade trips from filling slots with neutral dead weight."""
+    if item.item_type == ITEM_LIGHT or is_capacity_infrastructure(item):
+        return True
+    return any(
+        value > 0
+        for value in stance_score(
+            item,
+            stance,
+            level_gain_priorities=level_gain_priorities,
+        )
     )
 
 
@@ -910,14 +943,22 @@ def weapon_role(
 def _recovery_priority_score(
     bonuses: Mapping[int, int], level_gain_priorities: tuple[str, ...],
 ) -> tuple[int, ...]:
+    resources = _recovery_resource_score(bonuses, level_gain_priorities)
+    stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
+    return resources + (stats,)
+
+
+def _recovery_resource_score(
+    bonuses: Mapping[int, int], level_gain_priorities: tuple[str, ...],
+) -> tuple[int, ...]:
+    """Rank only the HP/mana benefit that justifies replacing a primary."""
     resources = {
         "hitpoints": max(0, bonuses.get(APPLY_HIT, 0)),
         "mana": max(0, bonuses.get(APPLY_MANA, 0)),
     }
     recovery = sum(resources.values())
     priorities = tuple(resources[p] for p in level_gain_priorities if p in resources)
-    stats = sum(max(0, bonuses.get(location, 0)) for location in APPLY_STATS)
-    return (priorities or (recovery,)) + (recovery, stats)
+    return (priorities or (recovery,)) + (recovery,)
 
 
 def _stance_score_from_totals(
@@ -1085,6 +1126,17 @@ def is_equipment_object(item: ObjectSource) -> bool:
     return item.item_type not in _NON_EQUIPMENT_TYPES
 
 
+def is_plain_instrument(item: ObjectSource) -> bool:
+    """Return whether an ordinary instrument is only dead carry weight."""
+    return (
+        item.item_type == ITEM_INSTRUMENT
+        and not item.affects
+        and item.extra_flags in {0, 1, 2, 3}
+        and is_releasable_funding_item(item)
+        and not protects_from_sale(item)
+    )
+
+
 def is_capacity_infrastructure(item: ObjectSource) -> bool:
     name = normalize_item_name(item.short_description)
     return (
@@ -1121,10 +1173,21 @@ def _stance_rank(
         score_length = 8
     if item is None:
         return (0, 0) + (0,) * score_length
-    if is_strength_penalty_ring(item) or any(
+    score = stance_score(
+        item,
+        stance,
+        level_gain_priorities=level_gain_priorities,
+    )
+    has_stat_penalty = any(
         location in APPLY_STATS and modifier < 0
         for location, modifier in item.affects
-    ):
+    )
+    combat_weapon = (
+        stance == STANCE_COMBAT
+        and item_category(item) == "wield"
+        and score[0] > 0
+    )
+    if is_strength_penalty_ring(item) or (has_stat_penalty and not combat_weapon):
         return (-1, 0) + (0,) * score_length
     preferred_weapon = int(
         item_category(item) == "wield"
@@ -1135,11 +1198,7 @@ def _stance_rank(
             and is_blunt_weapon(item)
         )
     )
-    return (1, preferred_weapon) + stance_score(
-        item,
-        stance,
-        level_gain_priorities=level_gain_priorities,
-    )
+    return (1, preferred_weapon) + score
 
 
 def _independent_loadout(
@@ -1153,12 +1212,21 @@ def _independent_loadout(
     categories = {
         category
         for item in (*carried, *worn)
-        if (category := item_category(item)) is not None
+        if not is_plain_instrument(item)
+        and (category := item_category(item)) is not None
     }
     loadout: dict[str, tuple[ObjectSource, ...]] = {}
     for category in sorted(categories):
-        current = [item for item in worn if item_category(item) == category]
-        available = [item for item in carried if item_category(item) == category]
+        current = [
+            item
+            for item in worn
+            if not is_plain_instrument(item) and item_category(item) == category
+        ]
+        available = [
+            item
+            for item in carried
+            if not is_plain_instrument(item) and item_category(item) == category
+        ]
         capacity = _CATEGORY_CAPACITY.get(category, 1)
         ranked = sorted(
             [(item, True) for item in current]
@@ -1187,6 +1255,7 @@ def _category_options(
         item
         for item in items
         if item_category(item) == category
+        and not is_plain_instrument(item)
         and not is_strength_penalty_ring(item)
         and not any(
             location in APPLY_STATS and modifier < 0
@@ -1478,9 +1547,17 @@ def plan_stance_swaps(
     explicitly verified an item in a wear slot.  Such an item remains in the
     loadout while the rest of the stance can still be optimized normally.
     """
-    carried_items = [item for item in carried if is_equipment_object(item)]
+    carried_items = [
+        item
+        for item in carried
+        if is_equipment_object(item) and not is_plain_instrument(item)
+    ]
     worn_items = list(worn)
-    worn_equipment = [item for item in worn_items if is_equipment_object(item)]
+    worn_equipment = [
+        item
+        for item in worn_items
+        if is_equipment_object(item) and not is_plain_instrument(item)
+    ]
     source_sets = tuple(object_sets)
     desired_loadout = _desired_loadout(
         carried_items,
@@ -1500,18 +1577,23 @@ def plan_stance_swaps(
             and weapon_role(primary[0], weapon_preference) != "mismatch"
         ):
             retained = [primary[0] if item is chosen[0] else item for item in desired]
-            # Sleep gear may replace the primary for resources or stats, not
-            # solely to improve a combat tie-breaker. Include whole-set bonuses.
-            if _recovery_priority_score(
+            # Sleep gear may replace the primary for actual HP/mana resources,
+            # but a stat-only improvement must not disarm the combat weapon and
+            # trigger a rearm loop at the next healer checkpoint.
+            if _recovery_resource_score(
                 _loadout_bonus_totals(retained, source_sets), level_gain_priorities,
-            ) >= _recovery_priority_score(
+            ) >= _recovery_resource_score(
                 _loadout_bonus_totals(desired, source_sets), level_gain_priorities,
             ):
                 desired = retained
     required = [
         item
         for item in required_worn_items
-        if is_equipment_object(item) and item_category(item) is not None
+        if (
+            is_equipment_object(item)
+            and not is_plain_instrument(item)
+            and item_category(item) is not None
+        )
     ]
     retained_required: Counter[int] = Counter()
     for required_item in required:

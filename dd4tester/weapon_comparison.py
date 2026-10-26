@@ -265,7 +265,15 @@ class WeaponComparison:
                 if (
                     not isinstance(equipment, list)
                     or any(not isinstance(item, Mapping) for item in equipment)
-                    or sum(item.get("item_type") == ITEM_WEAPON for item in equipment) != 1
+                    or sum(
+                        item.get("item_type") == ITEM_WEAPON
+                        and (
+                            str(item.get("slot", "")).casefold()
+                            in {"wield", "weapon", "secondary", "offhand"}
+                            or item.get("wear_loc") in {16, 18}
+                        )
+                        for item in equipment
+                    ) != 1
                     or normalize_item_name(slot[1]) != normalize_item_name(primary.short_description)
                 ):
                     self._fail("compare requires one confirmed equipped weapon")

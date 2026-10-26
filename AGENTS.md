@@ -39,8 +39,10 @@ energy containment, Illithid psychic resistance, and the Crysomer sword's
 descriptive lore are not disintegrate immunity. A level-40+ psionic is
 therefore out of bounds for Dorrik unless that evidence is actually present;
 do not infer it from a damage estimate or a normal saving throw chance. A
-fresh Sanctuary refill can repair one exact prior unprotected plain-target
-loss, but it is not disintegration protection and never reopens a psionic.
+fresh Sanctuary refill, or a carried charged source-verified Sanctuary
+staff when its acquisition receipt has been compacted, can repair one exact
+prior unprotected plain-target loss. This is not disintegration protection
+and never reopens a psionic.
 Favor productive, risk-adjusted fights: when fresh live `consider`, source
 damage/output bounds, current gear, and practiced skills support a bounded kill,
 take the useful-XP opportunity instead of detouring merely to avoid ordinary
@@ -55,6 +57,10 @@ because of a source HP or damage estimate; retain those values as evidence.
 Record the kill as maintenance and do not credit it as progression XP. A
 same-boot miss closes only that carrier; it must not make unrelated Sanctuary
 sources wait for a reboot.
+An observed viable maintenance receipt that has no completed kill, acquired
+object, absence, loss, hazard, or other terminal outcome is unresolved
+research, not an attempted stop; leave that exact carrier eligible for a later
+bounded retry under fresh live gates.
 During an already-admitted fight, one additional activation from the same
 source-verified, charged Sanctuary staff is allowed after its observed effect
 expires. Keep the exact target, live identity, own-health, and resource-charge
@@ -198,7 +204,12 @@ A repeat requires its exact current-version achieved/safe summary, matching
 boot and current terminal level, a useful source-tagged kill, and no
 loss during that encounter. An exact observed one-level transition may retain
 its prior-level source identity. Later unrelated losses retain their ledgers;
-exact current/prior target loss records still close the hunt. A completed
+exact current-level target loss records still close the hunt. After the
+ordinary current-band frontier is exhausted, one source- and boot-bound
+`campaign_source_ranked_prior_level_loss_revalidation` may reopen an exact
+prior-level loss only when the new level has no exact loss and all source/live
+gates still pass; consume it once before dispatch, preserve the old loss, and
+close it on any mismatch or failed attempt. A completed
 productive independent hunt may repeat past the initial three-kill search cap,
 but keeps finite per-visit kills and fresh source/live gates. Never turn an
 abort or another target's success into retry permission.
@@ -1557,6 +1568,31 @@ worker is healthy.
 
 ## Work Rhythm
 
+## Process Ownership And Cleanup
+
+Treat process cleanup as an ownership decision, not a name-based cleanup.
+Terminate a worker only when its recorded launch receipt matches the current
+PID, creation time, repository, and command, and recheck those fields
+immediately before termination to guard against PID reuse. The receipt from
+`tools/launch_hidden_worker.py` and the worker log paths are the authority.
+Never kill a process merely because it is `python.exe`, `pythonw.exe`, or
+`cmd.exe`, because its command line is blank or unreadable, because it looks
+old, or because it remains after a segment. Leave unidentified processes
+alone, never kill a parent command window unless it is a proven wrapper from
+our own launch, and do not inspect, stop, or interfere with
+`E:\dd_image_batch_tool` or any other application's workers. At a boundary,
+stop only the positively identified owned worker tree, preserve its checkpoint,
+and record the interruption before continuing.
+
+### User-Owned Image Session Exclusion
+
+The user's PowerShell session that generates images for the MUD is permanently
+out of scope. Never enumerate, inspect, stop, kill, restart, or otherwise
+interfere with that session or any process it owns, even when it appears old,
+idle, duplicated, or unrelated to the current repository task. Do not run
+process-wide cleanup commands as a substitute; manage only this project's
+explicitly owned workers when a repository operation requires it.
+
 Spend nearly all work time advancing the HERO100 objective through useful
 implementation and campaign progress; regression work is secondary. While the
 project is active, run exactly one regression batch each local calendar day.
@@ -1581,6 +1617,19 @@ For ordinary live hunts, keep the standard 300-second segment bound unless a
 named short probe has a specific reason to use less. Do not shorten hunts for
 rotation speed; verify kills and XP rather than treating a ready status as
 progress.
+Once authenticated, a command in flight has a separate 12-second prompt or
+authoritative room-acknowledgement bound. It may receive one bounded `look`
+probe, then the connection must reconnect and record the transport failure; do
+not let an unacknowledged movement or combat command consume the full segment.
+The general inactivity timeout remains available for intentional sleep and
+other periods with no command in flight.
+On Windows, launch detached workers only through
+`tools/launch_hidden_worker.py`, which must return the actual Python worker PID
+rather than a command-wrapper PID. If no durable checkpoint appears by the
+five-minute worker boundary, stop that worker tree, preserve the last safe
+checkpoint, record the interruption, and continue local implementation or
+source research. Never leave a hidden wrapper or duplicate gameplay connection
+running.
 
 ## Security And Changes
 

@@ -161,6 +161,14 @@ def test_equipment_requires_one_weapon_and_prompt_after_the_slot():
     assert session.stage == "failed"
 
 
+def test_equipment_allows_a_separate_ranged_weapon_slot():
+    session = WeaponComparison(plan(source_case()))
+    assert step(session) == "eq all"
+    session.observe(f"[weapon] {CLUB}\n" + PROMPT)
+    ranged = {**record(6104, BRANCH)[0], "slot": "ranged_weapon", "wear_loc": 21}
+    assert step(session, 1, equipment=record() + [ranged]) == "inventory"
+
+
 def test_inventory_mismatch_does_not_send_compare():
     session = WeaponComparison(plan(source_case()))
     assert step(session) == "eq all"

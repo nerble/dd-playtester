@@ -2675,6 +2675,20 @@ def test_missing_primary_weapon_selects_rearm_without_actionable_loot() -> None:
     assert policy.execution == "rearm-weapon"
 
 
+def test_missing_primary_weapon_reopens_rearm_after_stale_exclusion() -> None:
+    policy = policy_for(
+        41,
+        "warrior",
+        has_food=True,
+        has_weapon=False,
+        source_ranked_fallback=True,
+        excluded_policy_ids=frozenset({"rearm-primary-weapon"}),
+    )
+
+    assert policy.policy_id == "rearm-primary-weapon"
+    assert policy.execution == "rearm-weapon"
+
+
 def test_missing_primary_weapon_preempts_unaffordable_flight_funding() -> None:
     policy = policy_for(
         19,

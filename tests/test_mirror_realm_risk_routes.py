@@ -87,6 +87,28 @@ def test_mirror_realm_black_lord_per_room_singleton_can_run_without_sanctuary():
     ) == black_lord
 
 
+def test_mirror_realm_below_band_black_lord_is_not_promoted_by_fuzz():
+    world, candidates = _candidates()
+    black_lord = candidates[(19033, 19103)]
+
+    assert black_lord.level == 35
+    assert black_lord.estimated_level_range == (33, 37)
+    assert not campaign_module._source_ranked_mirror_realm_gardener_transit_allowed(
+        black_lord,
+        _state(),
+        character_level=41,
+        character_max_hp=988,
+        source_world=world,
+    )
+    assert campaign_module._select_source_ranked_hunt_candidate(
+        (black_lord,),
+        _state(),
+        world=world,
+        character_level=41,
+        character_max_hp=988,
+    ) is None
+
+
 def test_mirror_realm_black_lord_route_with_extra_combat_special_stays_closed():
     world, candidates = _candidates()
     black_lord = candidates[(19033, 19097)]

@@ -79,6 +79,24 @@ def test_adjacent_recall_escape_waits_for_authoritative_room_after_movement_prom
     assert escape.next_command(state, now=2.2) == "recall"
 
 
+def test_adjacent_recall_escape_accepts_exact_source_destination_header():
+    state = state_case()
+    escape = AdjacentRecallEscape(
+        "100",
+        "north",
+        "101",
+        destination_name="next room",
+    )
+    assert escape.next_command(state, now=0) == "scan north"
+    escape.observe("You can't see anything to the north.\n" + PROMPT)
+    assert escape.next_command(state, now=1) == "north"
+
+    # This movement emits the exact source room header but no Room.Info vnum.
+    escape.observe("next room\n" + PROMPT)
+    assert escape.next_command(state, now=2) == "recall"
+    assert escape.failure is None
+
+
 @pytest.mark.parametrize("reply", [
     "A demon who is one room to the north.",
     "A closed door right here to the north.",

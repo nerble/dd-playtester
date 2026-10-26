@@ -5,7 +5,7 @@ from dd4tester.fastwalks import route_named
 from dd4tester.starter import FieldHuntStop, StarterPolicy
 from dd4tester.state import CharacterState
 from dd4tester.equipment import GearCatalog
-from dd4tester.hunt_candidates import ObjectSource
+from dd4tester.hunt_candidates import ITEM_WEAPON, ObjectSource
 from dd4tester.starter import _capacity_relief_inventory_keyword
 
 
@@ -183,6 +183,93 @@ def test_capacity_relief_rejects_prefix_collisions_and_unknown_inventory() -> No
     assert _capacity_relief_inventory_keyword(
         ["a shot glass", "a colorless flask", "an unknown item"], catalog,
     ) is None
+
+
+def test_capacity_relief_can_release_inferior_unworn_weapon() -> None:
+    current = ObjectSource(
+        9001, "mace current", "a current mace", ITEM_WEAPON,
+        (0, 4, 8, 6), 0, wear_flags=1 << 13, level=40,
+    )
+    spare = ObjectSource(
+        9002, "sword spare", "a spare sword", ITEM_WEAPON,
+        (0, 0, 0, 2), 120, wear_flags=1 << 13, level=1,
+    )
+    catalog = GearCatalog({current.vnum: current, spare.vnum: spare})
+
+    assert _capacity_relief_inventory_keyword(
+        [[{"short_desc": "a spare sword"}]],
+        catalog,
+        character_class="warrior",
+        subclass="knight",
+        worn_source_vnums={current.vnum},
+        worn_source_items=(current,),
+    ) == "sword"
+
+
+def test_capacity_relief_keeps_uncovered_thief_piercing_weapon() -> None:
+    current = ObjectSource(
+        9001, "mace current", "a current mace", ITEM_WEAPON,
+        (0, 4, 8, 6), 0, wear_flags=1 << 13, level=40,
+    )
+    spare = ObjectSource(
+        9002, "dagger spare", "a spare dagger", ITEM_WEAPON,
+        (0, 0, 0, 2), 120, wear_flags=1 << 13, level=1,
+    )
+    catalog = GearCatalog({current.vnum: current, spare.vnum: spare})
+
+    assert _capacity_relief_inventory_keyword(
+        [[{"short_desc": "a spare dagger"}]],
+        catalog,
+        character_class="thief",
+        worn_source_vnums={current.vnum},
+        worn_source_items=(current,),
+    ) is None
+
+
+def test_healer_capacity_dispatches_inferior_weapon_cleanup() -> None:
+    current = ObjectSource(
+        9001, "mace current", "a current mace", ITEM_WEAPON,
+        (0, 4, 8, 6), 0, wear_flags=1 << 13, level=40,
+    )
+    spare = ObjectSource(
+        9002, "sword spare", "a spare sword", ITEM_WEAPON,
+        (0, 0, 0, 2), 120, wear_flags=1 << 13, level=1,
+    )
+    catalog = GearCatalog({current.vnum: current, spare.vnum: spare})
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping({
+            "name": "CapacityTest", "race": "human", "gender": "female",
+            "class": "warrior", "subclass": "knight", "title": "",
+        }),
+        "test-password",
+        gear_catalog=catalog,
+    )
+    policy.in_world = True
+    policy._recovery_session.carrying_capacity.complete = False
+    policy.fastwalk_required_loot_capacity_preflight_complete = False
+    state = CharacterState(
+        level=41,
+        subclass="knight",
+        room_vnum="3054",
+        position=7,
+        equipment=[[{
+            "name": "a current mace",
+            "vnum": current.vnum,
+            "slot": "wield",
+            "item_type": ITEM_WEAPON,
+        }]],
+        inventory=[[{"short_desc": "a spare sword"}]],
+        stats={"carry_num": 35, "maxcarry_num": 35},
+    )
+
+    handled, decision = policy._healer_carrying_capacity_preflight_decision(
+        state,
+        required_slots=1,
+    )
+
+    assert handled is True
+    assert decision is not None
+    assert decision.command == "drop sword"
 
 
 def test_capacity_relief_keeps_poisoned_or_ambiguous_alcohol_vessels() -> None:
