@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from dd4tester.fastwalks import route_named
+from dd4tester.source_paths import source_directory_context
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_DIE_IF_MASTER_GONE,
@@ -89,6 +90,7 @@ from dd4tester.hunt_candidates import (
     source_mobile_can_join_target_fight,
     source_mobile_is_ordinary_below_level_aggressor,
     source_mobile_route_aggressor_is_bounded,
+    source_mobile_route_aggressor_level_only_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
     _bounded_borderline_route_aggressor,
     _source_key_carrier_resets,
@@ -963,12 +965,58 @@ def test_source_assassin_special_remains_a_fixed_transit_hazard(monkeypatch) -> 
 
     [candidate] = rank_hunt_candidates(
         world,
-        character_level=20,
+        character_level=15,
         include_xp_only=True,
     )
 
     assert not candidate.autonomous_safe
     assert "route crosses a non-safe special mobile" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_high_level_player_can_cross_below_band_assassin_special(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 18, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "assassin",
+                "the source assassin",
+                8,
+                ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_assassin",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=20,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert "route crosses a non-safe special mobile" not in (
         candidate.autonomy_rejections
     )
 
@@ -1730,6 +1778,18 @@ def test_source_mobile_template_catalog_matches_dd4_resolution(tmp_path: Path) -
     assert elemental.damage_modifier == 0
     assert templates["goat"].damage_modifier == 20
 
+    # These archetypes are function-like macros in mob.c rather than literal
+    # mob_table rows.  They must remain source-backed and fully resolved.
+    dwarf = templates["dwarf"]
+    assert dwarf.species == "humanoid"
+    assert dwarf.xp_modifier == 10
+    assert dwarf.hp_modifier == 0
+    assert dwarf.damage_modifier == 0
+    assert dwarf.specials == ()
+    untrained = templates["dwarf_untrained"]
+    assert untrained == replace(dwarf, name="dwarf_untrained")
+    assert templates["vampire"].specials == ("spec_vampire",)
+
     area_file = tmp_path / "templated.are"
     area_file.write_text(
         """#MOBILES
@@ -1770,6 +1830,53 @@ A fire elemental is here.~
     assert mobile.area_damage_modifier is None
     assert mobile.damage_modifier == 0
     assert area.mobile_specials[100] == elemental.specials
+
+
+def test_current_source_resolves_macro_defined_dwarven_home_mobiles() -> None:
+    source_root = Path("runs/dd4-source/server")
+    templates = load_mobile_template_catalog(source_root / "src")
+    area = parse_area_file(
+        source_root / "area" / "dwarven_home.are",
+        include_objects=False,
+        mobile_templates=templates,
+    )
+
+    for vnum in (20511, 20512):
+        mobile = area.mobiles[vnum]
+        assert mobile.template_name == "dwarf"
+        assert mobile.template_species == "humanoid"
+        assert mobile.hp_modifier == 0
+        assert mobile.hp_modifier_known is True
+        assert mobile.damage_modifier == 0
+        assert mobile.damage_modifier_known is True
+
+
+def test_live_source_profile_does_not_promote_unreleased_archetypes() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        live_deployment=True,
+    )
+
+    assert "dwarf" not in world.mobile_templates
+    mobile = world.mobiles[20511]
+    assert mobile.template_name == "dwarf"
+    assert mobile.hp_modifier_known is False
+    assert mobile.damage_modifier_known is False
+
+
+def test_live_deployment_profile_propagates_to_nested_source_loads() -> None:
+    with source_directory_context(
+        Path("runs/dd4-source/server/area"),
+        live_deployment=True,
+    ):
+        with source_directory_context(Path("runs/dd4-source/server/area")):
+            world = load_world_source(
+                Path("runs/dd4-source/server/area"),
+                include_all_areas=True,
+            )
+
+    assert "dwarf" not in world.mobile_templates
 
 
 def test_current_source_resolves_sets_skeleton_template_without_special() -> None:
@@ -4049,6 +4156,72 @@ def test_bounded_route_aggressor_accepts_a_low_risk_wielded_weapon() -> None:
     )
 
 
+def test_level_only_route_aggressor_allows_two_source_instances_not_a_crowd() -> None:
+    mobile = MobileSource(
+        200,
+        "crewman",
+        "the armed crewman",
+        35,
+        ACT_AGGRESSIVE,
+        0,
+        "target.are",
+    )
+    world = WorldSource(
+        mobiles={200: mobile},
+        objects={
+            9001: ObjectSource(
+                9001,
+                "sabre",
+                "a sabre",
+                ITEM_WEAPON,
+                (0, 2, 6, 3),
+                100,
+            ),
+            9002: ObjectSource(
+                9002,
+                "vest",
+                "a vest",
+                ITEM_ARMOR,
+                (0, 0, 0, 0),
+                0,
+            ),
+        },
+        mob_resets=[
+            MobReset(
+                200,
+                7001,
+                2,
+                (),
+                ((WEAR_WIELD, 9001), (6, 9002)),
+            )
+        ],
+    )
+
+    assert source_mobile_route_aggressor_level_only_is_bounded(
+        world,
+        mobile,
+        character_level=41,
+    )
+    crowded_world = replace(
+        world,
+        mob_resets=world.mob_resets
+        + [
+            MobReset(
+                200,
+                7002,
+                1,
+                (),
+                ((WEAR_WIELD, 9001), (6, 9002)),
+            ),
+        ],
+    )
+    assert not source_mobile_route_aggressor_level_only_is_bounded(
+        crowded_world,
+        mobile,
+        character_level=41,
+    )
+
+
 def test_bounded_route_aggressor_evaluates_each_mobile_reset_separately() -> None:
     mobile = MobileSource(
         200,
@@ -5461,7 +5634,7 @@ def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None
     assert "target has special procedure spec_poison" in candidate.autonomy_rejections
 
 
-def test_candidate_rejects_source_noncombat_special_room_companion(monkeypatch) -> None:
+def test_candidate_allows_source_noncombat_special_room_companion(monkeypatch) -> None:
     monkeypatch.setattr(
         "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
         ("target.are",),
@@ -5501,8 +5674,12 @@ def test_candidate_rejects_source_noncombat_special_room_companion(monkeypatch) 
         if candidate.mobile_vnum == 100
     )
 
-    assert not candidate.autonomous_safe
-    assert "target room has a dangerous reset companion" in (
+    assert candidate.autonomous_safe
+    assert (
+        "source-backed noncombat special companion: the Golden Buddha"
+        in candidate.hazards
+    )
+    assert "target room has a dangerous reset companion" not in (
         candidate.autonomy_rejections
     )
 
@@ -6140,6 +6317,27 @@ def test_alignment_assistance_gate_uses_player_alignment_not_target_alignment() 
     )
     assert not source_mobile_can_join_player_fight(
         world, good_guard, character_level=8, character_alignment=1000,
+    )
+
+
+def test_passive_mobile_can_join_an_npc_fight_even_without_direct_aggression() -> None:
+    target = MobileSource(
+        100, "target", "the target", 8, ACT_SENTINEL, 0, "target.are",
+    )
+    bystander = MobileSource(
+        200, "bystander", "the bystander", 8, ACT_SENTINEL, 0, "target.are",
+    )
+    world = WorldSource(mobiles={100: target, 200: bystander})
+
+    assert not source_mobile_can_join_player_fight(
+        world, bystander, character_level=8, character_alignment=-500,
+    )
+    assert source_mobile_can_join_target_fight(
+        world,
+        bystander,
+        target,
+        character_level=8,
+        character_alignment=-500,
     )
 
 

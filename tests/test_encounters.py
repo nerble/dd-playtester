@@ -11,8 +11,9 @@ from dd4tester.encounters import (
     source_sequential_duplicate_budget,
 )
 from dd4tester.hunt_candidates import (
-    ACT_SENTINEL, ITEM_WEAPON, WEAR_WIELD, MobileProgram, MobileSource, MobReset,
-    ObjectSource, SourceCombatOutput, WorldSource, load_world_source,
+    ACT_AGGRESSIVE, ACT_SENTINEL, ITEM_ARMOR, ITEM_WEAPON, WEAR_WIELD,
+    MobileProgram, MobileSource, MobReset, ObjectSource, SourceCombatOutput,
+    WorldSource, load_world_source,
 )
 
 
@@ -246,6 +247,63 @@ def test_source_duplicate_pair_uses_live_consider_and_own_floor_not_target_hp():
     assert budget.target_hp_ceiling == 0
     assert budget.health_reserve == 200
     assert "target HP" not in budget.reason
+
+
+def test_source_duplicate_pair_marks_two_room_aggressive_reset_simultaneous():
+    mobile = MobileSource(
+        10,
+        "pirate guard",
+        "the pirate guard",
+        46,
+        ACT_AGGRESSIVE | ACT_SENTINEL,
+        0,
+        "test.are",
+    )
+    sword = ObjectSource(
+        110,
+        "sword",
+        "an emerald sword",
+        ITEM_WEAPON,
+        (0, 1, 8, 0),
+        10,
+    )
+    armor = ObjectSource(
+        111,
+        "armor",
+        "an emerald breastplate",
+        ITEM_ARMOR,
+        (0, 0, 0, 0),
+        10,
+    )
+    equipment = ((WEAR_WIELD, 110), (1, 111))
+    world = WorldSource(
+        mobiles={10: mobile},
+        objects={110: sword, 111: armor},
+        mob_resets=[
+            MobReset(10, 100, 2, (110, 111), equipment),
+            MobReset(10, 101, 2, (110, 111), equipment),
+        ],
+    )
+
+    budget = source_duplicate_pair_budget(
+        world,
+        10,
+        room_vnum=100,
+        character_level=41,
+        hp=1000,
+        max_hp=1000,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 12),
+        sanctuary_mitigation=True,
+        allow_aggressive_split_reset=True,
+    )
+
+    assert budget.allowed
+    assert budget.source_only is True
+    assert budget.simultaneous is True
+    assert budget.level_ceiling == 48
+    assert budget.target_hp_ceiling == 0
 
 
 @pytest.mark.parametrize("change", [

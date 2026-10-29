@@ -10,6 +10,13 @@ observation/report evidence only. Keep the character's own health withdrawal
 floor, level limits, source hazards, identity, provisioning and recovery checks.
 Do not flee because a target is a tank or exceeds a predicted damage budget.
 
+Source-proven armed route mobiles that are at least four levels below the
+pilot may be classified as transit noise when their total reset population is
+at most two, each reset has one known weapon plus armor only, and the source
+shows no scripts or specials. This classification never authorizes fighting
+them or the endpoint: live identity, consider, crowd, Sanctuary, health-floor,
+and return checks still decide the route.
+
 Build for every source-legal race, cosmetic
 sex, base class, optional subclass, name, and personality, capable of creating
 or resuming characters to HERO 100. HERO remains unproved. Follow
@@ -29,6 +36,19 @@ Keep pursuing the best executable current-band XP whether or not the MUD has
 rebooted recently. Reboots may improve particular XP or loot opportunities, but
 never pause progression; wait for a reset only when the selected objective
 actually depends on one, and otherwise move to the next eligible policy.
+Do not make a reboot, a same-reboot retry quota, or a consumed locator marker
+the reason to stop retrying a source-viable target. A prior absence is useful
+rotation evidence, not a permanent or reboot-scoped ban. Re-admit the target
+on later bounded visits whenever fresh source, route, identity, live
+`consider`, health, crowd, and loss gates still pass. Only fresh terminal
+evidence such as a loss, crowd, route hazard, identity mismatch, or negative
+`consider` closes that exact target.
+The generic frontier-retry receipt is provenance only: recording or consuming
+it never creates a one-shot or per-reboot retry quota for a viable target.
+When several loss-free current-band absence candidates are eligible, rotate
+through candidates without a same-context dispatch receipt before revisiting
+one already checked. This is a selection aid only; once the alternatives have
+also been checked, the original target remains reusable under the normal gates.
 Treat `spec_cast_psionicist` as a hard protection gate. Source `special.c`
 opens energy drain at mobile level 14 and disintegrate at level 35, so do not
 engage a psionicist in either band without a fresh source- and live-verified
@@ -443,6 +463,11 @@ estimates, offline replays, live observations, and sustained progression.
 Keep `runs/dd4-source` current with `origin/master`. Finish live workers first,
 require a clean checkout, fetch and fast-forward only, then parse the full world
 before trusting or recording the new source revision.
+The upstream checkout may be newer than the live MUD by months. Treat the
+known undead and archetype/species templates listed by the live deployment
+profile as unresolved for live target admission; use them for research only
+until a live probe confirms deployment. This is a source-version boundary, not
+a reboot-scoped retry rule and never pauses unrelated live progression.
 For plain, single-target source hunts, time pre-level equipment against the
 source-backed one-kill planning window, retaining the existing ten-percent
 window when reward, equipment, group, or source details are uncertain. Include
@@ -851,8 +876,11 @@ without rewriting its status: link its cached summary and checkpoint, preserving
 execution, objective, safety, and the timeout diagnostic independently. Resume
 only when final state is present and neither dead nor in Purgatory; genuinely
 running, failed, or unsafe workers remain failed. Before calling an attempt
-pre-connection or retrying its policy, inspect the process list,
-`show-campaign`, `show-runs --limit 4`, and its exact transcript/current state.
+pre-connection or retrying its policy, inspect `show-campaign`,
+`show-runs --limit 4`, and its exact transcript/current state. Do not inspect
+the process list; manage only explicitly tracked command sessions by their
+returned session IDs, and leave user-owned PowerShell sessions and descendants
+untouched.
 A segment with no `run_id` or zero recorded commands does not prove that no
 run or commands exist. While the segment is still running, use
 `recover-runs --campaign-id N --character NAME` to bind a unique matching run
@@ -1096,7 +1124,16 @@ source-fuzzed level to be strictly greater than `character_level - 5`; equality
 can roll at the below-useful-XP floor and force an XP-losing flee before
 `consider`. A same-room crowd of source-known below-band transit mobiles is
 also a pre-combat hard rejection; only one isolated, source-validated bounded
-interrupter may enter the existing finite transit-fight path. A source HP range
+interrupter may enter the existing finite transit-fight path.
+For a capacity-research route explicitly marked `no_combat_probe`, keep the
+capacity endpoint and every unregistered attacker observation-only, but allow
+one exact source-registered VNUM of an unarmed current-band transit mobile
+through the same bounded transit-fight path. Its isolated live instances may
+be fought up to the finite source-audited reset-family cap (currently three
+for the largest registered route); this is not a one-shot receipt or a
+reboot-scoped quota. Do not admit the capacity endpoint, armed or special
+transit mobiles, crowds, or XP credit for the transit kills; live identity,
+isolation, consider, health, and return gates still apply. A source HP range
 that crosses the character ceiling may use one bounded GMCP
 damage-window probe only when its lower bound and uncertainty gap fit the
 audited player output
@@ -1592,6 +1629,8 @@ interfere with that session or any process it owns, even when it appears old,
 idle, duplicated, or unrelated to the current repository task. Do not run
 process-wide cleanup commands as a substitute; manage only this project's
 explicitly owned workers when a repository operation requires it.
+This exclusion overrides every older generic process-cleanup instruction in
+this file and remains in force when another session asks for cleanup.
 
 Spend nearly all work time advancing the HERO100 objective through useful
 implementation and campaign progress; regression work is secondary. While the

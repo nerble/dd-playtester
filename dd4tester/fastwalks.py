@@ -139,6 +139,9 @@ class Fastwalk:
     # rooms, and never grant objective XP.
     route_allowed_armed_transit_mobile_vnums: tuple[int, ...] = ()
     route_allowed_armed_transit_room_vnums: tuple[str, ...] = ()
+    # Source-capacity research may inspect a live endpoint, but it must never
+    # turn a transit interruption into a combat exception.
+    no_combat_probe: bool = False
     # Exact noncombat quest transit only; runtime rechecks the whole purse.
     route_economic_special_mobile_vnums: tuple[int, ...] = ()
     route_economic_quest_identity: tuple[int, int, int] | None = None

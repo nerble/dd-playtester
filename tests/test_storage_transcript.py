@@ -69,6 +69,31 @@ def test_large_database_progress_reads_only_the_indexed_tail(
     assert [row["sequence"] for row in progress] == list(range(5, 13))
 
 
+def test_recent_phase_history_reads_only_the_requested_tail(tmp_path) -> None:
+    storage = RunStorage(tmp_path / "runs.sqlite3")
+    campaign_id = storage.create_campaign(
+        name="campaign",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    for sequence in range(1, 7):
+        storage.start_campaign_segment(
+            campaign_id,
+            phase="protected" if sequence % 2 else "other",
+            start_state={"level": 40, "sequence": sequence},
+        )
+
+    rows = storage.list_recent_campaign_segments_for_phases(
+        campaign_id,
+        ("protected",),
+        limit=2,
+    )
+    storage.close()
+
+    assert [row["sequence"] for row in rows] == [3, 5]
+
+
 def test_large_database_game_event_history_uses_the_bounded_segment_tail(
     tmp_path,
     monkeypatch,

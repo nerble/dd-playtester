@@ -23,6 +23,10 @@ from .specials import (
     source_special_is_transit_safe,
     source_special_profile,
 )
+from .source_paths import (
+    LIVE_UNDEPLOYED_TEMPLATE_NAMES,
+    current_live_deployment,
+)
 
 
 ACT_IS_NPC = 1 << 0
@@ -3111,6 +3115,9 @@ _C_DEFINE = re.compile(
     r"^\s*#define\s+(?P<name>[A-Za-z_]\w*)\s+(?P<value>.+?)\s*$"
 )
 _C_IDENTIFIER = re.compile(r"\b[A-Za-z_]\w*\b")
+_C_FUNCTION_DEFINE = re.compile(
+    r"^\s*#define\s+(?P<name>[A-Za-z_]\w*)\((?P<parameters>[^)]*)\)\s*\\\s*$"
+)
 
 
 def _strip_c_comments(value: str) -> str:
@@ -3170,22 +3177,20 @@ def _load_c_integer_macros(header_text: str) -> dict[str, int]:
     return values
 
 
-def _c_initializer_rows(source_text: str, table_name: str) -> tuple[str, ...]:
-    """Extract top-level brace records from one C initializer table."""
+def _c_initializer_body(source_text: str, table_name: str) -> str | None:
+    """Return the text inside one C initializer table's outer braces."""
     source_text = _strip_c_comments(source_text)
     match = re.search(
         rf"\b{re.escape(table_name)}\s*\[[^\]]+\]\s*=\s*\{{",
         source_text,
     )
     if match is None:
-        return ()
+        return None
     opening = source_text.find("{", match.start())
-    rows: list[str] = []
-    depth = 0
-    row_start: int | None = None
+    depth = 1
     quoted = False
     escaped = False
-    for position in range(opening, len(source_text)):
+    for position in range(opening + 1, len(source_text)):
         char = source_text[position]
         if quoted:
             if escaped:
@@ -3200,15 +3205,102 @@ def _c_initializer_rows(source_text: str, table_name: str) -> tuple[str, ...]:
             continue
         if char == "{":
             depth += 1
-            if depth == 2:
-                row_start = position + 1
         elif char == "}":
-            if depth == 2 and row_start is not None:
-                rows.append(source_text[row_start:position])
-                row_start = None
             depth -= 1
             if depth == 0:
+                return source_text[opening + 1 : position]
+    return None
+
+
+def _c_initializer_rows(source_text: str, table_name: str) -> tuple[str, ...]:
+    """Extract top-level brace records from one C initializer table."""
+    body = _c_initializer_body(source_text, table_name)
+    if body is None:
+        return ()
+    rows: list[str] = []
+    depth = 0
+    row_start: int | None = None
+    quoted = False
+    escaped = False
+    for position, char in enumerate(body):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+            continue
+        if char == '"':
+            quoted = True
+            continue
+        if char == "{":
+            depth += 1
+            if depth == 1:
+                row_start = position + 1
+        elif char == "}":
+            if depth == 1 and row_start is not None:
+                rows.append(body[row_start:position])
+                row_start = None
+            depth -= 1
+    return tuple(rows)
+
+
+def _c_function_macro_rows(source_text: str, table_name: str) -> tuple[str, ...]:
+    """Expand simple function-like source macros used as table records.
+
+    DD4 keeps several mobile archetypes in ``mob.c`` as macros rather than
+    literal rows.  Parsing those definitions from the source preserves the
+    same fail-closed behavior as ordinary rows without copying the archetypes
+    into Python.
+    """
+    body = _c_initializer_body(source_text, table_name)
+    if body is None:
+        return ()
+    lines = _strip_c_comments(source_text).splitlines()
+    definitions: dict[str, tuple[tuple[str, ...], str]] = {}
+    position = 0
+    while position < len(lines):
+        match = _C_FUNCTION_DEFINE.match(lines[position])
+        if match is None:
+            position += 1
+            continue
+        macro_lines: list[str] = []
+        position += 1
+        while position < len(lines):
+            line = lines[position].rstrip()
+            continued = line.endswith("\\")
+            if continued:
+                line = line[:-1]
+            macro_lines.append(line)
+            position += 1
+            if not continued:
                 break
+        parameters = tuple(
+            parameter.strip()
+            for parameter in match.group("parameters").split(",")
+            if parameter.strip()
+        )
+        definitions[match.group("name")] = (parameters, "\n".join(macro_lines))
+
+    rows: list[str] = []
+    for name, (parameters, macro_body) in definitions.items():
+        pattern = re.compile(rf"\b{re.escape(name)}\s*\(([^()]*)\)")
+        for match in pattern.finditer(body):
+            arguments = _split_c_initializer_fields(match.group(1))
+            if len(arguments) != len(parameters):
+                continue
+            expanded = macro_body
+            for parameter, argument in zip(parameters, arguments, strict=True):
+                expanded = re.sub(
+                    rf"\b{re.escape(parameter)}\b",
+                    argument,
+                    expanded,
+                )
+            expanded = expanded.strip()
+            if expanded.startswith("{") and expanded.endswith("}"):
+                expanded = expanded[1:-1].strip()
+            rows.append(expanded)
     return tuple(rows)
 
 
@@ -3374,6 +3466,8 @@ def _effective_mobile_special_names(
 @lru_cache(maxsize=4)
 def load_mobile_template_catalog(
     source_directory: Path,
+    *,
+    include_unreleased_templates: bool = True,
 ) -> dict[str, MobileTemplateSource]:
     """Load DD4's resolved mobile-template defaults from the source mirror.
 
@@ -3433,7 +3527,11 @@ def load_mobile_template_catalog(
         )
 
     templates: dict[str, MobileTemplateSource] = {}
-    for row in _c_initializer_rows(mob_text, "mob_table"):
+    template_rows = (
+        _c_initializer_rows(mob_text, "mob_table")
+        + _c_function_macro_rows(mob_text, "mob_table")
+    )
+    for row in template_rows:
         fields = _split_c_initializer_fields(row)
         if len(fields) < 12:
             continue
@@ -3468,7 +3566,13 @@ def load_mobile_template_catalog(
             species[7],
             archetype_special_chances,
         )
-        templates[name.casefold()] = MobileTemplateSource(
+        template_key = name.casefold()
+        if (
+            not include_unreleased_templates
+            and template_key in LIVE_UNDEPLOYED_TEMPLATE_NAMES
+        ):
+            continue
+        templates[template_key] = MobileTemplateSource(
             name=name,
             species=species[0],
             act_flags=species[1]
@@ -3504,12 +3608,18 @@ def load_world_source(
     *,
     include_all_areas: bool = False,
     include_all_objects: bool = False,
+    live_deployment: bool | None = None,
 ) -> WorldSource:
     """Parse global hazards and selected candidate-area loot evidence."""
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
-    mobile_templates = load_mobile_template_catalog(area_directory.parent / "src")
+    if live_deployment is None:
+        live_deployment = current_live_deployment()
+    mobile_templates = load_mobile_template_catalog(
+        area_directory.parent / "src",
+        include_unreleased_templates=not live_deployment,
+    )
     world = WorldSource(mobile_templates=mobile_templates)
     const_path = area_directory.parent / "src" / "const.c"
     if const_path.is_file():
@@ -3889,6 +3999,7 @@ def source_mobile_route_aggressor_is_bounded(
     *,
     character_level: int,
     character_max_hp: int | None = None,
+    resets_by_mobile: Mapping[int, Collection[MobReset]] | None = None,
 ) -> bool:
     """Return whether one below-band route aggressor may be finished once.
 
@@ -3945,11 +4056,15 @@ def source_mobile_route_aggressor_is_bounded(
         if use_deep_transit_bound
         else _SOURCE_BOUNDED_TRANSIT_CRITICAL_RATIO
     )
-    resets = [
-        reset
-        for reset in world.mob_resets
-        if reset.mobile_vnum == mobile.vnum
-    ]
+    resets = list(
+        resets_by_mobile.get(mobile.vnum, ())
+        if resets_by_mobile is not None
+        else (
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+    )
     if not resets:
         # Synthetic and legacy callers may provide only the mobile identity.
         # Preserve their older level-only fallback; parsed ranked candidates
@@ -4025,6 +4140,83 @@ def source_mobile_route_aggressor_is_bounded(
         <= critical_limit
         for wielding, dual_wielding in reset_profiles
     )
+
+
+def source_mobile_route_aggressor_level_only_is_bounded(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+    resets_by_mobile: Mapping[int, Collection[MobReset]] | None = None,
+) -> bool:
+    """Allow a source-proven, level-below armed mobile as transit noise.
+
+    This is a route classification, not a damage exemption for combat. It is
+    intentionally limited to a clean, one- or two-mobile source population
+    with one known weapon and known armor per reset, no programs or specials,
+    and a fuzzed maximum level at least four below the pilot. If that mobile
+    actually attacks, the live identity, consider, crowd, health-floor, and
+    return gates still decide the encounter.
+    """
+    if (
+        not mobile.aggressive
+        or mobile.programs
+        or mobile.attack_programs
+        or mobile.fear_aura
+        or mobile.confused
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or not mobile.damage_modifier_known
+        or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+    ):
+        return False
+    specials = {
+        str(special).strip().casefold()
+        for special in world.mobile_specials.get(mobile.vnum, ())
+    }
+    if specials:
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if not (
+        character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+        < maximum_level
+        <= character_level - 4
+    ):
+        return False
+    resets = tuple(
+        resets_by_mobile.get(mobile.vnum, ())
+        if resets_by_mobile is not None
+        else (
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+    )
+    if not resets:
+        return False
+    total_capacity = 0
+    for reset in resets:
+        if not 0 < reset.maximum_count <= 2:
+            return False
+        total_capacity += reset.maximum_count
+        if total_capacity > 2:
+            return False
+        weapon_count = 0
+        for wear_location, object_vnum in tuple(reset.equipment):
+            if wear_location == WEAR_DUAL:
+                return False
+            item = world.objects.get(object_vnum)
+            if item is None:
+                return False
+            if wear_location == WEAR_WIELD:
+                if item.item_type != ITEM_WEAPON or weapon_count:
+                    return False
+                weapon_count += 1
+            elif item.item_type != ITEM_ARMOR:
+                return False
+        if weapon_count != 1:
+            return False
+    return True
 
 
 def source_mobile_is_ordinary_below_level_aggressor(
@@ -4255,7 +4447,10 @@ def rank_hunt_candidates(
     character_alignment: int | None = None,
     route_blocked_room_vnums: Collection[int] = (),
     route_blocked_room_max_extra_steps: int = _MAX_SOURCE_ROUTE_DETOUR_STEPS,
+    preparation_check: Callable[[], None] | None = None,
 ) -> list[HuntCandidate]:
+    if preparation_check is not None:
+        preparation_check()
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
     if level_ceiling_offset is not None and level_ceiling_offset < 0:
@@ -4288,6 +4483,8 @@ def rank_hunt_candidates(
     prototype_population_limits: dict[int, int] = {}
     reset_rooms_by_mobile: dict[int, set[int]] = {}
     for reset in world.mob_resets:
+        if preparation_check is not None:
+            preparation_check()
         prototype_population_limits[reset.mobile_vnum] = max(
             prototype_population_limits.get(reset.mobile_vnum, 0),
             reset.maximum_count,
@@ -4315,27 +4512,36 @@ def rank_hunt_candidates(
             world.rooms,
             room_vnum,
             unlockable_key_vnums=route_key_vnums,
+            preparation_check=preparation_check,
         )
         for index, room_vnum in recall_origin_rooms.items()
     }
+    if preparation_check is not None:
+        preparation_check()
     observed_blocked_rooms = {
         int(room_vnum)
         for room_vnum in route_blocked_room_vnums
         if int(room_vnum) in world.rooms
     }
-    wanderer_reachability = {
-        (mobile.vnum, reset.room_vnum): _wanderer_reachable_rooms(
-            world,
-            mobile,
-            reset.room_vnum,
+    wanderer_reachability = {}
+    for mobile, reset in wandering_aggressors:
+        if preparation_check is not None:
+            preparation_check()
+        wanderer_reachability[(mobile.vnum, reset.room_vnum)] = (
+            _wanderer_reachable_rooms(
+                world,
+                mobile,
+                reset.room_vnum,
+                preparation_check=preparation_check,
+            )
         )
-        for mobile, reset in wandering_aggressors
-    }
     # Index source reachability once, retaining reset order for stable evidence.
     # Joining-only specials matter at the endpoint, not every transit room.
     transit_wanderers: dict[int, set[int]] = {}
     endpoint_wanderers: dict[int, set[int]] = {}
     for index, (hazard, hazard_reset) in enumerate(wandering_aggressors):
+        if preparation_check is not None:
+            preparation_check()
         if _source_mobile_safe_special_suppresses_route_hazard(
             world,
             hazard,
@@ -4359,6 +4565,7 @@ def rank_hunt_candidates(
         ]:
             room_index.setdefault(reachable_room, set()).add(index)
     source_keyword_counts = _source_keyword_counts(world)
+    same_display_keyword_counts = _same_display_keyword_counts(world)
     required_loot_vnums = {
         int(object_vnum) for object_vnum in required_loot_object_vnums
     }
@@ -4366,7 +4573,10 @@ def rank_hunt_candidates(
         world,
         resets_by_room,
         character_level=character_level,
+        preparation_check=preparation_check,
     )
+    if preparation_check is not None:
+        preparation_check()
     safe_recall_paths_by_origin = {
         index: _shortest_paths_from(
             world.rooms,
@@ -4374,6 +4584,7 @@ def rank_hunt_candidates(
             blocked_rooms=(route_hazard_rooms | observed_blocked_rooms)
             - {room_vnum},
             unlockable_key_vnums=route_key_vnums,
+            preparation_check=preparation_check,
         )
         for index, room_vnum in recall_origin_rooms.items()
     }
@@ -4383,9 +4594,12 @@ def rank_hunt_candidates(
             room_vnum,
             blocked_rooms=observed_blocked_rooms - {room_vnum},
             unlockable_key_vnums=route_key_vnums,
+            preparation_check=preparation_check,
         )
         for index, room_vnum in recall_origin_rooms.items()
     }
+    if preparation_check is not None:
+        preparation_check()
 
     def path_from_recall_origin(
         room_vnum: int,
@@ -4454,6 +4668,8 @@ def rank_hunt_candidates(
     ranked: list[HuntCandidate] = []
 
     for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
+        if preparation_check is not None:
+            preparation_check()
         mobile = world.mobiles.get(reset.mobile_vnum)
         room = world.rooms.get(reset.room_vnum)
         if (
@@ -4764,6 +4980,23 @@ def rank_hunt_candidates(
                     f"{companion.short_description}"
                 )
                 continue
+            companion_is_noncombat_special = bool(
+                companion_specials
+                and not companion.aggressive
+                and not companion.attack_programs
+                and not companion.player_relocation_programs
+                and not companion.programs
+                and set(companion_specials) <= SAFE_NONCOMBAT_SPECIALS
+            )
+            if companion_is_noncombat_special:
+                # Source-audited helpful specials such as spec_cast_adept
+                # cannot join or damage a player's fight. Keep the room
+                # companion visible as evidence without closing the target.
+                hazards.append(
+                    "source-backed noncombat special companion: "
+                    f"{companion.short_description}"
+                )
+                continue
             # A source-proven below-band mobile cannot make this useful-band
             # target an unsafe crowd.  This remains true when its special is
             # capable of a bounded nuisance effect; the field runner must
@@ -4942,6 +5175,19 @@ def rank_hunt_candidates(
                         "source-level-below route aggressor remains a live "
                         "combat possibility"
                     )
+                elif source_mobile_route_aggressor_level_only_is_bounded(
+                    world,
+                    hazard,
+                    character_level=character_level,
+                ):
+                    hazards.append(
+                        "bounded level-below armed route mobile may be "
+                        "finished once"
+                    )
+                    if not required_loot_vnums:
+                        autonomy_rejections.append(
+                            "below-band transit aggressor is not an XP target"
+                        )
                 elif (
                     hazard.attack_programs
                     and not hazard.aggressive
@@ -5017,6 +5263,8 @@ def rank_hunt_candidates(
         for path_room in path_room_set:
             reachable_wanderers.update(transit_wanderers.get(path_room, ()))
         for index in sorted(reachable_wanderers):
+            if preparation_check is not None:
+                preparation_check()
             hazard, hazard_reset = wandering_aggressors[index]
             if (
                 hazard.vnum == _MIDGAARD_DRUNK_MOBILE_VNUM
@@ -5167,6 +5415,18 @@ def rank_hunt_candidates(
                     "source-level-below wandering aggressor remains a live "
                     "combat possibility"
                 )
+            elif source_mobile_route_aggressor_level_only_is_bounded(
+                world,
+                hazard,
+                character_level=character_level,
+            ):
+                hazards.append(
+                    "bounded level-below armed wanderer may be finished once"
+                )
+                if not required_loot_vnums:
+                    autonomy_rejections.append(
+                        "below-band wandering aggressor is not an XP target"
+                    )
             elif (
                 hazard.aggressive
                 and hazard_level_max
@@ -5428,6 +5688,7 @@ def rank_hunt_candidates(
                     world,
                     mobile,
                     keyword_counts=source_keyword_counts,
+                    same_display_keyword_counts=same_display_keyword_counts,
                 ),
                 level=mobile.level,
                 room_vnum=room.vnum,
@@ -5499,6 +5760,8 @@ def rank_hunt_candidates(
             )
         )
 
+    if preparation_check is not None:
+        preparation_check()
     status_order = {"promising": 0, "caution": 1, "reject": 2}
     return sorted(
         ranked,
@@ -6398,6 +6661,7 @@ def _route_hazard_rooms(
     *,
     character_level: int,
     require_no_combat_hazards: bool = False,
+    preparation_check: Callable[[], None] | None = None,
 ) -> set[int]:
     """Return rooms worth routing around for the current level band.
 
@@ -6406,8 +6670,12 @@ def _route_hazard_rooms(
     receives the normal target-room rejection and is never silently exempted.
     """
     blocked: set[int] = set()
+    checked_resets = 0
     for room_vnum, resets in resets_by_room.items():
         for reset in resets:
+            checked_resets += 1
+            if preparation_check is not None and checked_resets % 128 == 0:
+                preparation_check()
             mobile = world.mobiles.get(reset.mobile_vnum)
             if mobile is None or not (
                 _source_mobile_is_route_hazard(world, mobile)
@@ -6478,7 +6746,9 @@ def _route_hazard_rooms(
         # DD4's update.c movement rules allow it to reach, not only at its
         # reset room. Keep strict resource-recovery routes out of that entire
         # source-reachable set.
-        for mobile, reset in _wandering_aggressors(world):
+        for index, (mobile, reset) in enumerate(_wandering_aggressors(world)):
+            if preparation_check is not None and index % 32 == 0:
+                preparation_check()
             if _source_mobile_safe_special_suppresses_route_hazard(
                 world,
                 mobile,
@@ -6508,7 +6778,12 @@ def _route_hazard_rooms(
             ):
                 continue
             blocked.update(
-                _wanderer_reachable_rooms(world, mobile, reset.room_vnum)
+                _wanderer_reachable_rooms(
+                    world,
+                    mobile,
+                    reset.room_vnum,
+                    preparation_check=preparation_check,
+                )
             )
     return blocked
 
@@ -7059,6 +7334,18 @@ def _source_mobile_has_unsafe_special(
     specials = tuple(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
         return False
+    if (
+        character_level is not None
+        and mobile is not None
+        and tuple(str(special).strip().casefold() for special in specials)
+        == ("spec_assassin",)
+        and character_level > _mobile_level_range(mobile.level)[1] + 7
+    ):
+        # special.c's opening backstab skips players above the assassin's
+        # level by more than seven. Keep this source-level cutoff in route
+        # analysis so a high-level player is not locked out by a harmless
+        # below-band assassin; target special admission remains separate.
+        return False
     if any(not source_special_is_transit_safe(special) for special in specials):
         return True
     aggressive_combat_only = bool(
@@ -7143,19 +7430,48 @@ def source_mobile_can_join_target_fight(
     character_level: int | None = None,
     character_alignment: int | None = None,
 ) -> bool:
-    """Compatibility wrapper for the player-fight source gate.
+    """Return whether a mobile can join an NPC's fight with this player.
 
-    The field runner's target is an NPC, but DD4's ``violence_update`` branch
-    tests the alignment of the *player* being attacked. The NPC target's
-    alignment is relevant only to a separate NPC-versus-NPC guard-special
-    path, so it must not make a field companion look harmless.
+    ``violence_update`` has a second assistance path that is easy to miss:
+    an otherwise passive NPC can attack when another NPC is already fighting a
+    player. The target's alignment is irrelevant here; the player alignment is
+    the value used by DD4's good-alignment guard.
     """
-    return source_mobile_can_join_player_fight(
+    del target
+    return source_mobile_can_join_npc_fight(
         world,
         mobile,
         character_level=character_level,
         character_alignment=character_alignment,
     )
+
+
+def source_mobile_can_join_npc_fight(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int | None = None,
+    character_alignment: int | None = None,
+) -> bool:
+    """Mirror DD4's passive-NPC assistance branch in ``violence_update``."""
+    if mobile.vnum in world.shopkeepers or not mobile.keywords.strip():
+        return False
+    if mobile.act_flags & ACT_WIZINVIS_MOB:
+        return False
+    if mobile.affected_flags & AFF_NON_CORPOREAL:
+        return False
+    if character_level is not None:
+        minimum_level, maximum_level = _mobile_level_range(mobile.level)
+        if (
+            maximum_level < character_level - 3
+            or minimum_level > character_level + 6
+        ):
+            return False
+    if mobile.alignment >= 350 and _source_character_is_good_alignment(
+        character_alignment
+    ):
+        return False
+    return True
 
 
 def _source_mobile_is_combat_hazard(
@@ -7252,6 +7568,7 @@ def _shortest_paths_from(
     *,
     blocked_rooms: set[int] | frozenset[int] = frozenset(),
     unlockable_key_vnums: Collection[int] = (),
+    preparation_check: Callable[[], None] | None = None,
 ) -> dict[int, tuple[tuple[str, ...], tuple[int, ...], int]]:
     if origin not in rooms:
         return {}
@@ -7261,7 +7578,11 @@ def _shortest_paths_from(
         (0, origin, (), (origin,), 0)
     ]
     best_cost = {origin: 0}
+    expanded = 0
     while queue:
+        expanded += 1
+        if preparation_check is not None and expanded % 128 == 0:
+            preparation_check()
         cost, room_vnum, commands, visited_rooms, closed_doors = heapq.heappop(queue)
         if cost != best_cost.get(room_vnum) or room_vnum in paths:
             continue
@@ -8835,13 +9156,19 @@ def _wanderer_reachable_rooms(
     world: WorldSource,
     mobile: MobileSource,
     origin: int,
+    *,
+    preparation_check: Callable[[], None] | None = None,
 ) -> frozenset[int]:
     origin_room = world.rooms.get(origin)
     if origin_room is None:
         return frozenset()
     pending = [origin]
     visited = {origin}
+    expanded = 0
     while pending:
+        expanded += 1
+        if preparation_check is not None and expanded % 128 == 0:
+            preparation_check()
         room_vnum = pending.pop()
         room = world.rooms.get(room_vnum)
         if room is None:
@@ -9241,11 +9568,28 @@ def _source_keyword_counts(world: WorldSource) -> dict[str, int]:
     return keyword_counts
 
 
+def _same_display_keyword_counts(
+    world: WorldSource,
+) -> dict[str, dict[str, int]]:
+    """Index keyword collisions by normalized mobile display once per rank."""
+    grouped: dict[str, dict[str, int]] = {}
+    for mobile in world.mobiles.values():
+        display = _normalize_name(mobile.short_description)
+        counts = grouped.setdefault(display, {})
+        for token in {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9]+", mobile.keywords)
+        }:
+            counts[token] = counts.get(token, 0) + 1
+    return grouped
+
+
 def _least_ambiguous_source_keyword(
     world: WorldSource,
     mobile: MobileSource,
     *,
     keyword_counts: Mapping[str, int] | None = None,
+    same_display_keyword_counts: Mapping[str, Mapping[str, int]] | None = None,
 ) -> str:
     """Choose a source keyword that minimizes live ``where`` collisions.
 
@@ -9270,21 +9614,26 @@ def _least_ambiguous_source_keyword(
         keyword_counts = _source_keyword_counts(world)
 
     normalized_short = _normalize_name(mobile.short_description)
-    same_display_keyword_counts: dict[str, int] = {}
-    for other in world.mobiles.values():
-        if _normalize_name(other.short_description) != normalized_short:
-            continue
-        other_tokens = {
-            token.casefold()
-            for token in re.findall(r"[A-Za-z0-9]+", other.keywords)
-        }
-        for token in other_tokens:
-            same_display_keyword_counts[token] = (
-                same_display_keyword_counts.get(token, 0) + 1
-            )
+    if same_display_keyword_counts is None:
+        display_keyword_counts: dict[str, int] = {}
+        for other in world.mobiles.values():
+            if _normalize_name(other.short_description) != normalized_short:
+                continue
+            other_tokens = {
+                token.casefold()
+                for token in re.findall(r"[A-Za-z0-9]+", other.keywords)
+            }
+            for token in other_tokens:
+                display_keyword_counts[token] = (
+                    display_keyword_counts.get(token, 0) + 1
+                )
+    else:
+        display_keyword_counts = dict(
+            same_display_keyword_counts.get(normalized_short, {})
+        )
     distinguishing_tokens = tuple(
         token for token in tokens
-        if same_display_keyword_counts.get(token, 0) == 1
+        if display_keyword_counts.get(token, 0) == 1
     )
     if distinguishing_tokens:
         return min(

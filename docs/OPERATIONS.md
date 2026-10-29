@@ -2,6 +2,55 @@
 
 ## Current Target-Selection Policy
 
+### Upstream source versus live deployment
+
+`runs/dd4-source` is the current upstream checkout and remains useful for
+research, parser tests, and future planning. The live MUD has not deployed the
+recent undead and archetype/species changes, and may remain on that deployment
+for months. Live campaign loading therefore filters the known unreleased
+mobile templates and treats any matching area record as unresolved. Such a
+record cannot authorize a hunt until a live probe and a confirmed deployment
+update establish the template. This boundary is intentionally separate from
+the source revision recorded for provenance; it is not a reboot wait or a
+reason to stop selecting other live-verified targets.
+
+### Retry rule
+
+A source-viable target is never closed because a locator retry was dispatched,
+a retry marker was recorded as consumed, or the MUD rebooted. A loss-free
+absence is locator evidence only. A short scheduler cooldown may prevent an
+identical command from being issued immediately, but it is not a per-reboot
+quota and does not require a reset before the target can be revisited. Later
+bounded visits may re-admit the target whenever fresh source, route, identity,
+live `consider`, health, crowd, and loss checks pass. Only fresh terminal
+evidence such as a loss, crowd, route hazard, identity mismatch, or negative
+`consider` closes that exact target.
+
+Startup must also ignore a bare absence/crowd cooldown when the result that
+created it belongs to an older DD4 boot. A reboot is a fresh locator
+observation, not permission to keep a viable target closed. This does not
+erase or reopen a durable combat-loss record, source hazard, identity failure,
+or negative live `consider` for the exact target.
+
+The generic source-ranked frontier-retry receipt is diagnostic provenance, not
+consumption state. It cannot close a viable target for the current reboot or
+turn a later bounded retry into a one-shot entitlement; the ordinary fresh
+source, route, identity, `consider`, crowd, health, and loss gates remain the
+actual admission rules.
+When multiple loss-free current-band absence candidates are eligible, the
+selector prefers one without a same-context dispatch receipt before repeating
+an already checked circuit. This only improves rotation; after the alternatives
+are checked, every still-viable target remains reusable.
+
+### Armed transit noise
+
+A source-proven armed route mobile may be treated as transit noise when its
+fuzzed maximum level is at least four levels below the pilot, its total reset
+population is at most two, and every reset has one known weapon plus armor
+only, with no scripts or specials. This is route permission only. It does not
+authorize combat with the mobile or the selected endpoint; live identity,
+consider, crowd, Sanctuary, health-floor, and return checks remain mandatory.
+
 The current durable checkpoint is **64223** (campaign **35**). Dorrik is level
 **41** with **1,525,558 XP**, 18 quest points, no level-up shortfall, and a safe
 healer checkpoint in room **3054**. One Sanctuary charge remains in the red
@@ -922,6 +971,16 @@ policy-loss checks. Audited route-program admission receives the bounded
 capacity-endpoint flag only from this source proof; it retains its own route
 hazard preflight. The live executor still requires one exact isolated useful-XP
 target before combat, with the ordinary finite search and action budgets.
+When that capacity route is explicitly marked `no_combat_probe`, the endpoint
+and every unregistered attacker remain observation-only, but one exact,
+source-registered VNUM for an unarmed current-band transit mobile may use the
+existing bounded transit-fight state machine to reach the endpoint. Isolated
+instances of that VNUM may be fought up to the finite source-audited
+reset-family cap, currently three for the largest registered route. This is
+not a one-shot receipt, reboot-scoped quota, or permission to fight a crowd.
+It does not admit the capacity endpoint itself, armed or special transit
+mobiles, or XP credit for the transit kills; live identity, isolation,
+consider, health, and return gates still apply.
 That source-proved plain population may retain a nominally current-level
 candidate whose source load fuzz reaches plus two only when the existing
 post-loss no-reserve peak/defense/output proof passes. It does not raise the
@@ -3170,6 +3229,13 @@ single retry avoids paying an unnecessary recall penalty while combat is still
 active. Poison, low health, no-recall rooms, and a second failed flee use the
 existing direct-return path instead; never spin on repeated escape attempts.
 
+After a successful emergency flee, perform one bounded room audit. If a
+pursuer remains, an ordinary hunt must use the direct audited return rather
+than issuing another flee. Consider-only research and required-loot routes may
+use one explicitly bounded second flee before returning. The follow-up must
+then hand off to the normal return controller; it must never restart the
+post-flee audit cycle or repeatedly charge the level-scaled flee penalty.
+
 Optimize useful kills and net XP per complete journey. Keep attacking viable
 targets until a meaningful health, protection, nutrition, movement, or runtime
 boundary. Do not kill below-band targets for XP, infer emptiness from one room,
@@ -3451,13 +3517,14 @@ source-ranked targets are closed by their exact-reset evidence or by an
 exhausted protection reserve; otherwise the selector continues with any
 independent current-band route immediately.
 
-A source-ranked hunt recorded as a same-boot retryable failure with a positive
-cooldown is not an ordinary retry. Keep it out of normal ranking until its
-cooldown ages or new evidence changes the route. The generic cooldown switch may
-reopen a genuinely absent reset; retryable route or combat failures require
-their matching one-use timeout, protection, familiar, route-loss, or other
-source-audited revalidation. If a summoned companion does not reach the target
-room, rotate to another route instead of repeating the same approach unchanged.
+A source-ranked hunt that returns a loss-free absence is not a consumed retry.
+A positive cooldown is only a short scheduling pause to avoid issuing the same
+locator command immediately; it is not reboot-scoped and never makes a viable
+target wait for a reset. Once the scheduler reaches a later bounded visit, it
+may re-locate the same target under fresh source, route, identity, consider,
+health, crowd, and loss checks. Route, crowd, combat-loss, and other terminal
+failures remain separate safety evidence and cannot be reopened by this absence
+rule; a fresh source-audited repair is required for those cases.
 
 One reset-aware revalidation may reopen an exact source-ranked policy after a
 pre-target runtime-boundary timeout. If that policy has already reached the

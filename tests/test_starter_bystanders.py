@@ -1,6 +1,7 @@
 from dataclasses import replace
 import json
 from dataclasses import replace
+import time
 from pathlib import Path
 
 import pytest
@@ -8,16 +9,19 @@ import pytest
 from dd4tester import starter
 from dd4tester.character import CharacterSpec
 from dd4tester.connection import ReadResult
+from dd4tester.encounters import SourcePairBudget, SourcePairEncounter
 from dd4tester.fastwalks import route_named
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_SENTINEL,
     AFF_NON_CORPOREAL,
+    ITEM_ARMOR,
     MobileProgram,
     MobileSource,
     MobReset,
     ObjectSource,
     ITEM_WEAPON,
+    WEAR_WIELD,
     WorldSource,
 )
 from dd4tester.observations import GameEvent
@@ -73,6 +77,14 @@ def _encounter(character_class: str = "mage") -> tuple[StarterPolicy, CharacterS
         position=7, enemies=[],
     )
     return policy, state
+
+
+def test_unique_wandering_source_bystander_is_resolved_without_room_reset():
+    policy, state = _encounter("warrior")
+    policy.source_mobile_can_join_by_vnum = {100: False, 101: False}
+
+    assert policy._source_mobile_vnums_for_name_in_room("midget", state) == (101,)
+    assert policy._source_mobile_name_is_non_assisting_bystander("midget", state)
 
 
 def _sequential_duplicate_shadow() -> tuple[StarterPolicy, CharacterState]:
@@ -162,6 +174,254 @@ def test_two_copy_source_sentinel_is_considered_one_exact_instance_at_a_time():
     assert policy.consider_viable is None
 
 
+def test_sequential_duplicate_ignores_passive_target_bystander_flag_without_extra_mobile():
+    policy, state = _sequential_duplicate_shadow()
+    policy.fastwalk_hunt_stops = (
+        replace(
+            policy.fastwalk_hunt_stops[0],
+            allow_source_bystander_encounter=True,
+        ),
+    )
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "consider #19146"
+    assert policy.fastwalk_crowded is False
+
+
+def test_source_duplicate_consider_prompt_reopens_next_selector():
+    policy, state = _sequential_duplicate_shadow()
+    policy.in_world = True
+    policy.fastwalk_route = route_named("moria")
+    policy.fastwalk_outbound_index = len(policy.fastwalk_route.commands)
+    policy.fastwalk_arrival_observed = True
+    policy.fastwalk_hunt_move_index = 0
+    policy.fastwalk_hunt_looked = True
+    policy.fastwalk_hunt_action_index = 0
+    policy.fastwalk_attack_target = "a living shadow"
+    policy.prompt_ready = True
+
+    first = policy._fastwalk_hunt_plan_decision(state)
+    assert first is not None
+    assert first.command == "consider #19146"
+    policy.after_command(first, state)
+
+    policy.observe_text(
+        "The perfect match!\n\r"
+        "Also, it is built like a tank!\n\r\n\r"
+        "<936/936 hits 300/300 mana 220/220 move [Test]> "
+    )
+
+    assert policy.prompt_ready is True
+    next_decision = policy.next_decision(state)
+    assert next_decision is not None
+    assert next_decision.command == "consider #20646"
+
+
+def test_plain_duplicate_live_consider_overrides_source_level_fuzz_veto():
+    policy, state = _sequential_duplicate_shadow()
+    stop = replace(
+        policy.fastwalk_hunt_stops[0],
+        maximum_level_offset=1,
+        source_combat_action="kick",
+        source_combat_conservative_damage=80,
+        source_combat_max_actions=24,
+    )
+    policy.fastwalk_hunt_stops = (stop,)
+    policy.in_world = True
+    policy.world_boot_id = "test-boot"
+    policy.current_room = "39007"
+    policy.fastwalk_attack_target = "a living shadow"
+    policy.source_mobile_level_ranges_by_vnum[39038] = (40, 44)
+    policy.known_skills = ("kick",)
+    policy.known_skill_levels = {"kick": 100}
+    state.level = 41
+    now = time.monotonic()
+    policy.source_duplicate_pair_consider_results = {
+        selector: {
+            "room_vnum": "39007",
+            "level": 41,
+            "selector": selector,
+            "source_mobile_vnum": 39038,
+            "boot_id": "test-boot",
+            "viable": True,
+            "expires_at": now + 20.0,
+        }
+        for selector in ("#20646", "#19146")
+    }
+    policy.consider_target = "a living shadow"
+    policy.consider_target_selector = "#19146"
+    policy.consider_viable = True
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert policy.fastwalk_attack_started is True
+    assert policy.fastwalk_abort_reason is None
+    assert "source-fuzzed level" not in decision.reason
+
+
+def test_source_duplicate_prompt_clears_stale_outer_acknowledgement_wait():
+    policy, state = _sequential_duplicate_shadow()
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.source_duplicate_pair_consider_resume_pending = True
+    policy.consider_response_pending = True
+    policy.consider_response_deadline = time.monotonic() + 5.0
+    policy.fastwalk_hunt_look_response_pending = True
+    policy.fastwalk_hunt_look_response_deadline = time.monotonic() + 5.0
+    policy.fastwalk_hunt_look_response_buffer = "[Exits: north]"
+
+    policy._next_decision_unchecked(state)
+
+    assert policy.source_duplicate_pair_consider_resume_pending is False
+    assert policy.consider_response_pending is False
+    assert policy.consider_response_deadline is None
+    assert policy.fastwalk_hunt_look_response_pending is False
+    assert policy.fastwalk_hunt_look_response_deadline is None
+
+
+def test_aggressive_split_pair_allows_two_exact_attackers_in_one_controller():
+    policy, state = _encounter("warrior")
+    mobile = replace(
+        policy.source_world.mobiles[100],
+        short_description="the pirate guard",
+        room_description="The pirate guard is here.",
+        level=7,
+        act_flags=ACT_AGGRESSIVE | ACT_SENTINEL,
+    )
+    policy.source_world.mobiles[100] = mobile
+    policy.source_world.objects[110] = ObjectSource(
+        110, "sword", "an emerald sword", ITEM_WEAPON, (0, 1, 8, 0), 10,
+    )
+    policy.source_world.objects[111] = ObjectSource(
+        111, "armor", "an emerald breastplate", ITEM_ARMOR, (0, 0, 0, 0), 10,
+    )
+    equipment = ((WEAR_WIELD, 110), (1, 111))
+    policy.source_world.mob_resets = [
+        MobReset(100, 200, 2, (110, 111), equipment),
+        MobReset(100, 201, 2, (110, 111), equipment),
+    ]
+    stop = replace(
+        policy.fastwalk_hunt_stops[0],
+        target="the pirate guard",
+        source_mobile_vnum=100,
+        source_target_armed=True,
+        allow_source_duplicate_pair=True,
+        maximum_target_count=2,
+        require_sanctuary=True,
+        source_reset_room_vnum="200",
+        source_mobile_room_description=mobile.room_description,
+    )
+    policy.fastwalk_hunt_stops = (stop,)
+    policy.fastwalk_hunt_stop_index = 0
+    policy.current_room = "200"
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "the pirate guard"
+    policy.active_target_selector = "#10"
+    policy.active_target_mobile_vnum = 100
+    policy.prompt_ready = True
+    state.room_vnum = "200"
+    state.in_combat = True
+    state.affects = [{"name": "sanctuary", "duration": 2}]
+    state.enemies = [
+        {"isnpc": "100", "name": "the pirate guard", "level": "7"},
+        {"isnpc": "100", "name": "the pirate guard", "level": "7"},
+    ]
+    budget = SourcePairBudget(
+        True,
+        "",
+        mobile_vnums=(100, 100),
+        actions=4,
+        expected_incoming=10,
+        peak_round=10,
+        health_reserve=20,
+        mana_cost=0,
+        level_ceiling=8,
+        target_hp_ceiling=0,
+        source_only=True,
+        simultaneous=True,
+    )
+    policy.source_pair_encounter = SourcePairEncounter(
+        budget,
+        ("#10", "#11"),
+        "200",
+        0,
+        8,
+        "test-boot",
+        time.monotonic() - 2,
+        started_at=time.monotonic() - 1,
+    )
+
+    handled, decision = policy._source_pair_combat_decision(state)
+
+    assert handled is True
+    assert decision is None or decision.command != "flee"
+    assert policy.fastwalk_abort_reason is None
+
+
+def test_armed_pair_accepts_exact_second_copy_with_sequential_budget():
+    policy, state = _encounter("warrior")
+    stop = replace(
+        policy.fastwalk_hunt_stops[0],
+        target="the illusionist",
+        source_mobile_vnum=100,
+        source_target_armed=True,
+        allow_source_duplicate_pair=True,
+        maximum_target_count=2,
+        require_sanctuary=True,
+        source_reset_room_vnum="200",
+    )
+    policy.fastwalk_hunt_stops = (stop,)
+    policy.fastwalk_hunt_stop_index = 0
+    policy.current_room = "200"
+    policy.fastwalk_attack_started = True
+    policy.combat_active = True
+    policy.active_target = "the illusionist"
+    policy.active_target_selector = "#10"
+    policy.active_target_mobile_vnum = 100
+    policy.prompt_ready = True
+    state.room_vnum = "200"
+    state.in_combat = True
+    state.affects = [{"name": "sanctuary", "duration": 2}]
+    state.enemies = [
+        {"isnpc": "100", "name": "the illusionist", "level": "7"},
+        {"isnpc": "100", "name": "the illusionist", "level": "7"},
+    ]
+    budget = SourcePairBudget(
+        True,
+        "",
+        mobile_vnums=(100, 100),
+        actions=4,
+        expected_incoming=10,
+        peak_round=10,
+        health_reserve=20,
+        mana_cost=0,
+        level_ceiling=8,
+        target_hp_ceiling=0,
+        source_only=True,
+        simultaneous=False,
+    )
+    policy.source_pair_encounter = SourcePairEncounter(
+        budget,
+        ("#10", "#11"),
+        "200",
+        0,
+        8,
+        "test-boot",
+        time.monotonic() - 2,
+        started_at=time.monotonic() - 1,
+    )
+
+    handled, decision = policy._source_pair_combat_decision(state)
+
+    assert handled is True
+    assert decision is None or decision.command != "flee"
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_sequential_duplicate_selection_still_rejects_extra_mobile():
     policy, state = _sequential_duplicate_shadow()
     policy.room_targets["39007"].append("a cave rat")
@@ -220,6 +480,79 @@ def test_plain_four_copy_rotation_binds_all_considers_and_uses_single_enemy_cont
     handled, decision = policy._source_pair_combat_decision(state)
     assert handled is True
     assert decision is None or decision.command != "flee"
+
+
+def test_plain_duplicate_room_listing_does_not_become_four_attackers():
+    policy, state = _sequential_duplicate_shadow()
+    mobile = policy.source_world.mobiles[39038]
+    policy.source_world.mobiles[39038] = replace(mobile, level=38)
+    policy.source_mobile_level_ranges_by_vnum[39038] = (36, 40)
+    policy.known_skills = {"kick"}
+    policy.known_skill_levels = {"kick": 100}
+    policy.in_world = True
+    policy.fastwalk_route = route_named("gnome mine")
+    state.hp = state.max_hp = 2000
+
+    for selector in ("#19146", "#20646"):
+        decision = policy._consider_fastwalk_target(state)
+        assert decision is not None
+        assert decision.command == f"consider {selector}"
+        policy.after_command(decision)
+        policy.observe_text("A living shadow looks like an easy kill.\n")
+
+    opener = policy._consider_fastwalk_target(state)
+    assert opener is not None
+    policy.after_command(opener)
+    assert policy.source_pair_encounter is not None
+
+    state.in_combat = True
+    state.enemies = [
+        {"isnpc": "39038", "name": "a living shadow", "level": "38"}
+        for _ in range(4)
+    ]
+    policy.combat_active = True
+    policy.active_enemy_duplicate_count = 3
+
+    handled, decision = policy._source_pair_combat_decision(state)
+
+    assert handled is True
+    assert decision is None or decision.command != "flee"
+    assert policy.fastwalk_abort_reason is None
+
+
+def test_source_pair_waits_through_empty_enemy_snapshot_in_active_fight():
+    policy, state = _sequential_duplicate_shadow()
+    mobile = policy.source_world.mobiles[39038]
+    policy.source_world.mobiles[39038] = replace(mobile, level=38)
+    policy.source_mobile_level_ranges_by_vnum[39038] = (36, 40)
+    policy.known_skills = {"kick"}
+    policy.known_skill_levels = {"kick": 100}
+    policy.in_world = True
+    policy.fastwalk_route = route_named("gnome mine")
+    state.hp = state.max_hp = 2000
+
+    for selector in ("#19146", "#20646"):
+        decision = policy._consider_fastwalk_target(state)
+        assert decision is not None
+        assert decision.command == f"consider {selector}"
+        policy.after_command(decision)
+        policy.observe_text("A living shadow looks like an easy kill.\n")
+
+    opener = policy._consider_fastwalk_target(state)
+    assert opener is not None
+    policy.after_command(opener)
+    assert policy.source_pair_encounter is not None
+
+    state.in_combat = True
+    state.enemies = []
+    policy.combat_active = True
+
+    handled, decision = policy._source_pair_combat_decision(state)
+
+    assert handled is True
+    assert decision is None
+    assert policy.source_pair_encounter is not None
+    assert policy.prompt_ready is False
 
 
 def test_sequential_duplicate_rotation_skips_below_band_copy_but_keeps_viable_copy():
@@ -608,7 +941,9 @@ def test_source_material_admission_preserves_rejection_boundaries(monkeypatch, c
     elif change == "special":
         policy.source_world.mobile_specials[101] = ("spec_poison",)
     elif change == "armed":
-        policy.source_world.mob_resets[1] = MobReset(101, 200, 1, ((16, 999),))
+        policy.source_world.mob_resets[1] = MobReset(
+            101, 200, 1, (), equipment=((16, 999),),
+        )
     elif change == "expired":
         policy.bystander_consider_results["#11"]["expires_at"] = 0
     else:
@@ -645,6 +980,33 @@ def test_bystander_consider_unblocks_only_ordinary_target_consider(
         "source_mobile_vnum": 101, "boot_id": "test-boot",
         "below_assistance_band": True,
     }]
+
+
+def test_passive_source_bystander_blocks_target_endpoint_when_npc_fight_can_spread() -> None:
+    policy, state = _encounter("warrior")
+    policy.source_world.mobiles[101] = replace(
+        policy.source_world.mobiles[101], level=10,
+    )
+    policy.source_mobile_level_ranges_by_vnum[101] = (8, 12)
+    policy.source_mobile_vnums_by_target_room["midget"] = {"200": (101,)}
+
+    assert not policy._source_mobile_name_is_non_assisting_target_bystander(
+        "illusionist",
+        "midget",
+        state,
+        policy.fastwalk_hunt_stops[0],
+    )
+    allowed, decision = policy._fastwalk_endpoint_attacker_gate(
+        state,
+        "illusionist",
+        policy.fastwalk_hunt_stops[0],
+    )
+
+    assert not allowed
+    assert decision is not None
+    assert decision.command == "recall"
+    assert policy.fastwalk_crowded is True
+    assert "midget" in (policy.fastwalk_abort_reason or "")
 
 
 def test_good_alignment_combat_special_bystander_is_ignored_for_good_player() -> None:
@@ -1131,7 +1493,7 @@ def test_run_12798_finishes_engaged_low_load_without_spending_xp_to_flee(charact
     audit = policy.fastwalk_encounter_budgets[-1]
     assert audit["mode"] == "below-band-endpoint-defense" and audit["allowed"]
     if character_class == "mage":
-        assert audit["actions"] == 2 and audit["mana_cost"] == 100
+        assert audit["actions"] == 0 and audit["mana_cost"] == 50
 
 
 @pytest.mark.parametrize("boundary", [
@@ -1146,7 +1508,7 @@ def test_below_band_endpoint_defense_preserves_survival_and_identity_gates(bound
     elif boundary == "hp":
         state.hp = 50
     elif boundary == "mana":
-        state.mana = 120  # Enough for minimum-cost fiction, not practiced cost.
+        state.mana = 70  # Below two practiced casts plus the 15% reserve.
     elif boundary == "nutrition":
         policy.needs_food = True
     elif boundary == "runtime":

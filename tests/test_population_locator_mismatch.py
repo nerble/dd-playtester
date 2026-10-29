@@ -293,6 +293,38 @@ def test_unaffordable_visibility_preparation_switches_to_bounded_funding():
     assert state[_SEE_INVISIBLE_FUNDING_REQUIRED_KEY] is True
 
 
+def test_rejected_visibility_research_does_not_trigger_funding():
+    selected = ProgressionPolicy(
+        policy_id="source-ranked-hunt-test-25000-25011-41",
+        minimum_level=41,
+        maximum_level=41,
+        status="research",
+        execution="source-ranked-hunt",
+        summary="research",
+        evidence=(),
+        practice_skill=None,
+    )
+    state = {
+        "level": 41,
+        "world_boot_id": "boot-A",
+        "affects": [],
+        "currencies": {"gold": 1, "silver": 6, "copper": 5},
+        _MAGIC_SHOP_SEE_INVISIBLE_PRICE_KEY: 254,
+        "magic_shop_see_invisible_price_boot_id": "boot-A",
+    }
+
+    policy = _source_ranked_visibility_preparation_policy(
+        selected,
+        SimpleNamespace(status="reject", requires_detect_invisibility=True),
+        state,
+        character_level=41,
+        can_prepare=True,
+    )
+
+    assert policy is None
+    assert _SEE_INVISIBLE_FUNDING_REQUIRED_KEY not in state
+
+
 def test_visibility_retry_repair_recovers_same_boot_quote_and_funding():
     class StorageStub:
         def list_campaign_segments(self, campaign_id: int):

@@ -1,3 +1,5 @@
+import pytest
+
 from dd4tester.hunt_candidates import _section_ranges, parse_area_file
 
 
@@ -103,3 +105,38 @@ def test_quest_route_diagnosis_distinguishes_locked_access_without_opening_it():
     assert _quest_unavailable_route_reason(world, 21) == (
         "the source graph has no route from recall to quest room 21"
     )
+
+
+def test_shortest_paths_honors_preparation_check_during_traversal():
+    from dd4tester.hunt_candidates import ExitSource, RoomSource, _shortest_paths_from
+
+    rooms = {
+        room_vnum: RoomSource(
+            room_vnum,
+            f"Room {room_vnum}",
+            "example.are",
+            exits=(
+                {
+                    "east": ExitSource("east", room_vnum + 1, 0, -1)
+                }
+                if room_vnum < 300
+                else {}
+            ),
+        )
+        for room_vnum in range(1, 301)
+    }
+    checks = 0
+
+    def preparation_check() -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            raise RuntimeError("preparation deadline")
+
+    with pytest.raises(RuntimeError, match="preparation deadline"):
+        _shortest_paths_from(
+            rooms,
+            1,
+            preparation_check=preparation_check,
+        )
+    assert checks == 1

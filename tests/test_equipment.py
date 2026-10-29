@@ -16,6 +16,7 @@ from dd4tester.equipment import (
     character_can_use_item,
     generated_weapon_damage_floor,
     is_blunt_weapon,
+    is_active_light_source,
     item_category,
     item_command_keyword,
     item_keyword,
@@ -1104,6 +1105,36 @@ def test_stance_swap_removes_conflict_before_wearing_better_item() -> None:
 
     assert removals == [damage]
     assert additions == [recovery]
+
+
+def test_stance_swap_keeps_active_light_over_depleted_stat_light() -> None:
+    depleted = ObjectSource(
+        1805,
+        "mint sprig",
+        "a sprig of mints",
+        1,
+        (0, 0, 0, 0),
+        0,
+        wear_flags=1,
+        affects=((13, 1),),
+    )
+    torch = ObjectSource(
+        3030,
+        "torch",
+        "a torch",
+        1,
+        (0, 0, 24, 0),
+        10,
+        wear_flags=1,
+    )
+
+    assert is_active_light_source(depleted) is False
+    assert is_active_light_source(torch) is True
+    assert plan_stance_swaps([depleted], [torch], STANCE_COMBAT) == ([], [])
+    assert plan_stance_swaps([torch], [depleted], STANCE_COMBAT) == (
+        [depleted],
+        [torch],
+    )
 
 
 def test_combat_stance_prefers_piercing_weapon_for_backstab() -> None:

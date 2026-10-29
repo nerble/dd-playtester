@@ -1,4 +1,7 @@
 from dataclasses import replace
+from pathlib import Path
+
+import json
 
 import pytest
 
@@ -15,6 +18,7 @@ from dd4tester.hunt_candidates import (
     ObjectSource,
     RoomSource,
     WorldSource,
+    load_world_source,
 )
 from dd4tester.populations import (
     plain_bounded_population,
@@ -68,6 +72,69 @@ def test_source_ranked_plain_multiroom_population_is_capacity_researchable():
     )
 
     assert plain_bounded_population(candidate, world)
+    assert campaign._source_ranked_capacity_research_candidate(
+        candidate,
+        character_level=27,
+        source_world=world,
+    )
+    # The source audit is required; candidate metadata alone must not turn a
+    # multi-room population into a research route.
+    assert not campaign._source_ranked_capacity_research_candidate(
+        candidate,
+        character_level=27,
+    )
+
+
+def test_capacity_history_quarantines_source_ranked_plain_population():
+    candidate, world = population_case()
+    world.mobiles[100] = replace(world.mobiles[100], act_flags=ACT_SENTINEL)
+    world.objects.clear()
+    world.mob_resets = [MobReset(100, vnum, 3, ()) for vnum in (300, 301, 302)]
+    candidate = replace(candidate, status="caution", autonomy_rejections=(), loot=())
+    record = campaign._source_ranked_candidate_record(
+        candidate,
+        character_level=27,
+    )
+    failed_probe = {
+        "phase": "source-ranked-hunt-test-100-300-27",
+        "start_state_json": json.dumps(
+            {
+                "level": 27,
+                "campaign_source_ranked_hunt_candidate": record,
+            }
+        ),
+        "end_state_json": json.dumps(
+            {
+                "level": 27,
+                "world_boot_id": "boot-1",
+                "campaign_objective_kills": [],
+            }
+        ),
+    }
+
+    assert campaign._source_capacity_research_mobile_keys_from_segments(
+        (failed_probe,),
+        boot_id="boot-1",
+        source_world=world,
+    ) == frozenset({("test.are", 100)})
+
+    productive_probe = {
+        **failed_probe,
+        "end_state_json": json.dumps(
+            {
+                "level": 27,
+                "world_boot_id": "boot-1",
+                "campaign_objective_kills": [
+                    {"source_mobile_vnum": 100, "xp_gained": 200}
+                ],
+            }
+        ),
+    }
+    assert campaign._source_capacity_research_mobile_keys_from_segments(
+        (productive_probe,),
+        boot_id="boot-1",
+        source_world=world,
+    ) == frozenset()
 
 
 def sequential_duplicate_case():
@@ -101,6 +168,39 @@ def test_four_copy_sentinel_reset_is_admitted_with_a_finite_sequential_bound():
 
     assert source_sequential_duplicate_reset_limit(
         world, mobile_vnum=100, room_vnum="200",
+    ) == 4
+
+
+def test_sequential_duplicate_reset_allows_source_passive_perception_affects():
+    world = sequential_duplicate_case()
+    world.mobiles[100] = replace(world.mobiles[100], affected_flags=(1 << 2) | (1 << 9))
+
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=100, room_vnum=200,
+    ) == 2
+
+
+def test_goblin_fortress_visitors_are_a_sequential_source_population():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    assert world.mobiles[20301].affected_flags == (1 << 2) | (1 << 9)
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=20301, room_vnum=20319,
+    ) == 4
+
+
+def test_stay_area_terra_kan_population_allows_harmless_healing_pill():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    assert world.mobiles[17044].act_flags == ACT_STAY_AREA
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=17044, room_vnum=17258,
     ) == 4
 
 

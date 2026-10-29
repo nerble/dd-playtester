@@ -12,6 +12,7 @@ from .combat_timing import COMBAT_WAIT_SECONDS
 from .hunt_candidates import (
     ACT_SENTINEL,
     EX_WALL,
+    ITEM_ARMOR,
     ITEM_STAFF,
     ITEM_WEAPON,
     WEAR_DUAL,
@@ -118,6 +119,10 @@ class SourcePairBudget(EncounterBudget):
     # This is a source-verified duplicate reset fought one instance at a
     # time.  Its admission never uses a live or estimated target HP value.
     source_only: bool = False
+    # The aggressive split-reset shape is source-only but both exact copies
+    # may be live attackers at once.  Keep that fact explicit so the runtime
+    # controller does not mistake the audited pair for an unrelated crowd.
+    simultaneous: bool = False
 
 
 @dataclass
@@ -354,18 +359,39 @@ def source_duplicate_pair_budget(
     max_mana: int,
     output: SourceCombatOutput | None,
     sanctuary_mitigation: bool = False,
+    allow_aggressive_split_reset: bool = False,
 ) -> SourcePairBudget:
-    """Admit two exact copies of one plain armed reset for sequential kills.
+    """Admit two exact copies of one source-audited armed reset.
 
     The reset, mobile flags, live ``consider`` results, and the player's own
     resources are the admission evidence.  Target HP is deliberately absent:
     the runtime controller owns the 20% withdrawal floor and the finite
-    encounter deadline.
+    encounter deadline.  The optional aggressive shape is limited to two
+    identical max-two resets in distinct rooms and always requires Sanctuary
+    mitigation; it exists for a sentinel that attacks on room entry.
     """
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None or output is None or output.conservative_damage <= 0:
         return SourcePairBudget(False, "missing source mobile or executable damage")
-    if (
+    if allow_aggressive_split_reset:
+        if (
+            not sanctuary_mitigation
+            or not mobile.sentinel
+            or mobile.wanders
+            or not mobile.aggressive
+            or mobile.fear_aura
+            or mobile.programs
+            or mobile.attack_programs
+            or mobile.non_corporeal
+            or mobile.costs_fame
+            or world.mobile_specials.get(mobile_vnum)
+            or mobile_vnum in world.shopkeepers
+        ):
+            return SourcePairBudget(
+                False,
+                "aggressive duplicate pair requires a plain Sanctuary-backed sentinel",
+            )
+    elif (
         not mobile.sentinel or mobile.wanders or mobile.aggressive
         or mobile.fear_aura or mobile.programs or mobile.attack_programs
         or mobile.non_corporeal or mobile.costs_fame
@@ -379,21 +405,58 @@ def source_duplicate_pair_budget(
         reset for reset in world.mob_resets
         if reset.mobile_vnum == mobile_vnum
     ]
-    if len(resets) != 1 or resets[0].room_vnum != room_vnum:
+    if allow_aggressive_split_reset:
+        if (
+            len(resets) != 2
+            or len({reset.room_vnum for reset in resets}) != 2
+            or any(reset.maximum_count != 2 for reset in resets)
+            or not any(reset.room_vnum == room_vnum for reset in resets)
+            or resets[0].equipment != resets[1].equipment
+        ):
+            return SourcePairBudget(
+                False,
+                "aggressive duplicate pair needs two identical max-two reset rooms",
+            )
+    elif len(resets) != 1 or resets[0].room_vnum != room_vnum:
         return SourcePairBudget(False, "duplicate pair reset is not unique to this room")
-    reset = resets[0]
-    if reset.maximum_count != 2:
+    reset = next(
+        (candidate for candidate in resets if candidate.room_vnum == room_vnum),
+        None,
+    )
+    if reset is None or reset.maximum_count != 2:
         return SourcePairBudget(False, "duplicate pair reset does not load exactly two copies")
     weapons = [
         object_vnum
         for slot, object_vnum in reset.equipment
         if slot in {WEAR_WIELD, WEAR_DUAL}
     ]
-    if len(reset.equipment) != 1 or len(weapons) != 1:
-        return SourcePairBudget(False, "duplicate pair reset is not a single-weapon loadout")
-    weapon = world.objects.get(weapons[0])
-    if weapon is None or weapon.item_type != ITEM_WEAPON:
-        return SourcePairBudget(False, "duplicate pair weapon is not source-verified")
+    if allow_aggressive_split_reset:
+        if (
+            len(weapons) != 1
+            or any(slot == WEAR_DUAL for slot, _object_vnum in reset.equipment)
+            or not any(slot == WEAR_WIELD for slot, _object_vnum in reset.equipment)
+        ):
+            return SourcePairBudget(
+                False,
+                "aggressive duplicate pair reset is not a single-wield loadout",
+            )
+        for slot, object_vnum in reset.equipment:
+            item = world.objects.get(object_vnum)
+            if item is None or (
+                slot == WEAR_WIELD and item.item_type != ITEM_WEAPON
+            ) or (
+                slot != WEAR_WIELD and item.item_type != ITEM_ARMOR
+            ):
+                return SourcePairBudget(
+                    False,
+                    "aggressive duplicate pair has an unverified worn loadout",
+                )
+    else:
+        if len(reset.equipment) != 1 or len(weapons) != 1:
+            return SourcePairBudget(False, "duplicate pair reset is not a single-weapon loadout")
+        weapon = world.objects.get(weapons[0])
+        if weapon is None or weapon.item_type != ITEM_WEAPON:
+            return SourcePairBudget(False, "duplicate pair weapon is not source-verified")
     if character_level <= 0 or hp <= 0 or max_hp <= 0:
         return SourcePairBudget(False, "duplicate pair is missing live player resources")
     max_hp = max(max_hp, hp)
@@ -403,7 +466,8 @@ def source_duplicate_pair_budget(
         return SourcePairBudget(False, "duplicate pair admission requires near-full health")
     lower, upper = _mobile_level_range(mobile.level)
     lower = max(lower, character_level - 4)
-    upper = min(upper, character_level + 5)
+    if not allow_aggressive_split_reset:
+        upper = min(upper, character_level + 5)
     if lower <= 0 or lower > upper:
         return SourcePairBudget(False, "duplicate pair has no source level intersection")
     expected_one = mobile_expected_round_damage(
@@ -439,6 +503,7 @@ def source_duplicate_pair_budget(
         level_ceiling=upper,
         target_hp_ceiling=0,
         source_only=True,
+        simultaneous=allow_aggressive_split_reset,
     )
     if peak_one >= hp - reserve:
         return SourcePairBudget(False, "duplicate pair source damage reaches the 20% reserve", **values)
@@ -452,7 +517,11 @@ def source_duplicate_pair_budget(
         return SourcePairBudget(False, "unsupported duplicate pair damage resource", **values)
     return SourcePairBudget(
         True,
-        "source duplicate reset and live considers fit a sequential pair",
+        (
+            "source duplicate reset and live considers fit a simultaneous pair"
+            if allow_aggressive_split_reset
+            else "source duplicate reset and live considers fit a sequential pair"
+        ),
         **values,
     )
 

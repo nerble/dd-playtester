@@ -4963,6 +4963,55 @@ class RunStorage:
         )
         return list(cursor.fetchall())
 
+    def list_recent_campaign_segments_for_phases(
+        self,
+        campaign_id: int,
+        phases: Collection[str],
+        *,
+        limit: int = 256,
+    ) -> list[sqlite3.Row]:
+        """Return a bounded recent tail for selected campaign phases.
+
+        Runtime recovery only needs recent receipts. Select ids through the
+        narrow campaign/sequence index first, then materialize the JSON for
+        those rows. The unbounded phase query remains available to explicit
+        report jobs, but must not run during campaign resume on large stores.
+        """
+        if type(campaign_id) is not int or campaign_id < 1:
+            raise ValueError("campaign_id must be a positive integer")
+        if type(limit) is not int or not 1 <= limit <= 1024:
+            raise ValueError("limit must be between 1 and 1024")
+        phase_values = tuple(dict.fromkeys(str(phase) for phase in phases if phase))
+        if not phase_values:
+            return []
+        placeholders = ", ".join("?" for _ in phase_values)
+        id_rows = self.connection.execute(
+            f"""
+            SELECT id
+            FROM campaign_segments
+            WHERE campaign_id = ? AND phase IN ({placeholders})
+            ORDER BY sequence DESC
+            LIMIT ?
+            """,
+            (campaign_id, *phase_values, limit),
+        ).fetchall()
+        if not id_rows:
+            return []
+        ids = tuple(int(row["id"]) for row in id_rows)
+        id_placeholders = ", ".join("?" for _ in ids)
+        rows = self.connection.execute(
+            f"""
+            SELECT id, campaign_id, sequence, phase, run_id, started_at,
+                   finished_at, status, start_state_json, end_state_json,
+                   command_count, duration_seconds, error
+            FROM campaign_segments
+            WHERE id IN ({id_placeholders})
+            ORDER BY sequence
+            """,
+            ids,
+        )
+        return list(rows.fetchall())
+
     def list_recent_campaign_checkpoints(
         self,
         campaign_id: int,

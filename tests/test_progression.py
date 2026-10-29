@@ -6923,7 +6923,7 @@ def test_exhausted_level_eighteen_band_opens_dynamic_source_frontier() -> None:
     assert policy.maximum_level == 18
 
 
-def test_generic_deep_sanctuary_recovery_reopens_after_crowd_cooldown() -> None:
+def test_generic_deep_sanctuary_crowd_does_not_block_current_band_frontier() -> None:
     policy_id = "source-ranked-sanctuary-recovery-2-100"
     exhausted_frontier = frozenset(
         {
@@ -6952,8 +6952,10 @@ def test_generic_deep_sanctuary_recovery_reopens_after_crowd_cooldown() -> None:
         research_crowd_cooldowns={policy_id: 1},
         excluded_policy_ids=exhausted_frontier,
     )
-    assert deferred.status == "unavailable"
-    assert deferred.execution is None
+    assert deferred.policy_id == "source-ranked-hunt-10-100"
+    assert deferred.execution == "source-ranked-hunt"
+    assert deferred.status == "research"
+    assert "without waiting for a reboot" in deferred.summary
 
     reopened = policy_for(
         24,

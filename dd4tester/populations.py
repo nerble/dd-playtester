@@ -9,6 +9,8 @@ from .equipment import normalize_item_name
 from .hunt_candidates import (
     ACT_IS_NPC,
     ACT_SENTINEL,
+    ACT_STAY_AREA,
+    ITEM_FOOD,
     ITEM_PILL,
     ITEM_POTION,
     ITEM_SCROLL,
@@ -34,6 +36,41 @@ _SOURCE_HUNT_ID = re.compile(
     r"source-ranked-hunt-[a-z0-9-]+-(?P<mobile>[1-9]\d*)-(?P<room>[1-9]\d*)-(?P<level>[1-9]\d*)\Z"
 )
 
+# These source affects are passive perception flags.  They do not add an
+# attack, protection, movement, or crowd hazard to an otherwise plain reset.
+# Keep this list deliberately narrow: any unreviewed affect remains a reason
+# to reject sequential duplicate selection.
+# Detect-evil, detect-hidden, and infrared are passive perception flags. They
+# do not add an attack, protection, movement, or crowd hazard to a plain reset.
+_SOURCE_SEQUENTIAL_PASSIVE_AFFECTS = (1 << 2) | (1 << 5) | (1 << 9)
+
+
+def _source_sequential_reset_objects_are_harmless(
+    world: WorldSource,
+    object_vnums: tuple[int, ...],
+) -> bool:
+    """Allow only inert food or simple healing items on a plain reset."""
+    for object_vnum in object_vnums:
+        item = world.objects.get(object_vnum)
+        if item is None or item.item_type not in {ITEM_FOOD, ITEM_PILL}:
+            return False
+        if item.affects:
+            return False
+        if item.item_type == ITEM_PILL:
+            effect = (
+                str(item.value_strings[1]).casefold()
+                if len(item.value_strings) > 1
+                else ""
+            )
+            if effect not in {
+                "heal",
+                "cure light",
+                "cure serious",
+                "cure critical",
+            }:
+                return False
+    return True
+
 
 def source_sequential_duplicate_reset_limit(
     world: WorldSource | None,
@@ -41,12 +78,15 @@ def source_sequential_duplicate_reset_limit(
     mobile_vnum: int,
     room_vnum: int | str,
 ) -> int | None:
-    """Prove a small plain sentinel reset safe to select one at a time.
+    """Prove a small plain stationary or stay-area reset safe to select sequentially.
 
     This is not multi-target combat permission or the capacity-only population
     research path. It applies only to one unprogrammed, unspecial, unequipped
-    sentinel reset with two to four instances in one room. The caller still
-    has to prove every live selector and keep the sequential kill bound.
+    sentinel or stay-area reset with two to four instances in one room. A
+    stay-area mobile is included only when its source reset is otherwise
+    plain; the live locator still has to find the exact copy before each
+    bounded action. The caller still has to prove every live selector and
+    keep the sequential kill bound.
     """
     try:
         room = int(room_vnum)
@@ -60,8 +100,15 @@ def source_sequential_duplicate_reset_limit(
     room_resets = [reset for reset in resets if reset.room_vnum == room]
     if (
         mobile is None
-        or mobile.act_flags not in {ACT_SENTINEL, ACT_IS_NPC | ACT_SENTINEL}
-        or mobile.affected_flags != 0
+        or mobile.act_flags not in {
+            ACT_SENTINEL,
+            ACT_IS_NPC | ACT_SENTINEL,
+            ACT_SENTINEL | ACT_STAY_AREA,
+            ACT_IS_NPC | ACT_SENTINEL | ACT_STAY_AREA,
+            ACT_STAY_AREA,
+            ACT_IS_NPC | ACT_STAY_AREA,
+        }
+        or mobile.affected_flags & ~_SOURCE_SEQUENTIAL_PASSIVE_AFFECTS
         or mobile.programs
         or world.mobile_specials.get(mobile_vnum)
         or mobile.rank.casefold() not in {"common", "none"}
@@ -73,8 +120,11 @@ def source_sequential_duplicate_reset_limit(
         or any(
             type(reset.maximum_count) is not int
             or reset.maximum_count != room_resets[0].maximum_count
-            or reset.object_vnums
             or reset.equipment
+            or not _source_sequential_reset_objects_are_harmless(
+                world,
+                reset.object_vnums,
+            )
             for reset in resets
         )
     ):

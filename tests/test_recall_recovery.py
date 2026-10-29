@@ -112,6 +112,32 @@ def test_adjacent_recall_escape_rejects_occupied_closed_or_incomplete_scan(reply
     assert escape.commands_sent == 1
 
 
+def test_adjacent_recall_escape_tries_a_second_source_safe_exit_after_occupancy():
+    state = state_case()
+    state.exits = {"n": "101", "w": "102"}
+    escape = AdjacentRecallEscape(
+        "100",
+        "north",
+        "101",
+        alternate_plans=(("west", "102", "side hallway"),),
+    )
+    assert escape.next_command(state, now=0) == "scan north"
+    escape.observe("A noble cambion who is one room to the north.\n" + PROMPT)
+    assert escape.next_command(state, now=1) == "scan west"
+    escape.observe("You can't see anything to the west.\n" + PROMPT)
+    assert escape.next_command(state, now=2) == "west"
+    state.room_vnum = "102"
+    escape.observe(PROMPT)
+    assert escape.next_command(state, now=3) == "recall"
+    state.room_vnum = "3001"
+    escape.observe(PROMPT)
+    assert escape.next_command(state, now=4) is None
+    assert escape.stage == "complete"
+    assert escape.failure is None
+    assert escape.direction == "west"
+    assert escape.scan_history[0]["direction"] == "north"
+
+
 def test_adjacent_recall_escape_preserves_distant_scan_distance():
     state = state_case()
     escape = AdjacentRecallEscape("100", "north", "101")

@@ -803,6 +803,13 @@ def item_category(item: ObjectSource) -> str | None:
     return None
 
 
+def is_active_light_source(item: ObjectSource) -> bool:
+    """Return whether a light prototype can currently illuminate a room."""
+    if item_category(item) != "light":
+        return True
+    return len(item.values) >= 3 and item.values[2] != 0
+
+
 def is_piercing_weapon(item: ObjectSource) -> bool:
     """Mirror DD4's is_piercing_weapon check for backstab-capable weapons."""
     return (
@@ -1506,9 +1513,10 @@ def plan_stance(
     carried_items = [
         item
         for item in carried
-        if character_level is None or item.effective_level <= character_level
+        if is_active_light_source(item)
+        and (character_level is None or item.effective_level <= character_level)
     ]
-    worn_items = list(worn)
+    worn_items = [item for item in worn if is_active_light_source(item)]
     desired = _desired_loadout(
         carried_items,
         worn_items,
@@ -1550,13 +1558,17 @@ def plan_stance_swaps(
     carried_items = [
         item
         for item in carried
-        if is_equipment_object(item) and not is_plain_instrument(item)
+        if is_equipment_object(item)
+        and not is_plain_instrument(item)
+        and is_active_light_source(item)
     ]
     worn_items = list(worn)
     worn_equipment = [
         item
         for item in worn_items
-        if is_equipment_object(item) and not is_plain_instrument(item)
+        if is_equipment_object(item)
+        and not is_plain_instrument(item)
+        and is_active_light_source(item)
     ]
     source_sets = tuple(object_sets)
     desired_loadout = _desired_loadout(
@@ -1593,6 +1605,7 @@ def plan_stance_swaps(
             is_equipment_object(item)
             and not is_plain_instrument(item)
             and item_category(item) is not None
+            and is_active_light_source(item)
         )
     ]
     retained_required: Counter[int] = Counter()

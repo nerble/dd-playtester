@@ -3,14 +3,27 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 26, 2026
+## Current Status: October 29, 2026
 
-Latest durable campaign checkpoint **64223** (campaign **35**; latest completed
-segment **2348**, live run **20604**): Dorrik is a level **41 Dwarf Knight**
-with **1,525,558 XP**, **18 quest points**, and no current level-up shortfall.
-He is safely at the Midgaard healer (room **3054**) with **1 Sanctuary charge**
-in the red dragonorb, **3 pies**, and **145 copper, 54 silver, and 6 gold**.
+Latest durable campaign checkpoint **66964** (campaign **35**; latest completed
+segment **3093**, live run **21349**): Dorrik is a level **41 Dwarf Knight**
+with **1,515,524 XP**, **18 quest points**, and no current level-up shortfall.
+He is safely at the Midgaard healer (room **3054**) with **9 Sanctuary charges**
+in the red dragonorb, one purple potion, and **2 pies**.
 HERO remains unproved, and Dorrik remains the sole progression pilot.
+
+The latest bounded live pass safely checked the next Lotus Temple reset at room
+**10821**, confirmed the target absent, and made no XP claim. The policy layer
+now rotates past the earlier crowded room instead of waiting on it. The campaign
+continues against the deployed live snapshot; it does not wait for upstream
+undead or archetype/species changes.
+
+The upstream source mirror is **e5973292389df505db17143480ee1481e90598a0**.
+It contains newer undead and archetype/species work that is not deployed on the
+live MUD. Research tools may inspect that source, but live campaigns use a
+deployment filter that treats those templates as unresolved until live probes
+confirm them. This avoids turning unreleased source changes into live combat
+permission; it does not wait for the upstream deployment.
 
 Runs **20558-20563** completed the bounded Sanctuary rotation and several
 current-band hunts; run **20561** acquired the source-verified red dragonorb

@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Collection, Mapping
 
@@ -150,17 +150,18 @@ def repaired_recall_route_evidence(
     }
 
 
-def adjacent_recall_exit(
+def adjacent_recall_exits(
     world: WorldSource | None, directory: Path, room_vnum: str | None, level: int,
-) -> tuple[str, str] | None:
-    """Find one open ordinary exit whose source default recall is Midgaard."""
+) -> tuple[tuple[str, str], ...]:
+    """Find source-safe ordinary exits whose default recall is Midgaard."""
     try:
         origin = world.rooms.get(int(room_vnum)) if world is not None else None
     except (TypeError, ValueError):
-        return None
+        return ()
     if (origin is None or not origin.no_recall or origin.random_exits
             or origin.area_file.casefold() == "purgator.are"):
-        return None
+        return ()
+    candidates: list[tuple[str, str]] = []
     for direction, exit_source in origin.exits.items():
         target = world.rooms.get(exit_source.destination)
         if (
@@ -184,8 +185,16 @@ def adjacent_recall_exit(
             continue
         match = re.search(r"(?m)^#RECALL\s+(\d+)", text)
         if (int(match[1]) if match else 3001) == 3001:
-            return direction, str(target.vnum)
-    return None
+            candidates.append((direction, str(target.vnum)))
+    return tuple(candidates)
+
+
+def adjacent_recall_exit(
+    world: WorldSource | None, directory: Path, room_vnum: str | None, level: int,
+) -> tuple[str, str] | None:
+    """Find the first open ordinary exit whose source recall is Midgaard."""
+    candidates = adjacent_recall_exits(world, directory, room_vnum, level)
+    return candidates[0] if candidates else None
 
 
 @dataclass
@@ -194,6 +203,7 @@ class AdjacentRecallEscape:
     direction: str
     destination: str
     destination_name: str | None = None
+    alternate_plans: tuple[tuple[str, str, str | None], ...] = ()
     stage: str = "new"
     pending_room: str | None = None
     response: str = ""
@@ -202,6 +212,7 @@ class AdjacentRecallEscape:
     failure: str | None = None
     commands_sent: int = 0
     room_event_waited: bool = False
+    scan_history: list[dict[str, str]] = field(default_factory=list)
 
     def observe(self, text: str) -> None:
         if self.deadline is not None:
@@ -283,6 +294,33 @@ class AdjacentRecallEscape:
             if self.stage == "scanning":
                 self.scan_response = self.response
                 if not _clear_scan(self.response, self.direction):
+                    if self.alternate_plans:
+                        self.scan_history.append(
+                            {
+                                "direction": self.direction,
+                                "destination": self.destination,
+                                "response": self.response,
+                            }
+                        )
+                        (
+                            self.direction,
+                            self.destination,
+                            self.destination_name,
+                        ) = self.alternate_plans[0]
+                        self.alternate_plans = self.alternate_plans[1:]
+                        self.stage = "new"
+                        self.pending_room = None
+                        self.response = ""
+                        self.scan_response = ""
+                        self.deadline = None
+                        self.room_event_waited = False
+                        self.failure = None
+                        return self._send(
+                            f"scan {self.direction}",
+                            "scanning",
+                            self.origin,
+                            now,
+                        )
                     self.failure = "adjacent recall escape scan is occupied, closed, or incomplete"
                     return None
         if self.stage in {"new", "scanning"}:
@@ -303,4 +341,5 @@ class AdjacentRecallEscape:
                 "destination": self.destination, "stage": self.stage,
                 "commands_sent": self.commands_sent, "failure": self.failure,
                 "scan_response": self.scan_response,
+                "scan_history": list(self.scan_history),
                 "room_event_waited": self.room_event_waited}

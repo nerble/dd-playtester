@@ -521,6 +521,81 @@ def test_route_level_invisibility_preparation_covers_visible_orca_route():
     assert policy.execution == "buy-see-invisible"
 
 
+def test_source_selector_can_handoff_hephaestus_to_visibility_preparation():
+    candidate, world = _hephaestus_candidate_and_world()
+    state = {
+        "world_boot_id": "boot-current",
+        campaign_module._SOURCE_REVISION_KEY: "new-source",
+        "level": 39,
+        "max_hp": 927,
+        "character_class": "warrior",
+        "affects": [],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
+    }
+
+    selected = campaign_module._select_source_ranked_hunt_candidate(
+        (candidate,),
+        state,
+        world=world,
+        character_level=39,
+        character_max_hp=927,
+        allow_detect_invisibility_preparation=True,
+    )
+
+    assert selected == candidate
+
+
+def test_prior_level_loss_revalidation_reopens_audited_hephaestus_at_level_41():
+    candidate, world = _hephaestus_candidate_and_world()
+    policy_id = campaign_module._source_ranked_policy_id(
+        candidate,
+        character_level=41,
+    )
+    state = {
+        "world_boot_id": "boot-current",
+        campaign_module._SOURCE_REVISION_KEY: "new-source",
+        "level": 41,
+        "max_hp": 927,
+        "character_class": "warrior",
+        "affects": [{"name": "fly", "duration": "18"}],
+        "campaign_source_resource_reserves": {
+            "sanctuary": {
+                "object_vnum": 7303,
+                "effect": "sanctuary",
+                "charges_remaining": 9,
+                "mode": "staff",
+            }
+        },
+        campaign_module._SOURCE_RANKED_XP_LOSS_POLICIES_KEY: [{
+            "boot_id": "boot-current",
+            "level": 40,
+            "loss_count": 2,
+            "loss_event_id": 19833,
+            "policy_id": "source-ranked-hunt-olympus-908-937-40",
+            "sanctuary_protected": True,
+        }],
+    }
+
+    assert campaign_module._source_ranked_prior_level_loss_revalidation_allowed(
+        candidate,
+        state,
+        character_level=41,
+        character_max_hp=927,
+        source_world=world,
+    ) is True
+    assert campaign_module._arm_source_ranked_prior_level_loss_revalidation(
+        state,
+        (candidate,),
+        character_level=41,
+        character_max_hp=927,
+        source_world=world,
+    ) is candidate
+    assert state[
+        campaign_module._SOURCE_RANKED_PRIOR_LEVEL_LOSS_REVALIDATION_KEY
+    ]["policy_id"] == policy_id
+
+
 def test_source_refresh_rearms_after_protection_only_preparation():
     candidate, world = _hephaestus_candidate_and_world()
     state = _state(candidate)

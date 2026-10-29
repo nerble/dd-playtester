@@ -6597,6 +6597,13 @@ def policy_for(
         and context.level < 9
         and not context.protection_recovery_hard_health
     )
+    sanctuary_route_requires_flight = (
+        context.level >= 19
+        or (
+            context.character_class.casefold() == "mage"
+            and context.level >= 16
+        )
+    )
     if (
         context.protection_recovery_required
         and not low_level_ordinary_loss_can_rotate
@@ -6613,19 +6620,17 @@ def policy_for(
         if (
             context.level >= 15
             and _is_observation_only_research_policy(selected)
+            and not (
+                sanctuary_route_requires_flight
+                and not context.has_flight
+                and context.can_attempt_flight_purchase
+            )
         ):
             # A fixed observation-only probe is safe to execute while the
             # Moria reserve route is cooling down. Keep the protection
             # requirement for combat policies, but do not let it starve the
             # source-backed level-15 frontier probes.
             return selected
-        sanctuary_route_requires_flight = (
-            context.level >= 19
-            or (
-                context.character_class.casefold() == "mage"
-                and context.level >= 16
-            )
-        )
         if (
             selected.execution == "source-ranked-hunt"
             and sanctuary_route_requires_flight
@@ -6659,11 +6664,10 @@ def policy_for(
             )
         )
         if sanctuary_recovery_blocked and not source_ranked_fallback:
-            # A current-reboot crowd or absence result is a real field
-            # boundary. Do not turn the deep route into an immediate replay;
-            # the campaign reset controller will retry it after the bounded
-            # cooldown has been consumed. An explicit source-ranked fallback
-            # is independent work and keeps its own live combat gates.
+            # A failed or absent Sanctuary carrier closes that exact
+            # maintenance route, not the whole current-band frontier. Keep
+            # independent plain targets eligible; their live consider,
+            # identity, output, health, and return gates still decide combat.
             return _source_ranked_sanctuary_recovery_wait_policy(context)
         if sanctuary_recovery_blocked and selected.execution == "recover-daycare-ring":
             # The ring is optional maintenance. Once protection recovery has
@@ -6676,7 +6680,7 @@ def policy_for(
                 practice_skill=context.practice_skill,
             )
         if not sanctuary_recovery_blocked:
-            return replace(
+            sanctuary_recovery_policy = replace(
                 _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY,
                 minimum_level=context.level,
                 maximum_level=context.level,
@@ -6689,6 +6693,23 @@ def policy_for(
                     )
                 ),
             )
+            if (
+                sanctuary_recovery_policy.requires_flight
+                and not context.has_flight
+                and context.can_attempt_flight_purchase
+                and not context.flight_purchase_failed
+            ):
+                return replace(
+                    _BUY_FLIGHT_POLICY,
+                    minimum_level=context.level,
+                    maximum_level=context.level,
+                    practice_skill=context.practice_skill,
+                    summary=(
+                        "Prepare active flight before the source-verified "
+                        "Sanctuary recovery route."
+                    ),
+                )
+            return sanctuary_recovery_policy
     if handoff_policy_id:
         handoff_policy = _POLICY_BY_ID.get(handoff_policy_id)
         if (
@@ -10976,22 +10997,22 @@ def _moria_sanctuary_wait_policy(
 def _source_ranked_sanctuary_recovery_wait_policy(
     context: ProgressionContext,
 ) -> ProgressionPolicy:
-    """Defer the generic deep recovery route behind its reboot cooldown."""
+    """Continue independent current-band work when recovery is unavailable."""
     terminal = _research_fatal_failure_active(
         context,
         _SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.policy_id,
     )
     summary = (
-        "The source-ranked sanctuary recovery route has a terminal failure "
-        "for this level and reboot; preserve the healer checkpoint until a "
-        "new reboot or fresh evidence changes the boundary."
+        "The source-ranked Sanctuary recovery route has a terminal failure "
+        "for this level; keep that exact maintenance route closed and "
+        "continue independent current-band targets."
         if terminal
-        else "The source-ranked sanctuary recovery route has a current-reboot "
-        "crowd or absence cooldown; preserve the healer checkpoint and "
-        "retry only after the bounded reset wait or a new reboot."
+        else "The source-ranked Sanctuary recovery route is temporarily "
+        "unavailable; keep that exact maintenance route closed and continue "
+        "independent current-band targets without waiting for a reboot."
     )
     return replace(
-        _UNAVAILABLE_POLICY,
+        _SOURCE_RANKED_HUNT_POLICY,
         minimum_level=context.level,
         maximum_level=context.level,
         summary=summary,
