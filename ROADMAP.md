@@ -13,15 +13,49 @@ one character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 26, 2026
+### Current campaign status: October 30, 2026
 
-Campaign **35**, checkpoint **64223**, keeps Dorrik as the only progression
-pilot. Dorrik is a level **41 Dwarf Knight** at **1,525,558 XP** with **18 QP**,
-no current level-up shortfall, and a safe healer checkpoint in room **3054**.
-One Sanctuary charge remains in the red dragonorb; the state also has three
-pies and 145 copper, 54 silver, and 6 gold. The current DD4 boot is **Fri Oct
-23 07:05:19 2026** and the parsed source is
-**0fc7d3aac3ce3464a8e565c656bd179cbafa8ea8**.
+Campaign **35**, checkpoint **67252**, keeps Dorrik as the only progression
+pilot. Dorrik is a level **41 Dwarf Knight** at **1,511,314 XP** with **18 QP**,
+no current level-up shortfall, and a fully recovered healer checkpoint in room
+**3054**. The current DD4 boot is **Fri Oct 23 07:05:19 2026** and the parsed
+source is **528b319c82a1d3b2fc6a55ff8790b07410a3a6cb**. The mirror now includes
+the upstream Graveyard conversion and refined undead archetypes; live deployment
+filtering keeps the 21 known unreleased or revised templates out of executable
+planning.
+
+The latest completed gameplay segment is **20818** / run **21424**, a safe Pit
+Official absence check. Segment **20817** / run **21423** completed Sanctuary
+recovery; segment **20816** / run **21422** recorded the M'rinthas transit-guard
+loss that motivated the delayed-GMCP enemy-assessment fix. Segment **20819** /
+run **21425** stopped before gameplay after the MUD refused its bounded TCP
+connection attempts. The live worker is stopped until the service returns; local
+source analysis, offline preparation, and code work can continue meanwhile.
+
+Offline source audits now accept `--live-deployment` consistently across hunt,
+resource, gear, and combat-readiness reports. The flag filters known upstream
+mobile templates that are not deployed on the live MUD and prints the selected
+profile, so the next live resume can use a reproducible source preflight without
+mistaking research-only content for a target or resource.
+
+Source entry points now normalize a checkout root, `server`, `server/src`,
+`server/src/const.c`, and `server/area` to the paired area directory. This
+keeps offline audits and gear catalogs from silently producing an empty world
+when a caller supplies the C source location.
+
+The offline identity audit now covers the complete current source catalog with
+one command: `autonomy-audit --all-identities --target-level 100`. It checks
+the 25 races, 3 cosmetic sexes, 9 base classes, and 18 optional subclasses
+against the request parser and policy graph. Current results show no static
+runtime-fallback gap, while the first unverified progression band remains level
+10 and live progression proof is still absent.
+
+That preflight against Dorrik's saved level-41 state currently finds **2,799**
+ranked target records, **352** source-band records, **258** source-autonomous
+records, and **14** static admission-fit candidates. The count reflects the
+refreshed live filter and is offline planning evidence only; each resumed hunt
+still requires fresh live identity, `consider`, crowd, route, health,
+protection, and recovery evidence.
 
 Segments **2302-2307** completed the bounded Sanctuary rotation and several
 current-band hunts; segment **2305** / run **20561** acquired a 10-charge

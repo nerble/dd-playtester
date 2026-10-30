@@ -25,6 +25,7 @@ from .hunt_candidates import (
     load_object_sources,
     rank_hunt_candidates,
 )
+from .source_paths import resolve_source_area_directory
 
 
 APPLY_STATS = frozenset({1, 2, 3, 4, 5})
@@ -305,7 +306,9 @@ class GearCatalog:
 
 @lru_cache(maxsize=4)
 def load_gear_catalog(area_directory: str) -> GearCatalog:
-    return GearCatalog.from_area_directory(Path(area_directory))
+    return GearCatalog.from_area_directory(
+        resolve_source_area_directory(area_directory)
+    )
 
 
 def rank_gear_sources(

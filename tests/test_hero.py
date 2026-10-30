@@ -1074,6 +1074,37 @@ def test_prepare_hero_request_updates_resumed_level_goal(tmp_path: Path) -> None
     assert load_campaign_spec(shortened.campaign_path).name == "Valora to level 40"
 
 
+def test_prepare_hero_request_refreshes_source_provenance_on_resume(
+    tmp_path: Path,
+) -> None:
+    base_catalog = parse_character_catalog(SOURCE, source="fixture")
+    old_catalog = replace(base_catalog, source_revision="old-revision")
+    new_catalog = replace(base_catalog, source_revision="new-revision")
+    request = HeroRequest(
+        name="Valora",
+        race="human",
+        sex="female",
+        character_class="mage",
+    )
+
+    prepared = prepare_hero_request(
+        request,
+        catalog=old_catalog,
+        workspace=tmp_path / "heroes",
+    )
+    resumed = prepare_hero_request(
+        request,
+        catalog=new_catalog,
+        workspace=tmp_path / "heroes",
+    )
+
+    assert resumed.resumed
+    manifest = json.loads(resumed.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["catalog"]["source_revision"] == "new-revision"
+    assert manifest["catalog_history"][-1]["source_revision"] == "old-revision"
+    assert prepared.manifest_path == resumed.manifest_path
+
+
 def test_named_resume_uses_latest_matching_campaign_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

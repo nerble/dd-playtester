@@ -10,7 +10,7 @@ import threading
 import time
 from collections import Counter, deque
 from dataclasses import asdict, dataclass, replace
-from functools import lru_cache
+from functools import lru_cache, wraps
 from pathlib import Path
 from typing import Any, Callable, Collection, Iterable, Mapping
 
@@ -221,7 +221,11 @@ from .shops import (
     safe_shop_route_drunk_rooms,
     sale_keyword,
 )
-from .source_paths import current_source_directory
+from .source_paths import (
+    current_live_deployment,
+    current_source_directory,
+    source_directory_context,
+)
 from .specials import (
     COMBAT_JOINING_SPECIALS,
     ECONOMIC_SPECIALS,
@@ -392,11 +396,12 @@ _SALE_COMPLETED = re.compile(
     r"You sell (?P<item>.+?) for (?P<coins>\d+) coins?\.",
     re.IGNORECASE,
 )
-# DD4 uses more than one wording when a shopkeeper cannot see the player or
-# the offered object.  Keep these as one shared signal so a failed sale can
-# recover with `vis` instead of being mistaken for a completed liquidation.
-_SHOP_VISIBILITY_REFUSAL_MARKERS = (
+# DD4 uses separate wording when a shopkeeper cannot see the player versus
+# an invisible object.  Only the former is repaired with `vis`.
+_SHOP_PLAYER_VISIBILITY_REFUSAL_MARKERS = (
     "i don't trade with folks i can't see",
+)
+_SHOP_ITEM_VISIBILITY_REFUSAL_MARKERS = (
     "i can't see that item",
     "i cannot see that item",
 )
@@ -6812,10 +6817,60 @@ class StarterPolicy:
                     ),
                 ]
                 self.sale_phase = "inventory"
+        item_visibility_refusal = any(
+            marker in recent
+            for marker in _SHOP_ITEM_VISIBILITY_REFUSAL_MARKERS
+        )
+        if (
+            item_visibility_refusal
+            and self.liquidate_loot
+            and self.sale_phase in {"sell", "inventory"}
+            and self.sale_index < len(self.sale_plan)
+        ):
+            self._recovery_session.sale_reply_buffer = ""
+            keyword, shop = self.sale_plan[self.sale_index]
+            rejection = {
+                "item_keyword": keyword,
+                "item_description": keyword,
+                "shopkeeper": "the shopkeeper",
+                "shop_name": shop.name,
+                "shop_room_vnum": shop.room_vnum,
+                "reason": "shopkeeper could not see invisible item",
+            }
+            if isinstance(self.world_boot_id, str) and self.world_boot_id:
+                rejection["world_boot_id"] = self.world_boot_id
+            rejection_key = (
+                rejection["item_keyword"],
+                rejection["shop_room_vnum"],
+                rejection["item_description"],
+            )
+            if not any(
+                (
+                    existing.get("item_keyword"),
+                    existing.get("shop_room_vnum"),
+                    existing.get("item_description"),
+                )
+                == rejection_key
+                for existing in self.sale_rejections
+            ):
+                self.sale_rejections.append(rejection)
+            rejected_count = sum(
+                1
+                for planned_keyword, _ in self.sale_plan[self.sale_index:]
+                if planned_keyword == keyword
+            )
+            self.donation_plan.extend(
+                [keyword]
+                * max(0, rejected_count - self.donation_plan.count(keyword))
+            )
+            # Keep the current sale as a placeholder so the normal inventory
+            # acknowledgement and return-home cursor advance exactly once.
+            self.sale_phase = "inventory"
+            self.sale_offer_coins = None
         completed_sale = _SALE_COMPLETED.search(cleaned)
         if any(
             marker in recent
-            for marker in _SHOP_VISIBILITY_REFUSAL_MARKERS
+            for marker in _SHOP_PLAYER_VISIBILITY_REFUSAL_MARKERS
         ):
             self.shop_visibility_rejected = True
             if self.city_restock:
@@ -14485,6 +14540,17 @@ class StarterPolicy:
                     )
                     and self.active_target_level is None
                 ):
+                    if (
+                        not self.awaiting_enemy_assessment
+                        and not live_enemies
+                        and self._combat_exchange_observed()
+                    ):
+                        # DD4 can deliver the first attack text before the
+                        # authoritative Char.Enemies packet. Give that packet
+                        # one bounded turn even when no target name was bound.
+                        self.awaiting_enemy_assessment = True
+                        self.prompt_ready = False
+                        return None
                     resume_mode = self._fastwalk_prepare_interrupt_resume(state)
                     if resume_mode is None:
                         self.fastwalk_abort_reason = (
@@ -32561,7 +32627,13 @@ class StarterPolicy:
                 current_target_key or "current combat"
             )
             if self.fastwalk_route is not None and (
-                self.combat_active or self.fastwalk_attack_started
+                self.combat_active
+                or self.fastwalk_attack_started
+                # A source-ranked opener can activate Sanctuary before the
+                # first attack command. Keep that activation in the combat
+                # ledger so a short-lived effect is refreshed or stops the
+                # fight when it expires during weapon setup.
+                or current_target_key is not None
             ):
                 self.fastwalk_sanctuary_consumed_in_combat = True
                 self.fastwalk_sanctuary_used_during_segment = True
@@ -32601,7 +32673,9 @@ class StarterPolicy:
                         current_target_key or "current combat"
                     )
                     if self.fastwalk_route is not None and (
-                        self.combat_active or self.fastwalk_attack_started
+                        self.combat_active
+                        or self.fastwalk_attack_started
+                        or current_target_key is not None
                     ):
                         self.fastwalk_sanctuary_consumed_in_combat = True
                         self.fastwalk_sanctuary_used_during_segment = True
@@ -49289,6 +49363,25 @@ def _flight_purchase_failure_snapshot(
     }
 
 
+def _live_source_scope(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Run a live starter under the deployed-source profile.
+
+    CampaignRunner already installs this scope, but direct starter entry
+    points also connect to the live MUD. Keeping the scope here prevents an
+    upstream-only mobile template from leaking into a live decision when a
+    runner is launched without the campaign wrapper.
+    """
+    @wraps(method)
+    async def wrapped(*args: Any, **kwargs: Any) -> Any:
+        with source_directory_context(
+            current_source_directory(),
+            live_deployment=True,
+        ):
+            return await method(*args, **kwargs)
+
+    return wrapped
+
+
 class StarterBotRunner:
     def __init__(
         self,
@@ -49693,6 +49786,7 @@ class StarterBotRunner:
     def character_state(self, state: CharacterState) -> None:
         self.session_state.character = state
 
+    @_live_source_scope
     async def run(self) -> RunResult:
         storage = RunStorage(self.spec.database)
         run_id = storage.create_run(
@@ -52757,6 +52851,13 @@ class StarterBotRunner:
         return TelnetConnection(spec.host, spec.port, timeout=spec.timeout)
 
 
+def _load_live_source_world() -> WorldSource:
+    """Load an explicit source-world preflight using live deployment rules."""
+    source_directory = current_source_directory()
+    with source_directory_context(source_directory, live_deployment=True):
+        return load_world_source(source_directory, include_all_areas=True)
+
+
 async def run_starter_profile(path: str | Path) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
@@ -52791,10 +52892,7 @@ async def run_ota_arena_research_profile(
     """Run or resume the source-verified five-favour Ota'ar circuit."""
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
-    source_world = load_world_source(
-        current_source_directory(),
-        include_all_areas=True,
-    )
+    source_world = _load_live_source_world()
     entry_notation = ";".join(
         {
             "north": "n",
@@ -52950,10 +53048,7 @@ async def run_sell_loot_profile(path: str | Path) -> RunResult:
 async def run_guildmaster_research_profile(path: str | Path) -> RunResult:
     profile_path = Path(path)
     spec = load_character_spec(profile_path)
-    source_world = load_world_source(
-        current_source_directory(),
-        include_all_areas=True,
-    )
+    source_world = _load_live_source_world()
     return await StarterBotRunner(
         spec,
         profile_path,
@@ -53011,9 +53106,7 @@ async def run_fastwalk_research_profile(
     source_world = None
     where_mobile = None
     if where_source_mobile_vnum is not None:
-        source_world = load_world_source(
-            current_source_directory(), include_all_areas=True,
-        )
+        source_world = _load_live_source_world()
         where_mobile = source_world.mobiles.get(where_source_mobile_vnum)
         if where_mobile is None:
             raise ValueError(
@@ -55587,7 +55680,7 @@ def _source_where_consider_sweep(
             path_cache[cache_key] = None
             return None
         # The route's lowest advertised level is the stricter relative-level
-        # hazard check; the live runner independently checks Dorrik's actual
+        # hazard check; the live runner independently checks the pilot's actual
         # level, exits, and room before each movement or consideration.
         if source_route_hazard_rejections(
             world,
@@ -57206,10 +57299,7 @@ async def run_moria_research_profile(
                 raise RuntimeError(
                     "deep Moria sanctuary hunt requires the local DD4 source mirror"
                 )
-            source_world = load_world_source(
-                source_directory,
-                include_all_areas=True,
-            )
+            source_world = _load_live_source_world()
         return await StarterBotRunner(
             spec,
             profile_path,
@@ -57924,12 +58014,30 @@ def _training_targets(text: str) -> list[str]:
     return list(_training_target_counts(text))
 
 
-@lru_cache(maxsize=4)
+def _source_profile_cached(
+    function: Callable[[str, bool], Any],
+) -> Callable[[str], Any]:
+    """Cache source indexes separately for research and live deployment."""
+    cached = lru_cache(maxsize=4)(function)
+
+    @wraps(function)
+    def wrapped(area_directory: str) -> Any:
+        return cached(area_directory, current_live_deployment())
+
+    return wrapped
+
+
+@_source_profile_cached
 def _load_source_mobile_targets(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[str, tuple[str, ...]]:
     """Index exact mobile display lines from every public DD4 area file."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     room_names = {
         _normalize_mobile_line(room.name)
         for room in world.rooms.values()
@@ -57957,12 +58065,17 @@ def _load_source_mobile_targets(
     return {line: tuple(targets) for line, targets in indexed.items()}
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_level_ranges(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[str, tuple[int, int]]:
     """Index conservative DD4 mobile levels after its two fuzz operations."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     indexed: dict[str, tuple[int, int]] = {}
     for mobile in world.mobiles.values():
         targets = _source_mobile_identities(
@@ -57983,21 +58096,27 @@ def _load_source_mobile_level_ranges(
     return indexed
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_level_ranges_by_vnum(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[int, tuple[int, int]]:
     """Index conservative DD4 mobile levels without collapsing VNUMs."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     return {
         mobile_vnum: (max(1, mobile.level - 2), mobile.level + 2)
         for mobile_vnum, mobile in world.mobiles.items()
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_vnums_by_target_room(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[str, dict[str, tuple[int, ...]]]:
     """Index source identities and short aliases by reachable room.
 
@@ -58006,7 +58125,11 @@ def _load_source_mobile_vnums_by_target_room(
     both forms bound to reachable VNUMs so a shortened combat message can be
     classified without trusting a global, same-name level range.
     """
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     identity_vnums: dict[str, set[int]] = {}
     for mobile in world.mobiles.values():
         identities = _source_mobile_identities(
@@ -58042,12 +58165,17 @@ def _load_source_mobile_vnums_by_target_room(
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_special_profiles(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[str, tuple[tuple[str, ...], ...]]:
     """Index every source special profile without hiding ambiguous names."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     indexed: dict[str, list[tuple[str, ...]]] = {}
     for mobile in world.mobiles.values():
         profile = tuple(world.mobile_specials.get(mobile.vnum, ()))
@@ -58065,57 +58193,78 @@ def _load_source_mobile_special_profiles(
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_special_profiles_by_vnum(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[int, tuple[str, ...]]:
     """Index mobile specials by VNUM so ambiguous names stay source-bound."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     return {
         mobile_vnum: tuple(world.mobile_specials.get(mobile_vnum, ()))
         for mobile_vnum in world.mobiles
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_can_join_by_vnum(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[int, bool]:
     """Index source mobile combat-participation capability by VNUM."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     return {
         mobile_vnum: source_mobile_can_join_player_fight(world, mobile)
         for mobile_vnum, mobile in world.mobiles.items()
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_aggressive_by_vnum(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[int, bool]:
     """Index source ``ACT_AGGRESSIVE`` flags without collapsing VNUMs."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     return {
         mobile_vnum: mobile.aggressive
         for mobile_vnum, mobile in world.mobiles.items()
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_attack_programs_by_vnum(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[int, bool]:
     """Index source mobile-program attack capability by VNUM."""
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     return {
         mobile_vnum: bool(mobile.attack_programs)
         for mobile_vnum, mobile in world.mobiles.items()
     }
 
 
-@lru_cache(maxsize=4)
+@_source_profile_cached
 def _load_source_mobile_non_assisting_by_target_room(
     area_directory: str,
+    live_deployment: bool,
 ) -> dict[str, dict[str, bool]]:
     """Index source mobiles that cannot assist a room's combat target.
 
@@ -58124,7 +58273,11 @@ def _load_source_mobile_non_assisting_by_target_room(
     make them join a nearby player fight; the room value is true only when
     every same-identity prototype reachable there is non-interacting.
     """
-    world = load_world_source(Path(area_directory), include_all_areas=True)
+    world = load_world_source(
+        Path(area_directory),
+        include_all_areas=True,
+        live_deployment=live_deployment,
+    )
     indexed: dict[str, dict[str, list[bool]]] = {}
     for mobile in world.mobiles.values():
         is_non_assisting = not source_mobile_can_join_player_fight(world, mobile)

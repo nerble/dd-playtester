@@ -12,6 +12,12 @@ Mudlet profile automation and Windows VM lifecycle control are validation work,
 not alternate decision engines. AI decisions are intentionally absent until
 the deterministic path can be replayed and measured.
 
+Live starter runs pin the deployed-source profile even when launched directly,
+while source reports can still inspect the complete upstream checkout. The
+current catalog revision is kept as resume provenance, and older revisions
+remain attached to the hero manifest history rather than being silently
+rewritten.
+
 The public hero entry point is also safe for an existing named character:
 explicit and environment credentials take precedence, then a bounded
 character:name credential lookup reuses a stored password before any new
@@ -70,6 +76,14 @@ so the durable percentage reflects the teacher rather than the acknowledgement.
 Training alone cannot establish a protection or damage improvement until the
 live outcome is measured. AI decisions and Mudlet/VM visibility remain separate
 validation boundaries.
+
+The static identity boundary is now auditable across the whole current source
+catalog, not only one sample character. Run
+`python -m dd4tester autonomy-audit --all-identities --target-level 100` to
+check every race, cosmetic sex, base class, and optional subclass against the
+request parser and policy graph. The report deliberately separates runtime
+fallback coverage from live proof: a complete matrix can still show research
+bands and combat-automation gaps, and it never authorizes a live connection.
 
 The capability audit now reports combat automation separately from training
 priorities and combines base/subclass gaps. The runtime also requires a positive

@@ -11,9 +11,11 @@ from typing import Any, Mapping
 from . import __version__
 from .autonomy import (
     audit_all_base_classes,
+    audit_all_source_identities,
     audit_hero_request,
     audit_json,
     render_autonomy_audit,
+    render_autonomy_matrix_summary,
 )
 from .campaign import (
     DEFAULT_LIVE_SEGMENT_RUNTIME_SECONDS,
@@ -581,6 +583,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to the DD4 server area directory",
     )
     hunt_candidates_parser.add_argument(
+        "--live-deployment",
+        action="store_true",
+        help=(
+            "apply the known live-deployment filter; newer upstream mobile "
+            "templates remain unresolved"
+        ),
+    )
+    hunt_candidates_parser.add_argument(
         "--database",
         type=Path,
         default=DEFAULT_DATABASE,
@@ -681,6 +691,14 @@ def build_parser() -> argparse.ArgumentParser:
             "maintenance audits such as Sanctuary acquisition"
         ),
     )
+    resource_sources_parser.add_argument(
+        "--live-deployment",
+        action="store_true",
+        help=(
+            "apply the known live-deployment filter; newer upstream mobile "
+            "templates remain unresolved"
+        ),
+    )
     gear_sources_parser = subcommands.add_parser(
         "show-gear-sources",
         help="rank source-backed equipment placements for a class and stance",
@@ -730,6 +748,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="analyse every area file instead of the conservative starter-area set",
     )
+    gear_sources_parser.add_argument(
+        "--live-deployment",
+        action="store_true",
+        help=(
+            "apply the known live-deployment filter; newer upstream mobile "
+            "templates remain unresolved"
+        ),
+    )
     combat_readiness_parser = subcommands.add_parser(
         "show-combat-readiness",
         help="show source-backed combat output and current target blockers",
@@ -772,6 +798,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--all-areas",
         action="store_true",
         help="analyse every area file instead of the conservative starter-area set",
+    )
+    combat_readiness_parser.add_argument(
+        "--live-deployment",
+        action="store_true",
+        help=(
+            "apply the known live-deployment filter; newer upstream mobile "
+            "templates remain unresolved"
+        ),
     )
     combat_readiness_parser.add_argument(
         "--json",
@@ -1096,10 +1130,9 @@ def build_parser() -> argparse.ArgumentParser:
         "autonomy-audit",
         help="audit a race/class request against the executable policy graph",
     )
-    autonomy_parser.add_argument("--race", required=True)
+    autonomy_parser.add_argument("--race")
     autonomy_parser.add_argument(
         "--sex",
-        required=True,
         help="cosmetic DD4 creation sex: male, female, or neuter",
     )
     autonomy_class = autonomy_parser.add_mutually_exclusive_group(required=True)
@@ -1108,6 +1141,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--all-classes",
         action="store_true",
         help="audit every source-legal base class for this identity",
+    )
+    autonomy_class.add_argument(
+        "--all-identities",
+        action="store_true",
+        help=(
+            "audit every source-derived race, cosmetic sex, base class, and "
+            "subclass"
+        ),
     )
     autonomy_parser.add_argument("--subclass")
     autonomy_parser.add_argument("--target-level", type=int, default=100)
@@ -1867,6 +1908,7 @@ def main(argv: list[str] | None = None) -> int:
             include_all_areas=args.all_areas,
             autonomous_safe_only=args.autonomous_safe_only,
             level_ceiling_offset=args.level_ceiling_offset,
+            live_deployment=args.live_deployment,
         )
 
     if args.command == "show-resource-sources":
@@ -1879,6 +1921,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
             include_all_areas=args.all_areas,
             include_out_of_band=args.include_out_of_band,
+            live_deployment=args.live_deployment,
         )
 
     if args.command == "show-gear-sources":
@@ -1892,6 +1935,7 @@ def main(argv: list[str] | None = None) -> int:
             database=args.database,
             limit=args.limit,
             include_all_areas=args.all_areas,
+            live_deployment=args.live_deployment,
         )
 
     if args.command == "show-combat-readiness":
@@ -1905,6 +1949,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
             include_all_areas=args.all_areas,
             json_output=args.json,
+            live_deployment=args.live_deployment,
         )
 
     if args.command == "configure-login":
@@ -2357,7 +2402,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "autonomy-audit":
         try:
-            if args.all_classes:
+            if args.all_identities:
+                if args.race or args.sex or args.subclass:
+                    raise ValueError(
+                        "--all-identities cannot be combined with --race, "
+                        "--sex, or --subclass"
+                    )
+                audits = audit_all_source_identities(
+                    target_level=args.target_level,
+                    source=args.source,
+                )
+            elif args.all_classes:
+                if not args.race or not args.sex:
+                    raise ValueError(
+                        "--race and --sex are required with --all-classes"
+                    )
                 if args.subclass:
                     raise ValueError("--subclass cannot be combined with --all-classes")
                 audits = audit_all_base_classes(
@@ -2367,6 +2426,11 @@ def main(argv: list[str] | None = None) -> int:
                     source=args.source,
                 )
             else:
+                if not args.race or not args.sex or not args.character_class:
+                    raise ValueError(
+                        "--race, --sex, and --class are required unless "
+                        "--all-identities is used"
+                    )
                 audits = (
                     audit_hero_request(
                         race=args.race,
@@ -2381,7 +2445,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Autonomy audit failed: {exc}", file=sys.stderr)
             return 2
         if args.json:
-            if args.all_classes:
+            if args.all_classes or args.all_identities:
                 print(
                     json.dumps(
                         [audit.to_mapping() for audit in audits],
@@ -2392,7 +2456,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(audit_json(audits[0]), end="")
         else:
-            print("\n".join(render_autonomy_audit(audit).rstrip() for audit in audits))
+            if args.all_identities:
+                print(render_autonomy_matrix_summary(audits), end="")
+            else:
+                print("\n".join(render_autonomy_audit(audit).rstrip() for audit in audits))
         return 0
 
     if args.command == "show-prereqs":
@@ -2782,6 +2849,7 @@ def show_hunt_candidates(
     include_all_areas: bool = False,
     autonomous_safe_only: bool = False,
     level_ceiling_offset: int | None = None,
+    live_deployment: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -2790,7 +2858,12 @@ def show_hunt_candidates(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(source, include_all_areas=include_all_areas)
+        source_options: dict[str, object] = {
+            "include_all_areas": include_all_areas,
+        }
+        if live_deployment:
+            source_options["live_deployment"] = True
+        world = load_world_source(source, **source_options)
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -2903,6 +2976,10 @@ def show_hunt_candidates(
         candidates = [candidate for candidate in candidates if candidate.autonomous_safe]
 
     print(f"Source: {source.resolve()}")
+    print(
+        "Deployment profile: "
+        + ("live-filtered" if live_deployment else "upstream research")
+    )
     print(f"Character: {character}, level {level}")
     print(f"Character class: {character_class or 'unknown'}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
@@ -3049,6 +3126,7 @@ def show_resource_sources(
     limit: int,
     include_all_areas: bool = False,
     include_out_of_band: bool = False,
+    live_deployment: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -3057,7 +3135,12 @@ def show_resource_sources(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(source, include_all_areas=include_all_areas)
+        source_options: dict[str, object] = {
+            "include_all_areas": include_all_areas,
+        }
+        if live_deployment:
+            source_options["live_deployment"] = True
+        world = load_world_source(source, **source_options)
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -3114,6 +3197,10 @@ def show_resource_sources(
         return f"{room_vnum} {clean(room_name)}"
 
     print(f"Source: {source.resolve()}")
+    print(
+        "Deployment profile: "
+        + ("live-filtered" if live_deployment else "upstream research")
+    )
     print(f"Character: {character}, level {level}")
     print(f"Character max HP: {character_max_hp or 'unknown'}")
     print(f"Current reboot: {boot_id or 'unknown'}")
@@ -3219,6 +3306,7 @@ def show_gear_sources(
     database: Path,
     limit: int,
     include_all_areas: bool = False,
+    live_deployment: bool = False,
 ) -> int:
     if level < 1:
         print("--level must be at least 1", file=sys.stderr)
@@ -3227,7 +3315,12 @@ def show_gear_sources(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(source, include_all_areas=include_all_areas)
+        source_options: dict[str, object] = {
+            "include_all_areas": include_all_areas,
+        }
+        if live_deployment:
+            source_options["live_deployment"] = True
+        world = load_world_source(source, **source_options)
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -3285,6 +3378,10 @@ def show_gear_sources(
         return f"{room_vnum} {clean(room_name)}"
 
     print(f"Source: {source.resolve()}")
+    print(
+        "Deployment profile: "
+        + ("live-filtered" if live_deployment else "upstream research")
+    )
     print(
         f"Character: {character}, level {level}, class {character_class}"
         + (f", subclass {subclass}" if subclass else "")
@@ -3880,6 +3977,7 @@ def show_combat_readiness(
     limit: int,
     include_all_areas: bool = False,
     json_output: bool = False,
+    live_deployment: bool = False,
 ) -> int:
     """Render an offline combat/readiness audit without authorizing a run."""
     if level < 1 or level > 100:
@@ -3889,11 +3987,13 @@ def show_combat_readiness(
         print("--limit must be at least 1", file=sys.stderr)
         return 2
     try:
-        world = load_world_source(
-            source,
-            include_all_areas=include_all_areas,
-            include_all_objects=True,
-        )
+        source_options: dict[str, object] = {
+            "include_all_areas": include_all_areas,
+            "include_all_objects": True,
+        }
+        if live_deployment:
+            source_options["live_deployment"] = True
+        world = load_world_source(source, **source_options)
     except (OSError, ValueError) as exc:
         print(f"Unable to load DD4 source: {exc}", file=sys.stderr)
         return 1
@@ -4080,6 +4180,9 @@ def show_combat_readiness(
     ]
     report = {
         "source": str(source.resolve()),
+        "deployment_profile": (
+            "live-filtered" if live_deployment else "upstream research"
+        ),
         "source_revision": (
             current_source_revision
             or state.get("campaign_source_revision")
@@ -4144,6 +4247,7 @@ def show_combat_readiness(
 
     print("Combat readiness: offline source audit")
     print(f"Source: {report['source']}")
+    print(f"Deployment profile: {report['deployment_profile']}")
     print(
         f"Character: {character}, level {level}, class {character_class}, "
         f"subclass {report['subclass']}"

@@ -14,6 +14,14 @@ update establish the template. This boundary is intentionally separate from
 the source revision recorded for provenance; it is not a reboot wait or a
 reason to stop selecting other live-verified targets.
 
+This deployment profile is installed by `CampaignRunner` and by direct
+`StarterBotRunner` entry points. Specialized source-world preflights use the
+same profile, so a live run cannot accidentally build its route or target
+indexes from the newer upstream-only templates. Offline reports remain able
+to opt into the full upstream catalog for research. The source-world and
+derived mobile-index caches include this deployment mode, so a long-lived
+process cannot reuse a research world for a live decision or the reverse.
+
 ### Retry rule
 
 A source-viable target is never closed because a locator retry was dispatched,
@@ -51,13 +59,30 @@ only, with no scripts or specials. This is route permission only. It does not
 authorize combat with the mobile or the selected endpoint; live identity,
 consider, crowd, Sanctuary, health-floor, and return checks remain mandatory.
 
-The current durable checkpoint is **64223** (campaign **35**). Dorrik is level
-**41** with **1,525,558 XP**, 18 quest points, no level-up shortfall, and a safe
-healer checkpoint in room **3054**. One Sanctuary charge remains in the red
-dragonorb; food and currency reserves are three pies, 145 copper, 54 silver,
-and 6 gold. The latest completed segment is **2348** (run **20604**), a safe
-source-ranked Freeport target-check run. The source mirror is
-**0fc7d3aac3ce3464a8e565c656bd179cbafa8ea8**, aligned with `origin/master`.
+The current durable checkpoint is **67252** (campaign **35**). Dorrik is level
+**41** with **1,511,314 XP**, 18 quest points, no level-up shortfall, and a safe
+healer checkpoint in room **3054**. The latest completed gameplay segment is
+**20818** (run **21424**), a safe Pit Official absence check. Segment **20817**
+completed Sanctuary recovery; segment **20816** recorded the M'rinthas
+transit-guard loss. Segment **20819** (run **21425**) stopped before gameplay
+because the live MUD refused its bounded TCP connection attempts. Dorrik's
+next live action is the bounded Midgaard restock: his saved inventory has no
+food reserve, while water and the healer checkpoint remain available. The
+current source mirror is **528b319c82a1d3b2fc6a55ff8790b07410a3a6cb**.
+The upstream checkout now includes the Graveyard conversion and refined undead
+archetypes, which are not deployed on the live MUD; live campaign loading keeps
+the 21 known unreleased or revised templates unresolved until deployment is
+confirmed.
+
+### Offline service boundary
+
+When `dragons-domain.org:8888` refuses the bounded connection, leave the
+campaign checkpointed and do not start a worker or spin on reconnects. Offline
+work may still inspect the read-only database, refresh source-derived reports
+with `--live-deployment`, compile touched Python modules, and repair code or
+documentation. Resume the single Dorrik campaign only after the service is
+available; the next invocation must use the saved healer checkpoint and the
+existing provisioning gate rather than inventing a new character or route.
 Out-of-band kills remain allowed when acquiring or restoring Sanctuary, but
 their XP is recorded as maintenance rather than progression. Segments
 **2347-2348** safely checked an absent Lotus Temple target and a present

@@ -8,7 +8,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from .source_paths import DEFAULT_SOURCE_DIRECTORY
+from .source_paths import resolve_source_area_directory
 
 
 DEFAULT_DD4_CONST = Path("runs/dd4-source/server/src/const.c")
@@ -183,17 +183,7 @@ def source_area_directory(source: str | Path | None = None) -> Path:
     one place lets a campaign pin the same source snapshot used for identity
     validation.
     """
-    if source is None:
-        return DEFAULT_SOURCE_DIRECTORY
-    supplied = Path(source)
-    if supplied.is_dir() and supplied.name.casefold() == "area":
-        return supplied
-    const_path = _source_const_path(supplied)
-    if const_path is None:
-        return DEFAULT_SOURCE_DIRECTORY
-    if const_path.parent.name.casefold() == "src":
-        return const_path.parent.parent / "area"
-    return const_path.parent / "area"
+    return resolve_source_area_directory(source)
 
 
 def parse_character_catalog(

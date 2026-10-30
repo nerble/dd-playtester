@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from dd4tester.fastwalks import route_named
-from dd4tester.source_paths import source_directory_context
+from dd4tester.source_paths import (
+    LIVE_UNDEPLOYED_TEMPLATE_NAMES,
+    resolve_source_area_directory,
+    source_directory_context,
+)
 from dd4tester.hunt_candidates import (
     ACT_AGGRESSIVE,
     ACT_DIE_IF_MASTER_GONE,
@@ -1789,6 +1793,10 @@ def test_source_mobile_template_catalog_matches_dd4_resolution(tmp_path: Path) -
     untrained = templates["dwarf_untrained"]
     assert untrained == replace(dwarf, name="dwarf_untrained")
     assert templates["vampire"].specials == ("spec_vampire",)
+    wyvern = templates["wyvern"]
+    assert wyvern.species == "winged_reptile"
+    assert wyvern.xp_modifier == 5
+    assert wyvern.specials == ()
 
     area_file = tmp_path / "templated.are"
     area_file.write_text(
@@ -1858,7 +1866,16 @@ def test_live_source_profile_does_not_promote_unreleased_archetypes() -> None:
         live_deployment=True,
     )
 
-    assert "dwarf" not in world.mobile_templates
+    for unresolved_template in (
+        "dwarf",
+        "ghast",
+        "ghoul",
+        "skeleton",
+        "wyvern",
+        "zombie",
+    ):
+        assert unresolved_template not in world.mobile_templates
+    assert not (LIVE_UNDEPLOYED_TEMPLATE_NAMES & set(world.mobile_templates))
     mobile = world.mobiles[20511]
     assert mobile.template_name == "dwarf"
     assert mobile.hp_modifier_known is False
@@ -1877,6 +1894,38 @@ def test_live_deployment_profile_propagates_to_nested_source_loads() -> None:
             )
 
     assert "dwarf" not in world.mobile_templates
+
+
+def test_world_cache_separates_upstream_and_live_profiles() -> None:
+    area_directory = Path("runs/dd4-source/server/area")
+    upstream = load_world_source(
+        area_directory,
+        include_all_areas=True,
+        live_deployment=False,
+    )
+    with source_directory_context(area_directory, live_deployment=True):
+        live = load_world_source(area_directory, include_all_areas=True)
+
+    assert "dwarf" in upstream.mobile_templates
+    assert "dwarf" not in live.mobile_templates
+
+
+def test_source_checkout_aliases_resolve_to_the_area_directory() -> None:
+    server = Path("runs/dd4-source/server")
+    area = server / "area"
+
+    assert resolve_source_area_directory(server) == area
+    assert resolve_source_area_directory(server / "src") == area
+    assert resolve_source_area_directory(server / "src" / "const.c") == area
+    assert resolve_source_area_directory(area) == area
+
+    source_world = load_world_source(
+        server / "src",
+        include_all_areas=True,
+        live_deployment=True,
+    )
+    assert source_world.rooms
+    assert source_world.mobiles
 
 
 def test_current_source_resolves_sets_skeleton_template_without_special() -> None:

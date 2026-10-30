@@ -3,27 +3,33 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 29, 2026
+## Current Status: October 30, 2026
 
-Latest durable campaign checkpoint **66964** (campaign **35**; latest completed
-segment **3093**, live run **21349**): Dorrik is a level **41 Dwarf Knight**
-with **1,515,524 XP**, **18 quest points**, and no current level-up shortfall.
-He is safely at the Midgaard healer (room **3054**) with **9 Sanctuary charges**
-in the red dragonorb, one purple potion, and **2 pies**.
-HERO remains unproved, and Dorrik remains the sole progression pilot.
+Latest durable campaign checkpoint **67252** (campaign **35**; latest persisted
+segment **20819**, live run **21425**): Dorrik is a level **41 Dwarf Knight**
+with **1,511,314 XP**, **18 quest points**, and no current level-up shortfall.
+He is safely recovered at the Midgaard healer (room **3054**) with full health,
+mana, and movement. HERO remains unproved, and Dorrik remains the sole
+progression pilot.
 
-The latest bounded live pass safely checked the next Lotus Temple reset at room
-**10821**, confirmed the target absent, and made no XP claim. The policy layer
-now rotates past the earlier crowded room instead of waiting on it. The campaign
-continues against the deployed live snapshot; it does not wait for upstream
-undead or archetype/species changes.
+The last completed gameplay segment, **20818** / run **21424**, safely checked
+the Pit Official and found no target. The preceding Sanctuary recovery succeeded
+in segment **20817**; segment **20816** recorded a real M'rinthas transit-guard
+loss. The local combat fix now waits one bounded turn for authoritative GMCP
+enemy identity when DD4 sends the first attack text early, preventing a
+premature flee before the live target can be assessed. The latest restock
+segment stopped before gameplay because `dragons-domain.org:8888` refused the
+bounded connection attempts; no character state changed and no worker remains
+running. The source-hunt selector continues against the deployed snapshot and
+does not wait for upstream undead or archetype/species changes.
 
-The upstream source mirror is **e5973292389df505db17143480ee1481e90598a0**.
-It contains newer undead and archetype/species work that is not deployed on the
-live MUD. Research tools may inspect that source, but live campaigns use a
-deployment filter that treats those templates as unresolved until live probes
-confirm them. This avoids turning unreleased source changes into live combat
-permission; it does not wait for the upstream deployment.
+The upstream source mirror is **528b319c82a1d3b2fc6a55ff8790b07410a3a6cb**.
+It now includes the Graveyard conversion and refined undead archetypes, which
+are not deployed on the live MUD and may remain ahead of the server for a month
+or two. Research tools may inspect that source, but live campaigns use a
+deployment filter that keeps the 21 known unreleased or revised mobile templates
+unresolved until live probes confirm deployment. This avoids turning upstream
+source changes into live combat permission; it does not wait for deployment.
 
 Runs **20558-20563** completed the bounded Sanctuary rotation and several
 current-band hunts; run **20561** acquired the source-verified red dragonorb
@@ -3061,13 +3067,22 @@ python -m dd4tester show-gear-sources --level 24 --class thief `
   --stance combat --all-areas
 python -m dd4tester show-combat-readiness --level 24 --class thief `
   --character Kestrel --all-areas
+python -m dd4tester show-hunt-candidates --level 41 --character Dorrik `
+  --all-areas --include-xp-only --live-deployment
 python -m dd4tester autonomy-audit --race human --sex female --all-classes --target-level 100
+python -m dd4tester autonomy-audit --all-identities --target-level 100
 ```
 
 The capture scenario connects to `dragons-domain.org:8888`, observes room and
 character output, and quits. Configure credentials first. Static audits describe
 registered templates, not live executable coverage. Observed skill names require
 source authorization and positive practice before execution.
+
+`autonomy-audit --all-identities` is the offline source-wide check. It audits
+every current race, cosmetic sex, base class, and optional subclass against the
+request parser and policy graph, then prints a compact count summary. Use
+`--json` when a complete per-identity report is needed. A passing fallback or
+identity audit is planning evidence only; it does not prove live progression.
 
 `skill-analysis` shows ordered leveling priorities, target proficiency,
 prerequisites, and known automation gaps for a class or subclass. Pass both
@@ -3079,9 +3094,13 @@ then verify actual lessons against live proficiency and the trainer's teaching
 limits. See `AGENTS.md`'s Skill Tree Progression strategy and
 `docs/OPERATIONS.md` for the operating contract.
 
-`hero --source` accepts the DD4 source/area directory or `const.c`. Workspaces
-retain the resolved directory and source evidence. Keep the local DD4 checkout
-fresh and review changes before live use. Race/class validation is declared in
+`hero --source` accepts the DD4 checkout root, its `server` directory,
+`server/area`, `server/src`, or `const.c`; all forms resolve to the paired
+area directory before parsing. The same normalization applies to source
+reports and gear catalogs, so pointing a report at the C source directory
+cannot silently produce an empty world. Workspaces retain the resolved
+directory and source evidence. Keep the local DD4 checkout fresh and review
+changes before live use. Race/class validation is declared in
 `matrices/level-10-all-race-class.yaml`; the existing roster is in
 `matrices/active-hero-rotation.yaml`. Run serially and use `matrix-coverage` to
 distinguish declared entries from actual proof.
@@ -3101,12 +3120,24 @@ and hazard gates, a fitting live HP budget, and an exact post-kill loot/equip
 step. Source class-slot coverage and live carrier acquisition remain active
 proof gaps.
 
+`show-hunt-candidates` defaults to the complete upstream source for research.
+Pass `--live-deployment` to `show-hunt-candidates`, `show-resource-sources`,
+`show-gear-sources`, or `show-combat-readiness` when reviewing plans for the
+running MUD; the known unreleased undead and archetype/species templates are
+then marked unresolved instead of being treated as live combat evidence. Each
+report prints its deployment profile, and the readiness JSON includes it too.
+This filter does not wait for an upstream deployment or change the separate
+live `consider`, identity, route, crowd, health, and recovery gates.
+Live starter entry points install the same filter automatically, and the
+source-world caches keep upstream research and live-filtered results separate.
+
 `show-resource-sources` lists healing, food, sanctuary, protection, energy
 containment, flight, and water-breathing resources while keeping executable routes separate from
 source-only analysis. For example:
 
 ```powershell
-python -m dd4tester show-resource-sources --level 30 --effect water-breathing --all-areas
+python -m dd4tester show-resource-sources --level 30 --effect water-breathing `
+  --all-areas --live-deployment
 ```
 
 Use `--effect energy-containment` (or `--effect "disintegrate protection"`)

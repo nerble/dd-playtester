@@ -3,10 +3,13 @@ import pytest
 from dd4tester.archetypes import archetype_registry
 from dd4tester.autonomy import (
     audit_all_base_classes,
+    audit_all_source_identities,
     audit_hero_request,
     audit_json,
     render_autonomy_audit,
+    render_autonomy_matrix_summary,
 )
+from dd4tester.dd4_catalog import load_character_catalog
 
 
 def test_audit_separates_executable_research_from_verified_proof() -> None:
@@ -106,6 +109,28 @@ def test_runtime_fallback_covers_each_legal_subclass_to_hero(
 
     assert audit.runtime_fallback_through_target
     assert audit.first_runtime_gap_level is None
+
+
+def test_source_identity_matrix_covers_every_catalog_shape() -> None:
+    catalog = load_character_catalog()
+    audits = audit_all_source_identities(target_level=100)
+
+    expected = len(catalog.races) * len(catalog.sexes) * (
+        len(catalog.classes) + len(catalog.subclasses)
+    )
+    assert len(audits) == expected
+    assert all(audit.identity_legal for audit in audits)
+    assert all(audit.runtime_fallback_through_target for audit in audits)
+    assert {audit.race for audit in audits} == {
+        option.name for option in catalog.races
+    }
+    assert {audit.subclass for audit in audits if audit.subclass} == {
+        option.name for option in catalog.subclasses
+    }
+
+    summary = render_autonomy_matrix_summary(audits)
+    assert f"Source identity matrix: {expected} static audits" in summary
+    assert "Live progression proof: not assessed" in summary
 
 
 def test_verified_starter_templates_do_not_claim_live_progression_proof() -> None:

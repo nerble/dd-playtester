@@ -306965,3 +306965,1259 @@ The live worker completed safely and proved the route is real: shrine attendant 
 
 [2026-10-29 9:02:14 PM NZST] CODEX COMMENTARY
 The live route check is now durably recorded at checkpoint 66964, segment 3093, run 21349: safe absence at Lotus room 10821, still level 41 with unchanged XP. I am updating the README’s current-status block to match that evidence and to make the frozen-live-deployment decision explicit for anyone resuming the project.
+
+
+[2026-10-29 9:02:59 PM NZST] CODEX COMMENTARY
+The source/live split is now recorded and the reviewed work is committed locally as 94ef3b3; nothing was pushed remotely, and the unrelated root SQLite files remain untracked. Since the live server may not change soon, I am continuing the progression loop now with the next bounded segment instead of waiting for that deployment.
+
+
+[2026-10-29 9:05:00 PM NZST] CODEX COMMENTARY
+The next live rotation reached the Pit Official route and safely confirmed that target absent too; no XP change and no safety loss. That is useful evidence, not a reason to wait for a reboot, so I am moving on to the next source-ranked current-band candidate now.
+
+
+[2026-10-29 9:08:13 PM NZST] CODEX COMMENTARY
+The third pass exposed one more selection wrinkle: after the Pit absence, the next route worked, but the following preparation tried the same Lotus reset again immediately because the durable `last_policy` field points to older productive history. I am tightening the rotation hint to include the most recent completed source-hunt phase, which is a one-pass selection aid only and does not create a reboot-scoped ban.
+
+
+[2026-10-29 9:08:36 PM NZST] CODEX COMMENTARY
+The focused test caught a harmless edge in that change: a test runner with no prior segments was receiving an empty exclusion marker. I am filtering that placeholder out, then I will rerun the focused rotation tests before another live check.
+
+
+[2026-10-29 9:08:53 PM NZST] CODEX COMMENTARY
+The rotation tests now pass: 10 passed. The live campaign is still safely at level 41, so I am verifying the new one-pass exclusion against the next segment; this should advance past the just-checked 10821 route instead of replaying it.
+
+
+[2026-10-29 9:11:06 PM NZST] CODEX COMMENTARY
+The next bounded pass again found the Pit Official absent and returned safely, bringing the live evidence to checkpoint 66976 without XP loss. The controller is now alternating between two absent prototypes; I am extending the same selection-aid rule across the recent source-hunt tail so it tries the next untouched current-band reset before revisiting either one.
+
+
+[2026-10-29 9:11:54 PM NZST] CODEX COMMENTARY
+The expanded rotation test passes: 10 passed. It now keeps the recent source-hunt tail out of the next fallback pass, so the next live segment should move to a different reset instead of bouncing between Pit and Lotus.
+
+
+[2026-10-29 9:12:54 PM NZST] CODEX COMMENTARY
+The live controller used the newly opened frontier to replenish flight, completed that maintenance segment safely, and confirmed an active fly affect. I am continuing immediately so the next invocation can use that resource for the next source-ranked route; Dorrik remains level 41, with no XP loss.
+
+
+[2026-10-29 9:13:39 PM NZST] CODEX COMMENTARY
+The live retry hit a small compatibility bug in the new tail scan: production history rows are `sqlite3.Row` objects, not dicts, so the new code used `.get` and stopped before connecting. I am fixing that accessor now; no game action occurred in the failed pass, and the durable campaign remains safe.
+
+
+[2026-10-29 9:14:01 PM NZST] CODEX COMMENTARY
+The accessor fix compiles and the focused rotation tests pass again: 10 passed. I am resuming the same bounded campaign invocation now; the failed attempt opened no live connection, so this is a clean continuation from Dorrik’s safe healer checkpoint and verified flight reserve.
+
+
+[2026-10-29 9:15:48 PM NZST] CODEX COMMENTARY
+The flight refresh was followed by a safe healer normalization segment: Dorrik is again at room 3054 with full health and movement, and no XP changed. The campaign is not waiting on the live deployment; I am starting the next selection pass from that clean checkpoint.
+
+
+[2026-10-29 9:19:03 PM NZST] CODEX COMMENTARY
+The recent-tail rotation did exactly what we wanted: it reached the previously untouched Lotus reset at 10822, confirmed that target absent, and returned safely. No XP was claimed, but the controller is now checking distinct live resets instead of replaying one prototype; I am continuing to the next candidate.
+
+
+[2026-10-29 9:20:32 PM NZST] CODEX COMMENTARY
+The current live evidence is now checkpoint 66991, segment 3100, run 21356: another safe Pit absence, still level 41 and unchanged XP. The new rotation has already reached all three Lotus reset rooms; I am recording the updated checkpoint and leaving the next bounded visit ready to move on rather than waiting for the MUD’s upstream deployment.
+
+
+[2026-10-29 9:20:57 PM NZST] CODEX COMMENTARY
+The deployment mismatch is no longer blocking the work. Before I close this pass, I am recording today’s single focused regression batch for the recent-tail rotation fix, then I will run exactly that batch and leave the full suite for a later coherent milestone.
+
+
+[2026-10-29 9:21:40 PM NZST] CODEX COMMENTARY
+Today’s single focused regression batch is recorded and passed: 10 tests, no full suite. The live campaign is safely checkpointed at 66991 with Dorrik at level 41; the deployed live profile is now the working target, and the recent-tail rotation fix is locally edited and verified. The daily commit already happened at 9 PM as 94ef3b3; this later fix will wait for the next scheduled local commit, with no remote push.
+
+
+[2026-10-29 9:22:02 PM NZST] CODEX COMMENTARY
+I am continuing from checkpoint 66991 rather than treating the month-long live deployment gap as a blocker. The last pass safely checked Pit after the three Lotus rooms; I am opening the next bounded segment now to see which untouched current-band route the source selector admits.
+
+
+[2026-10-29 9:27:00 PM NZST] CODEX COMMENTARY
+The frozen live deployment is now the constraint, so I am treating the current MUD behavior as the test target rather than waiting for upstream undead or archetype changes. I found a real selector bug before starting another hunt: an internal fallback was bypassing the recent-route rotation exclusions. I am fixing and testing that locally first, then I will use the corrected selector for the next bounded live progression attempt.
+
+
+[2026-10-29 9:27:44 PM NZST] CODEX COMMENTARY
+The trace found the missing handoff: the method-level selector received the exclusion list, but its shared keyword bundle dropped it before calling the global hunt selector. I am adding that one explicit pass-through and a regression assertion so every fallback branch inherits the same recent-route rotation rule.
+
+
+[2026-10-29 9:28:49 PM NZST] CODEX COMMENTARY
+The pass-through fix compiles and the focused campaign tests remain green: 10 passed. I am now replaying the selector against Dorrik's saved checkpoint without opening a MUD connection; the important check is that the last eight source-route phases are actually excluded before the next live hunt is launched.
+
+
+[2026-10-29 9:29:44 PM NZST] CODEX COMMENTARY
+The replay caught an overreach in my first fix: the inner selector does not accept an exclusion keyword because it intentionally filters candidates before dispatch. I removed that invalid pass-through and am tracing the actual bypass now, so the next patch will reinforce the existing filter at the branch that reintroduces the recent candidate instead of changing the selector interface.
+
+
+[2026-10-29 9:31:24 PM NZST] CODEX COMMENTARY
+The corrected replay now refuses to select any of the three recently visited source routes, which is the intended rotation behavior. It returns no candidate rather than replaying the Pit Official; I am checking whether that is a true empty frontier or whether another later branch is still hiding an eligible current-band target before I launch the live worker.
+
+
+[2026-10-29 9:32:39 PM NZST] CODEX COMMENTARY
+The comparison exposed the exact failure: the ordinary selector has no fresh result, but the rotation wrapper still reintroduced the Pit Official through a later fallback branch. I am tracing that branch by candidate identity now; the fix must make the recent-route hint survive those special revalidation paths without blocking genuinely new targets.
+
+
+[2026-10-29 9:35:19 PM NZST] CODEX COMMENTARY
+The trace identified the bypass precisely: the final fallback rotation rebuilt its pool from the original ranked candidates, then excluded only the last absent identity. That pool reintroduced the recent Pit route even though the main candidate list had filtered it. I am adding the missing explicit-exclusion check at that final boundary and will rerun the same focused tests plus the saved-checkpoint replay.
+
+
+[2026-10-29 9:36:20 PM NZST] CODEX COMMENTARY
+The final replay shows one more nuance: the recent exclusion is intentionally relaxed for some one-shot repairs, so checking the mutable exclusion set still lets the Pit route back in at the end. I am separating caller-supplied rotation exclusions from those internal repair exceptions and preserving only the rotation set through the final fallback. That keeps legitimate exact revalidations intact while stopping this repeat.
+
+
+[2026-10-29 9:38:16 PM NZST] CODEX COMMENTARY
+The preserved set is reaching the inner selector, but the result still returns from an earlier special branch, before the final pool check runs. I am capturing the exact call site that returns the Pit candidate so I can close that one branch rather than adding a broad rejection at the end.
+
+
+[2026-10-29 9:39:02 PM NZST] CODEX COMMENTARY
+The call-site trace points to the alternate-frontier pass at campaign.py:20494. It rebuilds from all ranked candidates after removing only the last absent mobile, so it bypasses the preserved rotation set. I am applying the same narrow filter there; this is the final known path that can resurrect a recently visited route.
+
+
+[2026-10-29 9:39:57 PM NZST] CODEX COMMENTARY
+The saved-checkpoint replay is now correct: the recent Pit and Lotus routes are excluded, and the selector chooses the separate Underdark demon-summoner route instead. I will add one assertion for the preserved-exclusion contract, run the focused checks, then start one bounded live segment against the frozen deployment.
+
+
+[2026-10-29 9:40:25 PM NZST] CODEX COMMENTARY
+The selector fix is verified and the focused campaign checks pass: 10 passed. The next live policy is now the Underdark route, not a replay of the Pit or Lotus rooms. I am launching one bounded segment with the normal 420-second worker cap and will let the live MUD decide identity, consider, crowd and combat gates.
+
+
+[2026-10-29 9:41:19 PM NZST] CODEX COMMENTARY
+The live runner has reached the MUD, but its persisted campaign context selected the Pit Official despite the offline replay selecting Underdark. I am leaving this bounded worker running rather than interrupting live state; I will compare the exact saved checkpoint and selector inputs after it returns, then fix the production path if the mismatch is confirmed.
+
+
+[2026-10-29 9:42:48 PM NZST] CODEX COMMENTARY
+The production mismatch is explained: the generic source-handoff repair in `_policy_for_state` bypasses the rotation helper and calls the broad selector directly. That is why the offline helper chose Underdark while the live run chose Pit. I am applying the recent-tail exclusions to that handoff path too, while retaining the existing loop for exact blindness-reserve exceptions.
+
+
+[2026-10-29 9:44:18 PM NZST] CODEX COMMENTARY
+The full policy replay found a second production path: after the live Pit segment, `_policy_for_state` can retain or reacquire a persisted source candidate before the generic handoff loop. I am tracing the exact candidate-selection calls now, because the rotation fix must cover that handoff boundary as well as the broad fallback branch.
+
+
+[2026-10-29 9:45:10 PM NZST] CODEX COMMENTARY
+The trace shows the exact live path: the nested `select_source_candidate` inside `_policy_without_learned_flight` calls the broad selector with no exclusions, so it reselects Lotus before the generic handoff repair is reached. I am adding the same bounded recent-tail rotation inputs to that ordinary source fallback, leaving exact required-policy repair calls untouched.
+
+
+[2026-10-29 9:45:35 PM NZST] CODEX COMMENTARY
+The replay caught a small naming mistake in the new guard: this policy layer calls the flag `fame_recovery_required`, not `fame_recovery`. No live connection was opened. I am correcting that reference and rerunning the same compile, focused checks, and saved-policy replay.
+
+
+[2026-10-29 9:47:08 PM NZST] CODEX COMMENTARY
+The full policy replay now avoids the recent Pit and Lotus 10821/10822 routes and selects the next distinct Lotus reset at 10817. The live deployment is still the target, so I am running one more bounded segment to verify that this central policy path, not just the isolated helper, controls the actual connection.
+
+
+[2026-10-29 9:49:19 PM NZST] CODEX COMMENTARY
+The central live path is now behaving correctly: it selected shrine attendant at Lotus room 10817 rather than Pit or the two recently checked Lotus rooms. The segment completed safely at checkpoint 67007, with no XP change and no loss; I am recording the live evidence and checking the next policy before continuing the progression loop.
+
+
+[2026-10-29 9:49:37 PM NZST] CODEX COMMENTARY
+The 10817 visit ended safely but the field route lost its connection before a target decision, so the campaign correctly selected a return-home normalization next. No XP or character progress was lost. I am running that recovery boundary now, then the selector can continue from a clean healer checkpoint instead of treating the route interruption as a target failure.
+
+
+[2026-10-29 9:51:56 PM NZST] CODEX COMMENTARY
+The corrected handoff reached Underdark in the live run, so the recent-route fix is now proven across the actual policy path. That route also ended with a safe connection-loss return and no XP change at checkpoint 67011; I am preserving that as route evidence and will keep moving through the next recovery/target choice rather than waiting for the frozen deployment.
+
+
+[2026-10-29 9:52:09 PM NZST] CODEX COMMENTARY
+The README now reflects checkpoint 67011 and the frozen-deployment policy. Dorrik has no XP loss, but both recent field routes ended on connection interruptions before a live target decision, so the next segment is a recovery/rotation step rather than a claim of progress. I am continuing that autonomous loop now.
+
+
+[2026-10-29 9:53:50 PM NZST] CODEX COMMENTARY
+The autonomous loop just hit a real stall: it recorded an unavailable current-band handoff waiting on an area reset, even though reboot timing must never be the generic reason to stop. I am auditing the exact latest checkpoint and source-candidate gates now; if the ordinary selector has exhausted its pool, I will use its bounded rotation/retry path rather than accept this wait as the campaign’s next state.
+
+
+[2026-10-29 9:58:25 PM NZST] CODEX COMMENTARY
+The offline source-policy replay is still running, so I am giving it another bounded wait rather than treating the lack of output as a live-MUD stall. The deployment freeze is now a firm compatibility boundary: I will test only what is actually available online and keep unreleased undead/archetype/species work in source-side planning until the server catches up.
+
+
+[2026-10-29 9:58:44 PM NZST] CODEX COMMENTARY
+The replay confirms the stall is not just the retry flag: both the ordinary path and the forced retry path return the same unavailable policy. I am tracing the selector branch that converts a pool of cooldowned candidates into an area-reset wait, with the goal of making it rotate to the next source-vetted option or continue with a bounded fresh probe instead.
+
+
+[2026-10-29 10:01:31 PM NZST] CODEX COMMENTARY
+The stalled replay has finished cleanly without opening a live connection. I am now reproducing the full policy-preparation state against checkpoint 67014 so I can see whether the reset-wait branch is being triggered by genuinely exhausted live candidates or by an overly narrow selector handoff.
+
+
+[2026-10-29 10:03:15 PM NZST] CODEX COMMENTARY
+The full checkpoint reproduction has loaded the real campaign state and confirmed the active reset marker is the Pirates Isles route, while the recent source history is already rotating through Pit, Lotus, and Underdark. The final policy calculation is still doing its local source audit; I am leaving that bounded analysis running and will use its exact result to choose the smallest fix.
+
+
+[2026-10-29 10:04:26 PM NZST] CODEX COMMENTARY
+The exact reproduction returned an unavailable policy with no candidate attached, so this is a selector-level exhaustion rather than a live socket failure. I am now inspecting the ranked candidate pool and each candidate’s rejection status directly; that will distinguish a genuinely empty live-safe frontier from a reset-cooldown rule that is too strong.
+
+
+[2026-10-29 10:06:07 PM NZST] CODEX COMMENTARY
+The candidate audit found the concrete bug. The selector correctly knows how to reopen a loss-free current-band route whose only blocker is stale cooldown history, but an earlier absence-cooldown filter removes that candidate before the stale-retry pass can see it. I am making that narrow filter change now; it keeps losses, crowds, route hazards, bad considers, and special-protection gates closed, while allowing a fresh source-vetted route to rotate without waiting for the live server to reboot.
+
+
+[2026-10-29 10:07:42 PM NZST] CODEX COMMENTARY
+The fix is in place and the new regression covers the exact failure mode: a loss-free stale cooldown now remains in the rotation pool when that fallback is explicitly enabled. I am running the focused campaign tests and a syntax check next, then I will replay the real checkpoint locally before opening another live segment.
+
+
+[2026-10-29 10:08:03 PM NZST] CODEX COMMENTARY
+The focused test caught a small syntax mistake in the cosmetic cleanup of the rotation condition: I removed the line break but also removed one boolean operator. No tests ran past collection, and no live connection was opened. I am correcting that one token now and rerunning the same focused check.
+
+
+[2026-10-29 10:08:26 PM NZST] CODEX COMMENTARY
+The corrected focused run passes: 11 tests, including the new stale-cooldown rotation case, and the campaign module compiles. I am replaying checkpoint 67014 again now; the success criterion is a concrete source-ranked candidate in the frozen live deployment, not merely a different waiting message.
+
+
+[2026-10-29 10:10:12 PM NZST] CODEX COMMENTARY
+The post-fix replay has loaded the same checkpoint and active Pirates Isles reset marker; its source ranking is still processing, with the live socket closed. I am waiting for the bounded local result before deciding whether another selector gate needs adjustment.
+
+
+[2026-10-29 10:10:59 PM NZST] CODEX COMMENTARY
+The narrow prefilter fix is covered by its unit test, but the real checkpoint still has no candidate. That means the remaining blocker is later than the absence filter, likely a source-route or target-admission gate on every stale candidate. I am checking the helper’s exact per-candidate verdict now rather than widening any live safety rule blindly.
+
+
+[2026-10-29 10:12:56 PM NZST] CODEX COMMENTARY
+The live server is now being treated as a deliberately frozen target. I am continuing from the deployed DD4 rules and evidence, while keeping unreleased upstream undead and archetype/species changes out of live campaign decisions. I am tracing the remaining level-41 route blocker so we can keep progressing without waiting for that upstream work.
+
+
+[2026-10-29 10:22:13 PM NZST] CODEX COMMENTARY
+The focused selector test now passes, but the full policy wrapper is taking longer because it replays the campaign's saved repair history. I am letting that bounded diagnostic finish so I can distinguish a real live frontier exhaustion from a second handoff filter; no live connection is being opened during this check.
+
+
+[2026-10-29 10:25:57 PM NZST] CODEX COMMENTARY
+I found the remaining stall: the rotation pass correctly avoids the last eight source routes, but it had no final “all alternatives exhausted” pass to revisit an otherwise eligible loss-free target. That made a recent absence look like an area-reset dependency even though the normal live gates would still allow a fresh check. I am adding that bounded fallback and a regression test now; actual losses, crowds, route hazards, and negative `consider` evidence will remain closed.
+
+
+[2026-10-29 10:26:36 PM NZST] CODEX COMMENTARY
+The fallback is in place and the focused campaign tests now pass (`4 passed`). I am replaying the same level-41 policy checkpoint once more to verify that the controller now chooses a live-deployment route instead of returning the area-reset wait label; this remains offline policy work, with no character connection yet.
+
+
+[2026-10-29 10:27:47 PM NZST] CODEX COMMENTARY
+The replay is still inside the saved-history selector, which is the slow part of this repository because it reconciles the large campaign ledger before choosing a policy. It has not opened a live connection or changed the database; I am waiting for the bounded result rather than treating the upstream deployment lag as a reason to stop.
+
+
+[2026-10-29 10:29:16 PM NZST] CODEX COMMENTARY
+The replay now selects `source-ranked-hunt-lotus-temple-10730-10821-41` instead of the unavailable/area-reset policy. That is the important result: the frozen live snapshot is still usable, and the controller can rotate back to a loss-free route after alternatives close. I am checking the bounded live-run command next, then I will run one supervised segment if its normal credentials and safety limits are available.
+
+
+[2026-10-29 10:30:35 PM NZST] CODEX COMMENTARY
+The supervised campaign invocation is running with a 300-second segment cap and zero reset retries. It is still in local policy preparation, repeating bounded source-frontier checks and has not opened the MUD connection yet; I am watching the command rather than letting preparation hang silently.
+
+
+[2026-10-29 10:32:20 PM NZST] CODEX COMMENTARY
+The live segment completed safely at checkpoint 67016. Dorrik remains level 41 at 1,515,524 XP, so there was no false progress claim; the frozen live route was reached and recorded with execution success, objective not achieved, and safety safe. I am reading the exact terminal evidence now, then I will update the project checkpoint notes and leave the next segment ready for continuation.
+
+
+[2026-10-29 10:32:34 PM NZST] CODEX COMMENTARY
+The live evidence is clear: run 21361 completed the re-admitted Lotus Temple check safely, found the shrine attendant absent, and changed neither XP nor level. The new fallback did exactly what we wanted: it revisited a loss-free route after the other current options closed, without waiting for a reboot and without weakening any combat-loss or `consider` gate. I am recording that checkpoint in the README now.
+
+
+[2026-10-29 10:33:08 PM NZST] CODEX COMMENTARY
+The implementation is now finished for this pass. I am updating the durable README checkpoint to 67016 and recording the frozen-live conclusion explicitly: unreleased undead and archetype/species source work will not be treated as available, and the campaign will continue against the current live deployment.
+
+
+[2026-10-29 10:33:45 PM NZST] CODEX COMMENTARY
+I am continuing against the frozen live deployment now. I am checking the durable campaign state and the uncommitted policy changes first, then I will take the next bounded progression action instead of waiting for the upstream undead or archetype/species rollout.
+
+
+[2026-10-29 10:33:54 PM NZST] CODEX COMMENTARY
+The durable state is consistent with the frozen deployment: Dorrik is still the sole level-41 pilot, and the live filter is active in campaign loading. I am starting one more bounded live segment with reset retries disabled, so the next action comes from the current live-verified frontier rather than waiting for source updates.
+
+
+[2026-10-29 10:34:45 PM NZST] CODEX COMMENTARY
+The bounded run is still in its local policy phase, not stuck in the live connection: it has rechecked recovery and Sanctuary maintenance, rejected a stale Drunk-route repair because its evidence does not pass, and is continuing the level-41 source frontier ranking. I am letting the bounded preparation finish rather than treating a normal source-analysis delay as a live failure.
+
+
+[2026-10-29 10:35:54 PM NZST] CODEX COMMENTARY
+The selector has moved past the fallback cleanly and opened the next live segment against Lotus Temple room 10822, still targeting the shrine attendant under the normal level, identity, route, health and loss gates. The connection has been open for about half a minute with no terminal result yet; the worker remains inside its explicit runtime bound.
+
+
+[2026-10-29 10:37:00 PM NZST] CODEX COMMENTARY
+The live worker is still active at roughly 160 seconds, with the outer deadline and segment cap still protecting the run. There is no evidence of a death, loss, or unsafe state; I am allowing the command watchdog and bounded timeout to resolve this connection rather than interrupting it manually.
+
+
+[2026-10-29 10:37:33 PM NZST] CODEX COMMENTARY
+The second live segment also completed safely: run 21362 reached the next Lotus Temple room, found the shrine attendant absent there too, and returned Dorrik to the healer with no XP change. That is useful frozen-deployment evidence, but it is not progression, so I am updating the checkpoint and then continuing the bounded selector rather than treating repeated absence as a reason to wait for upstream changes.
+
+
+[2026-10-29 10:37:42 PM NZST] CODEX COMMENTARY
+The durable checkpoint is now 67020 (segment 3106, run 21362). I am continuing with another single bounded segment; if the selector leaves Lotus, it will try the next live-eligible source route, and if it remains in Lotus the result will still be bounded evidence rather than an untracked loop.
+
+
+[2026-10-29 10:38:30 PM NZST] CODEX COMMENTARY
+The next bounded attempt is again doing source and recovery preparation only; it has not opened the live connection yet. It is checking Sanctuary maintenance and the current level-41 frontier under the frozen live filter, with no retry quota or reboot wait involved.
+
+
+[2026-10-29 10:40:15 PM NZST] CODEX COMMENTARY
+The selector has opened another bounded live check, this time revisiting the previously absent Lotus room 10821 only because the alternate current-band routes closed under their own evidence. The run is still inside its live watchdog at about 130 seconds; no combat, loss, or unsafe condition has been reported.
+
+
+[2026-10-29 10:45:02 PM NZST] CODEX COMMENTARY
+The third live check completed at checkpoint 67024, and the offline selector trace exposed the next real bottleneck: the source frontier contains live-compatible high-ranked targets such as Ares, Hermes, Apollo, Clive, and the Astral Guardian, but the final selector rejects them before dispatch and falls through to the Lotus absence retry. I am tracing that last rejection path now; this is a code-path issue worth fixing, not a reason to wait for the frozen deployment to change.
+
+
+[2026-10-29 10:49:28 PM NZST] CODEX COMMENTARY
+The live deployment may remain frozen for months, so I am treating that as a fixed constraint rather than waiting on upstream changes. I am continuing the selector work against the live-compatible source profile and tracing why it keeps falling back to recently absent Lotus checks when other bounded candidates exist.
+
+
+[2026-10-29 10:54:38 PM NZST] CODEX COMMENTARY
+The deeper trace confirms this is not simply a lack of source targets. The top live-compatible Olympus and Astral candidates are being held back by their exact prior-loss/protection records, while the remaining loss-free choices are the Lotus and Hawkwoman routes. I am checking the rotation call itself now: the key question is whether the recent-route hint is being honored before the final bounded fallback, so I can make it move to the Hawkwoman route without weakening any loss or live-safety gate.
+
+
+[2026-10-29 10:59:13 PM NZST] CODEX COMMENTARY
+The rotation trace found the real boundary: Hawkwoman is not being skipped by stale route preference; the live evidence ledger contains a same-boot below-band `consider` sighting for her, so the current policy correctly keeps her closed until a new level or reboot. The genuinely fresh options are Ra, a psionicist, an undead guard, and Terra-Kan, each excluded by a specific source hazard or capacity rule. I am auditing those exclusions against the frozen live source now, with special attention to whether Ra has a defensible, Sanctuary-backed combat contract.
+
+
+[2026-10-29 11:00:22 PM NZST] CODEX COMMENTARY
+I am finishing the live-source audit now, using the frozen deployment as the authority and checking whether Ra offers a genuinely defensible next progression route. I will only widen the bot's choices if the source and live safety evidence support it; otherwise I will record the exact blocker and move on to the next useful engineering step.
+
+
+[2026-10-29 11:03:41 PM NZST] CODEX COMMENTARY
+The frozen-live audit leaves one concrete, source-supported opening that does not depend on the unreleased undead or archetype/species work: Ra in Olympus. I am adding a narrow contract for that exact single reset, including the mixed breath effects, carried-item risk, Sanctuary reserve, route, and live-level checks, then I will test the selector before deciding whether to open a bounded live attempt.
+
+
+[2026-10-29 11:09:07 PM NZST] CODEX COMMENTARY
+The live world may lag the upstream source for quite a while, so I’m treating that as a fixed deployment boundary and continuing from the actual live snapshot. The exact Ra opening is now covered; I’m tightening the surrounding focused tests before sending another bounded live attempt.
+
+
+[2026-10-29 11:09:45 PM NZST] CODEX COMMENTARY
+The broader focused run exposed one stale assertion from the older target-HP probe policy, while the new Ra-specific tests pass. I’m aligning that test with the current rule that target HP is evidence only, then I’ll rerun the narrow campaign checks and try the live route.
+
+
+[2026-10-29 11:10:11 PM NZST] CODEX COMMENTARY
+The new Ra tests and the rotation tests are green. The vampire test still asserted that lowering the target's modeled HP should close the candidate; that is another obsolete expectation under the live policy, so I’m changing it to verify target-HP changes do not affect admission.
+
+
+[2026-10-29 11:11:18 PM NZST] CODEX COMMENTARY
+The remaining focused failure is real: an urgent Sanctuary-recovery state can be diverted into basic outfit maintenance, leaving no protection route. I’m fixing that ordering and removing the duplicate stale assertion, then rerunning the targeted checks.
+
+
+[2026-10-29 11:11:55 PM NZST] CODEX COMMENTARY
+The focused checks are now green: the exact Ra contract, rotation behavior, the target-HP evidence rule, and Sanctuary-recovery ordering all pass. I’m starting one bounded live segment now against the frozen deployment; it will either make progress or leave a precise live absence record, and it will not wait for upstream.
+
+
+[2026-10-29 11:12:40 PM NZST] CODEX COMMENTARY
+The selector found Ra as the next live target, but correctly routed through a detect-invisibility preparation step because he is invisible in the source. The bounded worker is opening that prerequisite now; after it completes, the checkpoint will retain the exact Ra target rather than losing it to a generic fallback.
+
+
+[2026-10-29 11:13:09 PM NZST] CODEX COMMENTARY
+The live preparation completed safely at checkpoint 67028. It bought the visibility prerequisite and preserved Dorrik at level 41 with no XP loss; the actual Ra combat is deliberately the next bounded segment, so this run has advanced the state rather than declaring a false kill.
+
+
+[2026-10-29 11:13:22 PM NZST] CODEX COMMENTARY
+Visibility preparation is checkpointed as segment 3108 with no XP loss. The next invocation should consume that preparation and dispatch the retained Ra route; I’m continuing with one more bounded segment so the live target is actually tested rather than stopping at setup.
+
+
+[2026-10-29 11:14:35 PM NZST] CODEX COMMENTARY
+The retained Ra hunt is now live and has passed its preparation phase. The worker is 60 seconds into the bounded attempt with no failure signal yet; I’m letting the combat/return checks finish under the fixed timeout rather than interrupting a real connection.
+
+
+[2026-10-29 11:15:40 PM NZST] CODEX COMMENTARY
+The Ra attempt is still active at 2 minutes, with the campaign heartbeat responding and no failure or disconnect. That means it is working through the live route rather than hanging; I’m keeping the hard segment deadline in place and will record the exact outcome.
+
+
+[2026-10-29 11:17:06 PM NZST] CODEX COMMENTARY
+The live transcript found Ra exactly where the source predicted and returned DD4’s level-based “Do you feel lucky, punk?” result, followed by a separate health comparison. The worker stopped because the new Ra exception had not been wired into the live stop’s lucky-consider allowance; that is our integration bug, not a valid target rejection. I’m fixing the stop and adding a narrow history repair that preserves the raw evidence.
+
+
+[2026-10-29 11:20:56 PM NZST] CODEX COMMENTARY
+The exact-stop fix and the raw-transcript repair are both passing. The repair keeps the original false result as provenance, but reopens only this Ra reset because the transcript proves the level-based lucky line, no combat command, and no loss; I’m now resuming the campaign for the actual attempt.
+
+
+[2026-10-29 11:21:49 PM NZST] CODEX COMMENTARY
+The repair resumed cleanly, but the live worker first had to restock food after the previous hunt consumed Dorrik’s last pie. That maintenance completed safely at checkpoint 67034; I’m continuing once more so the next segment can reach the retained Ra fight with proper provisioning.
+
+
+[2026-10-29 11:23:06 PM NZST] CODEX COMMENTARY
+The next run chose loot liquidation because Dorrik had only 41 copper after restocking and was carrying saleable equipment. The sell-loot segment is still alive at 60 seconds with its heartbeat responding; I’m allowing the bounded shop route to finish before retrying the hunt.
+
+
+[2026-10-29 11:23:45 PM NZST] CODEX COMMENTARY
+The sale route completed safely at checkpoint 67036 and restored some funds; it was maintenance only, with no XP change. I’m continuing through the next preparation decision so the repaired Ra attempt is not stranded behind routine provisioning.
+
+
+[2026-10-29 11:25:01 PM NZST] CODEX COMMENTARY
+The campaign is now in its funding handoff: Dorrik has food but not enough cash for the visibility/flight preparation, so the worker is using the existing money-loop path rather than launching a doomed hunt. It is still active at 60 seconds with a live heartbeat; I’m keeping the bounded run moving.
+
+
+[2026-10-29 11:25:43 PM NZST] CODEX COMMENTARY
+The funding handoff succeeded at checkpoint 67039: Dorrik completed the source-backed coin-stash objective safely. That removes the cash bottleneck, so I’m continuing into the next segment where the visibility/flight state should finally hand the repaired Ra target to the combat runner.
+
+
+[2026-10-29 11:27:13 PM NZST] CODEX COMMENTARY
+The cash gate is cleared, but source selection is doing several bounded passes over the live roster before opening a socket. It is rotating through previously checked carriers and has not stalled: the progress heartbeat is still arriving, and I’m keeping the preparation deadline separate from the gameplay timeout.
+
+
+[2026-10-29 11:29:19 PM NZST] CODEX COMMENTARY
+The live server is a frozen target for now, so I’m treating its current source snapshot as authoritative and separating unreleased upstream features from what the bot is allowed to use. I’m going to carry that assumption through the campaign logic and documentation, then keep Dorrik moving against live-available targets instead of waiting for the upstream update.
+
+
+[2026-10-29 11:30:16 PM NZST] CODEX COMMENTARY
+That is fine: we do not need the upstream changes to proceed. The live-source filter is already keeping those undead and archetype/species templates out of combat admission, while ordinary deployed targets remain available. I’ve confirmed the current level-41 candidate list is populated, including Olympus, Astral, the Pit, and other live-usable routes, so I’m moving Dorrik through one bounded progression pass now rather than waiting for a source update.
+
+
+[2026-10-29 11:31:05 PM NZST] CODEX COMMENTARY
+The bounded pass is running cleanly. It rotated away from the previously absent target and selected a live-verified flight-supply step before the next hunt; no gameplay connection was opened until that preparation was complete. I’m letting this one finish within its fixed time limit and will use the saved result to decide the next action.
+
+
+[2026-10-29 11:31:20 PM NZST] CODEX COMMENTARY
+That pass completed safely and checkpointed at 67046, but it was maintenance rather than XP: Dorrik remains level 41 at 1,515,524 XP. The next invocation is now ready to select another current-band route; the live target is not blocked by the upstream source lag. I’m updating the project status so the documented checkpoint and deployment boundary match the evidence, then I’ll continue with the next bounded hunt.
+
+
+[2026-10-29 11:31:30 PM NZST] CODEX COMMENTARY
+The status note now reflects the real live boundary: upstream can stay ahead for months, but live campaigns keep using only deployed evidence. I’m starting the next single bounded segment now; this is where the selector can move from maintenance back to a current-band hunt.
+
+
+[2026-10-29 11:33:22 PM NZST] CODEX COMMENTARY
+The second pass also returned safely, but it stopped at a healer-side return check instead of opening a hunt. I’m treating that as a selector issue to inspect, not as evidence that level-41 targets are unavailable: the saved state is healthy at room 3054 and the source list still has current-band candidates. I’m tracing why the next policy fell back to return-home before spending another live connection.
+
+
+[2026-10-29 11:34:43 PM NZST] CODEX COMMENTARY
+I found the reason for the healer-side stop: Dorrik had full hitpoints and mana but only 578 of 651 movement on the saved start state, just under the readiness threshold. The return-home segment restored him to 651 movement, so this was recovery work rather than a deadlock. He is now genuinely ready for the next field attempt, and I’m continuing with that bounded hunt.
+
+
+[2026-10-29 11:36:34 PM NZST] CODEX COMMENTARY
+The next pass has now opened a real live connection on the Lotus Temple route after the healer recovery. The worker is still active inside its fixed five-minute segment window; there is no failure or death signal so far, and I’m monitoring the bounded run rather than letting it hang.
+
+
+[2026-10-29 11:38:00 PM NZST] CODEX COMMENTARY
+The Lotus pass completed as a clean no-combat visit: it reached the registered endpoint, checked the alternate rooms, found the exact target absent, and returned to the healer. That is useful live evidence, not a reason to pause. I’m rotating to the next source-ranked level-41 route now; the upstream deployment gap is not being used as a blocker.
+
+
+[2026-10-29 11:40:58 PM NZST] CODEX COMMENTARY
+The next rotation is on the second Lotus Temple endpoint. It is still within the live worker’s fixed budget and has not reported a loss or connection failure; the route is simply taking time to complete its bounded room checks. I’ll let the worker finish and then move on immediately if this target is absent again.
+
+
+[2026-10-29 11:42:22 PM NZST] CODEX COMMENTARY
+The live deployment may remain unchanged for a month or two, so I am treating that as a planning boundary rather than a reason to wait. I am checking the latest Dorrik checkpoint, updating the project status to match the live evidence, and continuing with the current deployed character.
+
+
+[2026-10-29 11:42:31 PM NZST] CODEX COMMENTARY
+The latest campaign record confirms checkpoint 67058, segment 3117, run 21373: both Lotus Temple endpoints were checked safely with no XP loss, and Dorrik is still level 41. I am bringing the status note up to that checkpoint, then I will start the next bounded live selection so the absence evidence leads to a different route instead of waiting for upstream deployment changes.
+
+
+[2026-10-29 11:43:24 PM NZST] CODEX COMMENTARY
+The next live selection has moved to the exact Olympus Ra route rather than replaying either Lotus absence. Preparation is complete and the worker is inside the bounded segment with no game failure reported; I am letting this carefully scoped attempt finish so the lucky-consider repair is tested against the deployed MUD.
+
+
+[2026-10-29 11:45:04 PM NZST] CODEX COMMENTARY
+The Ra attempt is still active at the 120-second progress mark. The controller has not reported a timeout, loss, or disconnect, so I am keeping it within its fixed five-minute segment instead of interrupting a live fight or route check prematurely.
+
+
+[2026-10-29 11:46:10 PM NZST] CODEX COMMENTARY
+The live Ra run is still within its five-minute segment at 180 seconds, with no terminal safety signal. I am continuing to monitor the bounded worker; if it reaches its own deadline, the result will be recorded and the next policy can proceed without leaving a process behind.
+
+
+[2026-10-29 11:46:33 PM NZST] CODEX COMMENTARY
+The Ra segment has finished and the safety ledger recorded a real loss: Dorrik is still level 41, but XP fell from 1,515,524 to 1,514,349. I am stopping further live progression for this pass and inspecting the exact transcript, loss reason, and recovery evidence before changing the policy; this is a genuine target-specific failure, not an upstream deployment issue.
+
+
+[2026-10-29 11:47:00 PM NZST] CODEX COMMENTARY
+I have the failure pinned down now. Ra was not merely “too tough”: the live MUD delivered a breath attack that poisoned Dorrik and dropped him from full health to 57%, then the recall attempt failed while combat continued and the delayed XP loss followed. I’m comparing that exact live sequence with the source special and withdrawal logic so the fix addresses the real failure mode without making the whole campaign timid.
+
+
+[2026-10-29 11:49:09 PM NZST] CODEX COMMENTARY
+The source confirms the root cause: spec_breath_any randomly chooses fire, lightning, gas, acid, steam, or frost, and the live roll chose gas. That exact target loss is now recorded in the campaign ledger, so the selector will not reopen Ra as an ordinary current-band hunt. I am updating the status note with the real checkpoint and then continuing to a different deployed target rather than waiting for upstream changes.
+
+
+[2026-10-29 11:49:41 PM NZST] CODEX COMMENTARY
+The post-loss recovery segment completed safely at checkpoint 67065. It only liquidated carried loot, so XP stayed at 1,514,349; Dorrik is back at the healer and the exact Ra loss remains closed. I am continuing into the next selector pass now, where the campaign can choose another current-band route with the corrected evidence.
+
+
+[2026-10-29 11:51:02 PM NZST] CODEX COMMENTARY
+The selector has moved past Ra and is now testing the distinct Lotus Temple reset at room 10817. It spent about a minute rotating through source evidence and Sanctuary maintenance checks, then opened the live route; this is a different target with no inherited Ra permission or failure, and I’m monitoring the bounded attempt.
+
+
+[2026-10-29 11:52:08 PM NZST] CODEX COMMENTARY
+The room-10817 Lotus attempt is still within its fixed segment at 115 seconds. There is no loss, timeout, or disconnect signal; I am leaving the live worker alone to complete its exact room and recovery checks rather than interrupting it mid-route.
+
+
+[2026-10-29 11:52:40 PM NZST] CODEX COMMENTARY
+The room-10817 pass completed safely at checkpoint 67068 with no XP change. It was another clean live absence/route result, not a failure; the Ra loss remains isolated to Ra. I am keeping the progression loop moving through the next distinct current-band candidate and will update the status note after this rotation settles.
+
+
+[2026-10-29 11:53:59 PM NZST] CODEX COMMENTARY
+The next selector pass is on Lotus room 10821, after completing the independent 10817 check. This is a bounded live recheck under fresh route and identity gates, not a reboot-scoped wait or a replay of Ra; the worker is now connected and I am monitoring for a real target or a clean absence.
+
+
+[2026-10-29 11:55:06 PM NZST] CODEX COMMENTARY
+The room-10821 recheck is still healthy at 128 seconds, with no connection or safety warning. It is taking the same bounded amount of time as the other Lotus visits because the worker checks the registered alternate rooms before returning; I am letting it finish and will move to the next route afterward.
+
+
+[2026-10-29 11:55:51 PM NZST] CODEX COMMENTARY
+The room-10821 recheck also completed safely at checkpoint 67073 with no XP change. Dorrik has now recovered cleanly after the Ra loss, and the campaign is still working the deployed live frontier rather than waiting for upstream content. I am continuing one more bounded selection pass to confirm it moves beyond the Lotus rotation when these clean absences are exhausted.
+
+
+[2026-10-29 11:57:42 PM NZST] CODEX COMMENTARY
+The selector has now moved beyond the Lotus rotation to the exact Pit Official route. The live worker is at 90 seconds with no safety warning; this is the source-audited acid-breath target, so I am letting the existing Sanctuary, identity, and health-floor checks govern the attempt rather than rejecting it merely because it has a special.
+
+
+[2026-10-29 11:57:53 PM NZST] CODEX COMMENTARY
+The Pit route also completed safely at checkpoint 67077 with no XP change. The controller has now tested Ra as a live loss, several Lotus resets as clean absences, and the Pit as a clean absence; it is preserving those exact results while continuing to look for an untested deployed target. I am updating the status note to the new checkpoint before the next bounded pass.
+
+
+[2026-10-29 11:59:26 PM NZST] CODEX COMMENTARY
+The selector has repeated Lotus room 10821 after the Pit, even though the live visit is bounded and currently healthy. I am letting this already-open visit finish, then I will inspect the frontier handoff instead of blindly launching another identical absence; the exact Ra loss remains closed and no process will be left running.
+
+
+[2026-10-30 12:01:24 AM NZST] CODEX COMMENTARY
+The repeated room-10821 visit completed safely at checkpoint 67081 with no XP change. I am stopping live launches for the moment and inspecting the recent absence records and selector ordering, because the source roster is broad and another identical Lotus pass would be wasted effort if a handoff hint is being lost.
+
+
+[2026-10-30 12:02:56 AM NZST] CODEX COMMENTARY
+The live build can remain frozen for months, so I’m treating it as a firm deployment boundary rather than waiting for upstream. I’m continuing the selector work against the source and profile that are actually live, and I’ll keep unreleased undead, archetype, and species content out of live permissions.
+
+
+[2026-10-30 12:09:37 AM NZST] CODEX COMMENTARY
+I’ve checked the frozen-deployment boundary and the current frontier. The source mirror exposes more names than the live server can currently authorize, so I’m keeping that distinction intact. The immediate stall is narrower: Dorrik’s level-41 history has closed most high-ranked exact targets through real losses or negative live evidence, while the selector can still surface the same Lotus absence after its alternatives have already been checked. I’m tightening that rotation behavior and adding a regression case before the next live attempt.
+
+
+[2026-10-30 12:11:33 AM NZST] CODEX COMMENTARY
+The rotation change is now in place: after a live absence retry, the exact same target is blocked only for the remainder of that planning pass when no alternate survives the normal gates. The evidence is retained, and the next planning pass releases the deferral, so this does not become a reboot or permanent ban. I’m running the focused selector tests now.
+
+
+[2026-10-30 12:12:09 AM NZST] CODEX COMMENTARY
+The focused selector checks passed: 7 tests, and the edited files compile cleanly. The saved campaign evidence is unchanged at level 41 and the new behavior is local to selection, so I’m updating the status note to checkpoint 67081/segment 3123 and recording that the live deployment may remain frozen for months without holding up progression.
+
+
+[2026-10-30 12:12:26 AM NZST] CODEX COMMENTARY
+The local status is updated and the focused checks are green. I’m starting one bounded Dorrik segment now with exactly one segment, no reset wait, and the normal five-minute worker cap. This will verify the one-pass absence deferral against the frozen live MUD; I’ll monitor the explicit worker session and leave no process running afterward.
+
+
+[2026-10-30 12:13:41 AM NZST] CODEX COMMENTARY
+Live segment is still running against the frozen DD4 deployment. I’m letting the bounded five-minute window finish and monitoring only the playtester worker; I’m not waiting for upstream source changes.
+
+
+[2026-10-30 12:15:09 AM NZST] CODEX COMMENTARY
+The live segment has not failed; the worker is still inside its bounded run with the database checkpoint open. I’m allowing the configured five-minute cap to close it, then I’ll inspect the terminal outcome instead of starting a second worker.
+
+
+[2026-10-30 12:16:58 AM NZST] CODEX COMMENTARY
+The bounded segment completed safely and closed at level 41 after checking another live Lotus Temple candidate; it did not wait on upstream updates. I’m continuing immediately with the next single segment so the pilot keeps making live progress rather than treating one absence as a campaign stop.
+
+
+[2026-10-30 12:18:18 AM NZST] CODEX COMMENTARY
+The next planning pass is working through the live-safe fallback rather than stalling: it exhausted the registered frontier, rotated past the first empty handoff, and has now opened a bounded Lotus Temple check for the shrine attendant. I’m watching the actual live result before changing policy again.
+
+
+[2026-10-30 12:19:58 AM NZST] CODEX COMMENTARY
+The live shrine-attendant check is still inside its five-minute cap, now about 159 seconds into the bounded segment. No new combat or failure evidence has arrived yet, so I am leaving this worker alone and will record whatever terminal result it produces.
+
+
+[2026-10-30 12:20:42 AM NZST] CODEX COMMENTARY
+Both bounded live segments completed safely at level 41: run 21380 checked Lotus Temple room 10822 and run 21381 checked room 10821, with no XP kill and no new loss. The frozen live boundary remains explicit. I’m updating the status notes to this checkpoint, then I’ll run a focused check that unreleased templates stay excluded from live planning.
+
+
+[2026-10-30 12:21:32 AM NZST] CODEX COMMENTARY
+The live deployment boundary is now verified in focused tests: unreleased archetype/species templates stay out of live planning while source research remains available. The two live segments finished safely at checkpoint 67089, and the worker is no longer running. I also refreshed README with the frozen-deployment note and current checkpoint; no commit was made because the once-daily local commit window is 9 PM.
+
+
+[2026-10-30 12:21:43 AM NZST] CODEX COMMENTARY
+I’m continuing from Dorrik’s live checkpoint rather than waiting for the upstream deployment. I’m first rechecking the current worktree, instructions, and the exact next progression blocker, then I’ll make one concrete code change and exercise it with focused tests.
+
+
+[2026-10-30 12:24:30 AM NZST] CODEX COMMENTARY
+The current evidence exposes a concrete selector bottleneck: several exact live targets have positive consider and no loss, crowd, route, or identity failure, but their retryable no-progress receipts are only reopened after a separate streak. I’m changing the planner to recognize that safe evidence immediately, while preserving hard loss, crowd, route, and identity gates, then I’ll test the selection path.
+
+
+[2026-10-30 12:26:33 AM NZST] CODEX COMMENTARY
+The selector hook is in place, and I’ve confirmed it sits after the source candidate lists are prepared. I’m tightening the helper now so it only reopens an exact current-band target with positive live consider and no loss, crowd, route, identity, or fatal evidence, then I’ll add a regression test for both the allowed and blocked cases.
+
+
+[2026-10-30 12:26:56 AM NZST] CODEX COMMENTARY
+The helper now enforces the exact evidence boundary I wanted: it can only open the retry path for a live positive consider in the current source band, with non-negative progress and no loss, crowd, route, identity, fatal, or low-reward marker. I’m adding a small regression test that proves it opens clean evidence and rejects each of those terminal cases.
+
+
+[2026-10-30 12:28:22 AM NZST] CODEX COMMENTARY
+The focused run found one older assertion that conflicts with the current policy: a positive live-consider receipt was still expected to remain on cooldown when the selector explicitly allowed a retry. I’m aligning that status path with the new rule, so the explicit safe-retry mode reopens the exact target, and I’ll update the stale test name/expectation rather than leave the regression suite disagreeing with the documented behavior.
+
+
+[2026-10-30 12:28:50 AM NZST] CODEX COMMENTARY
+The selector regression now passes: 7 focused cases, including the new clean-evidence test and the corrected explicit-retry behavior. I’m doing a syntax check and then I’ll run one bounded live segment; the purpose is to verify that Dorrik moves beyond repeated Lotus absence checks without waiting for an undead/species deployment update.
+
+
+[2026-10-30 12:31:53 AM NZST] CODEX COMMENTARY
+The bounded live run completed safely. It rotated away from the repeated 10821 absence and tried the next Lotus reset (10822), but it still produced no XP, so the main issue is deeper than a single cooldown flag. I’m checking the saved segment and selector evidence now so the next change targets the actual gating point instead of guessing.
+
+
+[2026-10-30 12:36:49 AM NZST] CODEX COMMENTARY
+I’m treating the live server as a deliberately older deployment, not as a reason to wait. The new archetype/species work will stay source research only until the live world actually supports it. I’ve found a more useful current-band route: the source has a tightly audited M’rinthas Temple Guard path for levels 39–41, and its safety audit passes locally, but the selector is still rejecting it. I’m tracing that decision now so we can keep Dorrik moving with the world that is actually online.
+
+
+[2026-10-30 12:40:23 AM NZST] CODEX COMMENTARY
+The live deployment check is doing its job: it is excluding the newer template work, while still seeing the older area mobiles. I also checked the tempting M’rinthas guard rather than trusting the source estimate: Dorrik reached it at level 41 and live `consider` said it was below the useful band, so I’m keeping that target closed. I’m going to run one bounded live segment now, then use its actual result to decide the next code change instead of waiting for the upstream server update.
+
+
+[2026-10-30 12:40:59 AM NZST] CODEX COMMENTARY
+The bounded run has loaded the repaired checkpoint and is still in policy selection, with the live connection deliberately unopened until the route passes its checks. It has not hung: it is comparing the current-band frontier and has already avoided treating the old M’rinthas evidence as permission to fight a below-band target. I’m letting this bounded attempt finish and will inspect its selected policy or clean no-progress result.
+
+
+[2026-10-30 12:41:34 AM NZST] CODEX COMMENTARY
+The selector has moved through Sanctuary maintenance and is retrying only a source-ranked carrier under the normal live gates; it is not treating the old receipt as a permanent ban. The preparation work is slower than the live worker because it is rebuilding the current source frontier, but it remains bounded and has not opened an unsafe connection. I’m keeping this attempt on its deadline.
+
+
+[2026-10-30 12:42:41 AM NZST] CODEX COMMENTARY
+The live segment is now underway on a shrine-attendant route after the selector rotated past an empty first handoff. The connection was opened only after the source and recovery checks completed. There is no new combat result yet, so I’m watching the bounded worker rather than starting a second attempt on top of it.
+
+
+[2026-10-30 12:44:44 AM NZST] CODEX COMMENTARY
+The live MUD being behind those source updates is now a deployment constraint, not a reason to wait. I’m checking the selector’s current no-progress behavior and will make sure it keeps choosing executable live targets while retaining the future undead/archetype data only for research.
+
+
+[2026-10-30 12:47:57 AM NZST] CODEX COMMENTARY
+The latest checkpoint confirms the problem is selection, not a missing upstream feature: Dorrik is still healthy at level 41, but the selector is spending full live runs rechecking the same absent Lotus resets. I’m comparing the audited current-band alternatives with that fallback now, then I’ll add a narrow rule so an eligible, Sanctuary-protected live target wins before another absence-only visit.
+
+
+[2026-10-30 12:48:35 AM NZST] CODEX COMMENTARY
+The selector trace found a concrete bug: Pit Official is present in the audited special-probe pool with a fresh Sanctuary-capable reset, but ordinary safe candidates with absence receipts are winning first, so the campaign loops through Lotus instead. I’m adding a narrowly scoped preference for that case only; it will not bypass live identity, consider, crowd, health, or protection checks.
+
+
+[2026-10-30 12:51:00 AM NZST] CODEX COMMENTARY
+The corrected selector now chooses the Pit Official probe instead of Lotus, exactly as intended. I’m going to run one bounded live segment against that source-audited target; the live MUD will decide presence, identity, consider, and combat outcome, and an absence will simply become evidence rather than a reason to wait for an upstream release.
+
+
+[2026-10-30 12:53:26 AM NZST] CODEX COMMENTARY
+The live worker has reached the Pit Official policy and is still inside its bounded execution window; this is a real probe now, not source-only planning. I’m letting the exchange finish so the resulting presence/consider/combat evidence is recorded cleanly, with the 300-second segment cap still active.
+
+
+[2026-10-30 12:53:44 AM NZST] CODEX COMMENTARY
+The live probe completed safely and produced a useful result: the exact Pit Official reset is absent on this boot, with no combat or XP loss. That confirms the live/source mismatch is real. I’m now checking the next selection so the campaign rotates to another executable live option instead of immediately spending another full segment on the same empty reset.
+
+
+[2026-10-30 12:54:41 AM NZST] CODEX COMMENTARY
+This pass is complete: the live deployment boundary remains documented, the selector now prioritizes an audited special probe over repeated absence-only progress visits, focused tests pass, and the live Pit probe recorded a safe absence with no XP loss. The next selector choice rotates away from that exact empty reset; I am leaving the source changes local under the 24-hour commit rule and not touching the remote repository.
+
+
+[2026-10-30 12:54:54 AM NZST] CODEX COMMENTARY
+I’m continuing the HERO100 work from the last verified checkpoint. I’m first checking the current source state, live campaign state, and remaining executable progression blockers so the next work unit produces a concrete change or fresh evidence rather than another status-only pass.
+
+
+[2026-10-30 12:57:36 AM NZST] CODEX COMMENTARY
+The next concrete bottleneck is now clear: a pending stale-consider revalidation is being postponed because the selector already chose another absence-only route. I’m changing that priority so a fresh live-consider check can run before another full empty-room visit, then I’ll verify it with a focused runner test and the current campaign selector.
+
+
+[2026-10-30 12:58:20 AM NZST] CODEX COMMENTARY
+I found the precise handoff point: the runner’s stale-consider repair is gated on having no selection at all, so an absence-only route can starve it. I’m adding a shared absence-result check and allowing that repair to replace only a loss-free locator miss; hard failures and real progress selections remain untouched.
+
+
+[2026-10-30 12:59:42 AM NZST] CODEX COMMENTARY
+The implementation change is in place and the stale repair now sits at the intended runner branch. I’m adding one regression case that starts with an absence-only selection, verifies the stale-consider pass takes over, and confirms that an ordinary non-empty selection would still remain in control.
+
+
+[2026-10-30 1:00:31 AM NZST] CODEX COMMENTARY
+The focused regression now passes: 9 tests, including the new runner handoff case. The change behaves as intended in isolation, so I’m checking the live-deployment profile and then I’ll rerun the real Dorrik selector diagnostic to see which fresh-consider route it chooses.
+
+
+[2026-10-30 1:02:51 AM NZST] CODEX COMMENTARY
+The live-deployment checks also pass. The selector diagnostic completed, but my reporting snippet asked the candidate for a convenience field it does not have; that is only a diagnostic-script mistake, not a campaign failure. I’m rerunning the same read-only check with the canonical policy-id helper so we can see the actual choice cleanly.
+
+
+[2026-10-30 1:03:48 AM NZST] CODEX COMMENTARY
+The clean selector check exposed one more layer: the stale-consider receipt is being armed for Freeport, but a later recovery handoff is still replacing it with the Lotus route before dispatch. I’m tracing that overwrite now; this is exactly the kind of liveness issue we need to eliminate before opening another live segment.
+
+
+[2026-10-30 1:04:38 AM NZST] CODEX COMMENTARY
+The trace shows the first repair did not actually get a stale-consider call, so I’m narrowing the diagnosis to the candidate gate itself. The live absence record is clean, while Freeport and Kerofk carry old negative-consider records; I’m checking why their source gate is not admitting the fresh recheck before changing anything else.
+
+
+[2026-10-30 1:06:10 AM NZST] CODEX COMMENTARY
+The old Freeport and Kerofk probes are not unresolved hangs: their transcripts ended with a live negative `consider`, so the normal gates correctly keep them closed. That means the source/live version gap is not being used as a stop reason. I’m now auditing the remaining level-41 candidate pool to find the next productive route instead of forcing another stale recheck.
+
+
+[2026-10-30 1:07:42 AM NZST] CODEX COMMENTARY
+The candidate audit found the real next lever: Dorrik has source-legal level-41 routes such as Ares, Hermes, Athena, Apollo and Clive, but their compacted absence cooldowns are only reopened by the explicit stalled-frontier rotation. I’m running that bounded rotation now so the live `consider` gate can test one of them, rather than repeating the Lotus absence.
+
+
+[2026-10-30 1:09:36 AM NZST] CODEX COMMENTARY
+The stalled rotation is running, but its first legal route is another distinct Lotus reset, not the old 10821 room: the selector chose shrine attendant 10817 after checking the current source pool. The live worker is now in that bounded visit; I’m letting the fresh room/identity/consider evidence decide it and will use the result to rotate again if it is empty or below-band.
+
+
+[2026-10-30 1:10:50 AM NZST] CODEX COMMENTARY
+That live visit completed safely with no XP loss, but shrine attendant 10817 was also not a productive target. The important part is that the engine rotated to a distinct reset and preserved the evidence; I’m checking the new checkpoint now and will continue the bounded rotation immediately rather than waiting for an upstream source refresh.
+
+
+[2026-10-30 1:12:47 AM NZST] CODEX COMMENTARY
+The next rotation is doing useful work even before combat: it exhausted the first source handoff, then selected the Pit Official for a fresh ordinary live check instead of treating the earlier absence as permanent. The bounded Pit visit is active now; this is the correct path for a live MUD that may lag the source repository.
+
+
+[2026-10-30 1:13:32 AM NZST] CODEX COMMENTARY
+The Pit recheck also ended as a clean absence, with no XP loss. Its receipt is now recorded as fresh live evidence, not a permanent ban; I’m making one more bounded rotation so the selector can move to the next source-ranked route rather than stopping because the live world is behind the repository.
+
+
+[2026-10-30 1:15:00 AM NZST] CODEX COMMENTARY
+This pass exposed a second selection wrinkle: after the fallback pool was exhausted, the runner returned to the older 10821 Lotus reset. That is still a valid bounded retry under the no-reboot-ban policy, but it is not good progression. I’m letting the current safe visit finish, then I’ll tighten the rotation preference so source-legal cooldown candidates get their live turn before an already-empty reset is repeated.
+
+
+[2026-10-30 1:16:45 AM NZST] CODEX COMMENTARY
+The live MUD may lag the upstream source by months, so I’m treating those undead/archetype/species changes as offline research inputs, not as a blocker. I’m continuing with Dorrik against the features actually deployed, and I’m checking the current bounded visit before changing selector priorities.
+
+
+[2026-10-30 1:17:05 AM NZST] CODEX COMMENTARY
+That bounded visit finished safely at level 41 with no XP loss, but it repeated the same empty Lotus reset. I’m now tracing the stalled-rotation path to see why source-legal alternatives are still being held behind absence metadata; I’ll narrow that priority without reopening live negative-consider or loss closures.
+
+
+[2026-10-30 1:21:23 AM NZST] CODEX COMMENTARY
+The audit clarified the apparent “cooldown” problem: several Olympus candidates are correctly closed by real prior loss records, and Apollo is closed by a live negative `consider`; those are not stale absence bans. I’m doing one final candidate-pool check now to find whether any genuinely untried current-band route is being skipped before I touch the selector.
+
+
+[2026-10-30 1:24:02 AM NZST] CODEX COMMENTARY
+Final candidate audit found the live profile already behaves as intended: it excludes unreleased undead/archetype/species templates for live admission while still retaining them for source research. I found no safe current-band route to reopen by relaxing a gate: the remaining source-safe choices are prior absence receipts, while other routes carry actual loss, negative-consider, or route-hazard evidence. I’m leaving those gates intact and will keep progression moving against the deployed rules rather than waiting for upstream.
+
+
+[2026-10-30 1:25:12 AM NZST] CODEX COMMENTARY
+The deployment split is already covered by tests, so I’m validating the exact two contracts now: live profile filtering and the stale-consider/absence selection fix. This is focused verification, not the daily full regression.
+
+
+[2026-10-30 1:25:37 AM NZST] CODEX COMMENTARY
+Focused verification passed: the live-deployment profile tests passed 2/2, and the selector contract tests passed 9/9. No new source edit was necessary for the deployment lag. I’ve left the live filter and current safety gates intact; the local changes remain saved, and I’m not committing yet because the 24-hour local-commit window has not opened.
+
+
+[2026-10-30 1:25:50 AM NZST] CODEX COMMENTARY
+I’m resuming the HERO100 work from the live checkpoint. I’m going to inspect the current source and Dorrik’s latest campaign state first, then take the next concrete blocker in the level-41 progression path into implementation or a bounded live test.
+
+
+[2026-10-30 1:31:03 AM NZST] CODEX COMMENTARY
+The live deployment lag is now treated as a fixed boundary: I’m not waiting for the upstream undead or species work to arrive. I’ve found the more immediate level-41 bottleneck instead: Dorrik has current-band Olympus targets in the deployed source, but they require a fresh see-invisible purchase before travel. I’m checking that the campaign selects that preparation path rather than spending another segment on an empty Lotus visit.
+
+
+[2026-10-30 1:35:40 AM NZST] CODEX COMMENTARY
+The last bounded run was safe but empty again: it rotated to the Pit Official and found no target, so I’m not repeating that route. I’m tracing the final policy handoff now, because the deployed source has viable Olympus candidates but the live selector is still choosing absence-only fallbacks instead of reaching the see-invisible purchase step.
+
+
+[2026-10-30 1:44:00 AM NZST] CODEX COMMENTARY
+The source lag is a stable deployment boundary, not a reason to wait. I’m treating the live server’s deployed source as authoritative for play, while using newer upstream data only for research. The current blocker is narrower: ordinary level-41 targets are closed by real live evidence, so I’m auditing the next source-audited special candidate instead of repeating empty Lotus or Pit visits.
+
+
+[2026-10-30 1:46:37 AM NZST] CODEX COMMENTARY
+The audit found a real next option in the deployed source: the undead work is not needed for this step. A level-35 Temple Guard in Mrinthas has a source-audited guard special and a bounded route-risk contract, while the level-40 Master Elf is protected by the ordinary Sanctuary and status-recovery gates. I’m giving the Temple Guard one live attempt now; this is a useful level-band probe, not a claim that newer upstream content is live.
+
+
+[2026-10-30 1:53:30 AM NZST] CODEX COMMENTARY
+I found the selector bug. The Master Elf route was source-audited and fresh, but the generic current-band gate never carried that exact route exception forward, so it was discarded before the special-target pool could see it. I’m adding the narrow exception in the band gate and selector, with a regression test that proves it selects the fresh level-40 target at Dorrik’s level-41 checkpoint without weakening the psionic or loss gates.
+
+
+[2026-10-30 1:57:15 AM NZST] CODEX COMMENTARY
+The selector fix itself is sound; the new unit test was too skeletal to model Dorrik's actual combat state, so its output check failed before selection could be exercised. I’m tightening the fixture with the live character’s practiced Flamestrike, mana reserve, and wielded weapon, then I’ll rerun the exact route test and the existing guard test.
+
+
+[2026-10-30 1:58:31 AM NZST] CODEX COMMENTARY
+The focused regression now passes 2/2, including the real Master Elf route and the existing M’rinthas guard contract. The live deployment boundary remains unchanged: I’m using the deployed source as authoritative and will make one bounded Dorrik run from the saved level-41 checkpoint now, then inspect whether the controller reaches protection preparation or the new Master Elf route.
+
+
+[2026-10-30 1:59:26 AM NZST] CODEX COMMENTARY
+The live selector now reaches the intended next route: Dorrik is heading to the level-40 Master Elf in Kaladim under the exact source-audited Sanctuary and blindness-recovery contract. The worker is still inside its bounded live segment; I’m letting the MUD provide the identity, consider, crowd, and combat result before deciding the next move.
+
+
+[2026-10-30 2:00:36 AM NZST] CODEX COMMENTARY
+The worker is still active at the Master Elf route, with no failure or safety stop reported yet. Preparation and route selection are complete; I’m keeping this single bounded attempt intact so a slow MUD response is not mistaken for a stalled controller.
+
+
+[2026-10-30 2:01:41 AM NZST] CODEX COMMENTARY
+The Master Elf route produced a real combat loss: Dorrik is still level 41, but XP fell by 1,125 and the campaign recorded safety=loss. I’m examining the exact run evidence now, then I’ll close or repair only the precise route contract exposed by that loss before choosing the next live action.
+
+
+[2026-10-30 2:02:29 AM NZST] CODEX COMMENTARY
+The evidence is clear now: Dorrik never reached combat with the Master Elf. The route hit the source-known A large knife, the safety controller fled, and the MUD still charged the 1,125 XP loss; that exact Master Elf policy is now closed by its own loss ledger, so it will not be retried. The month-or-two deployment lag is therefore just a stable live-source boundary; I’m moving to the next fresh route rather than waiting or reopening this one.
+
+
+[2026-10-30 2:03:18 AM NZST] CODEX COMMENTARY
+The next pass is not repeating Kaladim. The controller selected a bounded flight-maintenance route tied to the fresh shrine-attendant absence check, so I’m letting that resource step finish before the next XP hunt; this is preparation for longer autonomous runs, not a new character or a detour waiting on upstream deployment.
+
+
+[2026-10-30 2:03:25 AM NZST] CODEX COMMENTARY
+Flight maintenance completed safely at checkpoint 67129 with no XP change. Dorrik remains level 41, and the Master Elf loss remains closed. I’m starting the next bounded selection from this refreshed healer checkpoint so the live-source frontier can choose another exact current-band route.
+
+
+[2026-10-30 2:04:35 AM NZST] CODEX COMMENTARY
+The resource handoff and return-home normalization both completed safely at checkpoint 67132. No XP was gained, but the character is in a clean healer state with the exact Master Elf route closed and the live deployment still treated as authoritative. I’m taking the next selection pass now; if it finds only absence evidence again, I’ll use that to refine the current-band route choice rather than loop.
+
+
+[2026-10-30 2:05:27 AM NZST] CODEX COMMENTARY
+The next fresh route is Lotus Temple reset 10822, not the closed Kaladim route. Dorrik is now in the bounded field segment with flight active; I’m waiting for the live room identity and consider result, and I’ll record whether this is a real XP opportunity or another absence without retrying blindly.
+
+
+[2026-10-30 2:06:58 AM NZST] CODEX COMMENTARY
+Lotus reset 10822 was absent, but the visit completed safely and the evidence is now stored against that exact room. Dorrik’s XP and level are unchanged; I’m continuing the source rotation to the next eligible live route instead of waiting for a reset or for the upstream undead work to land.
+
+
+[2026-10-30 2:10:40 AM NZST] CODEX COMMENTARY
+I’ll treat the deployment lag as a stable boundary: the live MUD is the authority for play, and newer upstream content is research only until the server catches up. I’m continuing with Dorrik’s current live progression rather than waiting on undead or archetype updates, and I’m checking the next eligible level-41 route now.
+
+
+[2026-10-30 2:11:04 AM NZST] CODEX COMMENTARY
+The deployment boundary is now treated as durable: I will not wait for the undead or archetype work to reach the live MUD. I’m starting one bounded Dorrik segment from the clean healer checkpoint, using only candidates that the deployed source and live evidence currently support.
+
+
+[2026-10-30 2:13:29 AM NZST] CODEX COMMENTARY
+The selector has rotated past the empty Lotus checks and is now in the bounded Pit Official segment. The live worker is still active without a reported safety stop; I’m keeping this one attempt intact so the MUD’s current room, consider, crowd, and combat evidence decide the result.
+
+
+[2026-10-30 2:13:48 AM NZST] CODEX COMMENTARY
+The Pit Official visit also completed safely but produced no target, so it added evidence without progress. Dorrik remains level 41 at checkpoint 67143; I’m taking the next fresh frontier rotation now, with the empty Lotus and Pit visits excluded for this pass and no wait for a reboot or upstream deployment.
+
+
+[2026-10-30 2:16:12 AM NZST] CODEX COMMENTARY
+The next rotation reached Lotus reset 10821, the shrine-attendant candidate, after correctly bypassing the prior absent fallback. The bounded live worker is still running with no safety result yet; I’m waiting for its exact identity and outcome rather than treating the source lag or a slow reply as a failure.
+
+
+[2026-10-30 2:21:07 AM NZST] CODEX COMMENTARY
+The shrine-attendant visit was another safe absence, checkpoint 67147, with no XP change. I’m not treating that as a reason to wait for deployment; I’m letting the campaign rotate to the next exact deployed-source candidate and will keep any new live loss or positive consider scoped to that target only.
+
+
+[2026-10-30 2:27:44 AM NZST] CODEX COMMENTARY
+I’m treating that as a long-lived deployment boundary, not a short wait: the live MUD remains authoritative for play, and upstream undead/archetype/species changes stay research-only until live evidence shows they are deployed. I’m checking whether the current policy text already says that clearly, then I’ll keep Dorrik moving on the deployed level-41 frontier.
+
+
+[2026-10-30 2:29:56 AM NZST] CODEX COMMENTARY
+The operating docs already say the live lag may persist for months, so no policy rewrite is needed. The current level-41 frontier still has clean source-admitted options such as Dwarven Home; I’m moving the campaign into the next selection rather than looping another already-empty Lotus/Pit visit.
+
+
+[2026-10-30 2:30:48 AM NZST] CODEX COMMENTARY
+The bounded attempt is still in source-policy preparation, not hung in a live connection: it has re-evaluated the fallback, found no repair marker, and is checking unresolved carriers before opening a socket. I’m giving this preparation its fixed window; if it does not produce a policy promptly I’ll record the stall and move on rather than let it block the project.
+
+
+[2026-10-30 2:32:34 AM NZST] CODEX COMMENTARY
+The selector has now handed off a live segment for shrine attendant 10821. It has been active for just over two minutes with no safety stop or loss reported; I’m leaving this bounded attempt intact so the live room and identity checks can finish, rather than interrupting a legitimate slow MUD response.
+
+
+[2026-10-30 2:37:48 AM NZST] CODEX COMMENTARY
+The read-only selector audit is more expensive than the live segment because I traced its source-admission path; it has not opened a MUD connection or changed Dorrik’s state. I’m letting the local analysis finish rather than interrupting anything, then I’ll use its result to stop the empty-target loop.
+
+
+[2026-10-30 2:45:43 AM NZST] CODEX COMMENTARY
+The source code confirms the issue: DD4’s first consider line is level-based, and “Do you feel lucky, punk?” means the mobile is 2–5 levels higher; “built like a tank” is a separate HP comparison. Apollo’s saved visit has exactly that pair, so I’m correcting the generic evidence repair to retain the level result while leaving all route, special, protection, identity, and health gates intact.
+
+
+[2026-10-30 2:47:30 AM NZST] CODEX COMMENTARY
+The focused repair tests pass, and a read-only replay against Dorrik’s actual database confirms Apollo’s old result is now reclassified as a loss-free positive-consider retry. I’m running one bounded live segment now; Apollo is eligible for a fresh check, but the MUD’s current identity, crowd, protection, and health gates still decide whether combat begins.
+
+
+[2026-10-30 2:51:10 AM NZST] CODEX COMMENTARY
+The Pit segment completed safely at checkpoint 67159 with no XP change. I’m stopping the empty-target loop here rather than dispatching another duplicate: the repaired Apollo evidence is not yet being admitted by the final selector, so I’m tracing that decision and will make the narrowest fix if it is stale history rather than a live safety gate.
+
+
+[2026-10-30 2:53:26 AM NZST] CODEX COMMENTARY
+The read-only selector audit is still parsing the deployed source catalogue and has not opened a live connection. I’m letting that bounded analysis finish; it is the right place to find why Apollo’s repaired evidence stayed out of the final pool, and I will not start another hunt until the decision is explained.
+
+
+[2026-10-30 2:55:02 AM NZST] CODEX COMMENTARY
+I found the stall: the repair logic was correct, but on a large campaign database it only searched the newest segment tail. Apollo’s evidence had aged out of that tail, so the repair disappeared on resume and the selector kept choosing empty fallback visits. I’m narrowing the fix to fetch only the seven affected policy phases by indexed phase, persist the repaired evidence, and then run the focused campaign tests before another live attempt.
+
+
+[2026-10-30 2:56:01 AM NZST] CODEX COMMENTARY
+The narrow Apollo repair test and the source-level lucky-consider test pass, and the startup change compiles. A broader lucky-consider selection still exposes an older defense-probe assertion outside this repair, so I’m keeping that separate rather than widening this fix. I’m launching one bounded live segment now; startup will recover Apollo’s older evidence by phase and persist the repair before choosing the next target.
+
+
+[2026-10-30 2:57:54 AM NZST] CODEX COMMENTARY
+The fix is working: the repair is now durable in checkpoint 67163, and the selector chose the Apollo-specific see-invisible preparation rather than another empty Pit/Lotus visit. Dorrik is still level 41 at 1,513,254 XP, with fresh detect-invisibility evidence at the healer. I’m moving straight into the next bounded segment so the repaired Apollo hunt can receive its live identity and consider check.
+
+
+[2026-10-30 2:59:39 AM NZST] CODEX COMMENTARY
+The next segment is a necessary liquidation pass at the healer: Dorrik is selling retained loot to restore funds before the hunt, and the worker is still active at 90 seconds with no safety stop. I’m letting this bounded transaction finish; no new fight has been opened, and the repaired Apollo evidence remains available for the next selection.
+
+
+[2026-10-30 3:01:51 AM NZST] CODEX COMMENTARY
+The live attempt exposed a real liquidation loop, not a MUD stall: the weaponsmith kept refusing the invisible axe, and the bot answered with `vis`, which cannot make an invisible object visible. That consumed the 500-command budget without XP loss; Dorrik remained safe and logged out. I’m correcting the handler to distinguish “I can’t see you” from “I can’t see that item”, route the latter to bounded donation/skip, and updating the existing test that encoded the wrong retry.
+
+
+[2026-10-30 3:02:44 AM NZST] CODEX COMMENTARY
+The liquidation fix is in place and the focused starter plus sale-rejection tests pass. Invisible-item refusals now become one recorded sale rejection and a bounded donation path; only the player-visibility refusal triggers `vis`. Dorrik’s failed segment was safe with no XP loss, so I’m resuming from the healer checkpoint now and will let the corrected cleanup finish before selecting the next hunt.
+
+
+[2026-10-30 3:04:47 AM NZST] CODEX COMMENTARY
+The corrected run first restored Dorrik to the healer safely, checkpoint 67168, with no XP change. That was the expected recovery after the prior command-budget abort; the invisible axe is no longer driving the loop. I’m starting the next segment from the clean healer checkpoint now, and the selector can return to actual progression work.
+
+
+[2026-10-30 3:05:25 AM NZST] CODEX COMMENTARY
+The corrected liquidation pass completed safely at checkpoint 67170 within the command budget. Dorrik is still level 41 at 1,513,254 XP, but the funds and inventory cleanup bottleneck is cleared without another loop. I’m starting the next bounded segment now; this is the first clean opportunity for the Apollo hunt or another live current-band target.
+
+
+[2026-10-30 3:06:16 AM NZST] CODEX COMMENTARY
+The selector prepared flight for the Apollo route and completed that segment safely at checkpoint 67173. Dorrik remains level 41 with no XP loss; the route now has both detect-invisibility and flight preparation. I’m taking the next segment immediately so the live hunt can proceed instead of leaving the preparation work idle.
+
+
+[2026-10-30 3:07:14 AM NZST] CODEX COMMENTARY
+The flight purchase was followed by a safe healer rebase at checkpoint 67175. Dorrik is now fully recovered at 987/987 HP, 566/566 mana and 651 movement, with flight and detect-invisibility active. I’m continuing immediately from this clean checkpoint; the next selection should be a live target rather than another maintenance loop.
+
+
+[2026-10-30 3:10:08 AM NZST] CODEX COMMENTARY
+The live deployment lag is a durable boundary, so I’m treating newer undead and archetype work as research-only and continuing against the deployed MUD. The latest Apollo pass reached the exact target and confirmed the useful level band, but stopped before combat because its armed special path did not carry the lucky-consider permission. I’m checking that source special now before changing the narrow admission rule, so the next live attempt is a real progression attempt rather than another no-op.
+
+
+[2026-10-30 3:15:16 AM NZST] CODEX COMMENTARY
+The deployed source confirms `spec_cast_adept` is support-only here: it casts armor, bless, cures, refreshes, and regeneration on a player, and never attacks. Apollo is the exact audited one-reset exception with a single bow and that benign special. The blocker is narrower than I first thought: the ordinary armed-loadout audit rejects the bow’s strong randomisation before live `consider`, even though the live own-health floor can still govern the fight. I’m adding a source-exact live-consider path for Apollo only, preserving identity, isolation, route, health, and combat-abort checks.
+
+
+[2026-10-30 3:16:39 AM NZST] CODEX COMMENTARY
+The Apollo exception is now narrow and source-bound, and a regression test verifies that the exact live stop carries `allow_lucky_consider=True` with a +5 ceiling while retaining the armed target and benign adept metadata. I’m running the focused campaign tests now, then I’ll make one live attempt; I’m keeping the broader once-daily regression allowance untouched.
+
+
+[2026-10-30 3:17:13 AM NZST] CODEX COMMENTARY
+The focused campaign tests pass, including the new Apollo live-stop test, and the module compiles. The actual stop diagnostic now reports `allow_lucky_consider=True`, a +5 ceiling, the armed bow, benign adept special, and no Sanctuary requirement. I’m starting one bounded live segment from Dorrik’s healer checkpoint now; this is the first attempt that can actually turn Apollo’s confirmed level band into combat and XP.
+
+
+[2026-10-30 3:18:23 AM NZST] CODEX COMMENTARY
+The live worker is still inside its bounded connection window, but the selector chose another unresolved Lotus reset before Apollo. That is progress in the decision path, not a hang: I’m allowing this exact locate attempt to finish, then I’ll inspect whether the repaired Apollo policy is next or whether this reset yields a real target first.
+
+
+[2026-10-30 3:19:33 AM NZST] CODEX COMMENTARY
+The Lotus locate has now been running for two minutes inside the fixed outer budget, with no safety result or live loss. I’m keeping the bounded attempt intact so its exact source-identity response is recorded; if the worker reaches its own limit, it will return safely and the campaign can rotate without blocking the next hunt.
+
+
+[2026-10-30 3:20:08 AM NZST] CODEX COMMENTARY
+The Lotus segment finished safely at checkpoint 67181 with no XP change, so it added absence evidence rather than progress. The Apollo stop fix was not exercised in that segment; I’m immediately starting the next bounded selection from the preserved healer checkpoint so the campaign can reach Apollo or another live current-band target instead of pausing on this harmless miss.
+
+
+[2026-10-30 3:21:17 AM NZST] CODEX COMMENTARY
+The campaign has rotated correctly from the empty Lotus reset to the Pit Official, with no reboot wait or stale retry block. This bounded live segment is still active and has not reported a loss; I’m letting the exact room and consider checks finish before deciding whether to move on again.
+
+
+[2026-10-30 3:21:58 AM NZST] CODEX COMMENTARY
+The Pit Official also completed safely at checkpoint 67185 with no XP change. The campaign’s rotation is functioning, but these two exact absence checks did not produce a fight; I’m continuing the next bounded segment rather than treating them as a frontier stop. Apollo remains eligible under the repaired source policy and will be used when the selector reaches it.
+
+
+[2026-10-30 3:23:09 AM NZST] CODEX COMMENTARY
+The selector is now checking the second Lotus shrine-attendant reset, again as a clean rotation from the previous absence. No fight or safety issue has appeared; I’m keeping the segment bounded and will continue the rotation afterward instead of repeatedly revisiting the same empty stop.
+
+
+[2026-10-30 3:24:15 AM NZST] CODEX COMMENTARY
+The second Lotus check completed safely at checkpoint 67189 with no XP change. Three current-band absence visits have now rotated without a reboot dependency or retry lock; I’m taking the next selection immediately, and I’ll stop narrating the same empty pattern once a real target or a concrete policy blocker appears.
+
+
+[2026-10-30 3:25:33 AM NZST] CODEX COMMENTARY
+The selector has moved to a third Lotus reset rather than looping the same room, which confirms the bounded absence rotation is working. I’m letting this one finish, then I’ll inspect the resulting frontier state so Apollo is not buried behind an unnecessarily broad series of stale resets.
+
+
+[2026-10-30 3:26:34 AM NZST] CODEX COMMENTARY
+The repaired Apollo result is present in Dorrik’s current checkpoint with `consider_viable=true`; it was simply not the next ranked rotation after the Lotus checks. I’m leaving that live evidence intact and taking the next fresh selection, while watching for the first policy that actually opens combat and changes XP rather than spending more time on static analysis.
+
+
+[2026-10-30 3:28:21 AM NZST] CODEX COMMENTARY
+The selector has now reached Apollo after rotating through the empty carrier frontier. The live segment is open against the exact audited target, with the repaired +2..+5 `consider` admission active; I’m letting the MUD decide the identity and combat outcome now, with Dorrik’s own health floor still in control.
+
+
+[2026-10-30 3:29:32 AM NZST] CODEX COMMENTARY
+Apollo’s live segment is still active after about two and a half minutes, with no safety stop or loss reported. The target is not being rejected by the old HP wording anymore; I’m waiting for the exact live combat/return outcome rather than interrupting a legitimate slow MUD exchange.
+
+
+[2026-10-30 3:30:47 AM NZST] CODEX COMMENTARY
+Apollo’s repaired live path did reach the target and combat, but the segment ended in a safety loss: Dorrik is now level 41 at 1,512,129 XP, down 1,125 XP from the prior checkpoint. I’m stopping further hunts immediately, reading the exact run transcript and withdrawal evidence, and will repair the admission or preparation before any next dispatch; I will not repeat this fight blindly.
+
+
+[2026-10-30 3:31:55 AM NZST] CODEX COMMENTARY
+The Apollo loss did exactly what the safety evidence warned: the bot reached the target, fought, then recalled at 42% HP from a one-exit room, but still incurred the 1,125 XP loss. I’m reading the round-by-round transcript now; the next policy will not reopen this exact target, and I’ll change the preparation gate based on the observed damage/protection path before resuming.
+
+
+[2026-10-30 3:34:08 AM NZST] CODEX COMMENTARY
+The transcript explains the loss: the DragonOrb did activate Sanctuary, but the controller did not mark that pre-combat activation as part of the live fight. After the one-tick effect expired during weapon setup, it continued without refreshing, and Apollo’s bow/pound damage drove Dorrik below the floor before recall. I’m fixing that state handoff and adding a regression test; Apollo’s exact loss stays closed, and I’ll only resume after the protection tracking is correct.
+
+
+[2026-10-30 3:34:57 AM NZST] CODEX COMMENTARY
+The live evidence also exposed the right boundary for Apollo: the exact target is now closed by its recorded loss at level 41, while any future Apollo policy must require a carried, source-verified Sanctuary reserve before it can even reach the lucky-consider path. I’m tightening that admission and updating the regression fixture to prove an unprotected state cannot select it; the deployment lag remains irrelevant to this live repair.
+
+
+[2026-10-30 3:35:45 AM NZST] CODEX COMMENTARY
+The protection-state fix passes its focused tests and compiles. The Apollo regression now proves both sides of the rule: without a carried verified Sanctuary reserve it is not admitted, and with one it is admitted only as a Sanctuary-gated live stop. The recorded level-41 Apollo loss remains closed, so I’m starting the next bounded segment to recover at the healer and select a different current-band target.
+
+
+[2026-10-30 3:37:11 AM NZST] CODEX COMMENTARY
+Startup has correctly refused to reopen Apollo, but selected a source-verified Sanctuary recovery segment before another XP hunt; Dorrik’s reserve history is not being treated as a permanent substitute for a fresh live protection check. The bounded Moria resource worker is active and has not reported a safety stop, so I’m letting this attempt finish before choosing the next current-band fight.
+
+
+[2026-10-30 3:38:54 AM NZST] CODEX COMMENTARY
+The Moria resource segment is still inside its fixed live window at roughly 150 seconds, with no loss, death, or safety abort reported. It is a real connection rather than local source analysis; I’m keeping the bounded attempt intact, and the worker will return safely at its own cap instead of blocking the next selection indefinitely.
+
+
+[2026-10-30 3:39:28 AM NZST] CODEX COMMENTARY
+The resource segment returned safely and checkpointed Dorrik at level 41, 1,512,229 XP, full HP and mana in the healer. It produced a clean objective result without reopening Apollo; the Moria fallback is now recorded as exhausted, while the carried DragonOrb reserve remains available for future fights. I’m running the next bounded selection for actual current-band XP.
+
+
+[2026-10-30 3:40:17 AM NZST] CODEX COMMENTARY
+The selector has moved past the exhausted Moria fallback and chosen the hawkwoman in the Pirates Isles as the next live level-41 target. Dorrik is at a clean healer checkpoint with Sanctuary reserve, flight, and detect-invisibility available; the bounded hunt is now open and I’m letting the deployed MUD’s identity, consider, and combat evidence decide it.
+
+
+[2026-10-30 3:42:06 AM NZST] CODEX COMMENTARY
+The hawkwoman hunt is still inside its bounded live window at about two minutes, with no loss, death, or safety stop reported. I’m keeping the exact target attempt intact while the MUD finishes the room and combat checks; if it reaches the cap, the worker will return safely and the campaign will rotate without treating a slow reply as a permanent failure.
+
+
+[2026-10-30 3:43:49 AM NZST] CODEX COMMENTARY
+The hawkwoman connection has reached roughly four minutes without a reported safety result. The outer and segment deadlines are still active, so I’m leaving this bounded live attempt to finish rather than starting a second connection on top of it; Dorrik’s exact loss ledger remains untouched while it runs.
+
+
+[2026-10-30 3:44:12 AM NZST] CODEX COMMENTARY
+The hawkwoman segment returned safely with no XP change and no loss. Its terminal evidence is a bounded no-decision route result, so I’m treating that exact policy as closed for this pass and rotating to the next deployed-source candidate rather than waiting for a reboot or upstream content update.
+
+
+[2026-10-30 3:45:34 AM NZST] CODEX COMMENTARY
+This invocation is still in local policy selection after about a minute; it has not opened a second MUD connection. The selector is re-evaluating unresolved Sanctuary and current-band candidates after the hawkwoman no-decision result. I’m allowing the fixed preparation window to finish once, then I’ll inspect the exact selected-or-stalled state instead of letting source ranking loop.
+
+
+[2026-10-30 3:46:10 AM NZST] CODEX COMMENTARY
+The selector finished its local pass and chose the Pit Official as the next bounded live check after the empty first handoff. This is a fresh later visit under current source and live gates, not a reboot-scoped retry quota; I’m allowing the exact room and consider evidence to decide whether the target is now present.
+
+
+[2026-10-30 3:46:49 AM NZST] CODEX COMMENTARY
+The fresh Pit visit also returned safely: the exact mobile was absent, with no XP change or combat risk. I’m keeping that evidence scoped to the Pit Official and moving on immediately to the next current-band policy; nothing here justifies waiting for a reboot or for the upstream deployment.
+
+
+[2026-10-30 3:49:14 AM NZST] CODEX COMMENTARY
+The selector did not loop the absent Pit target: it bypassed that fallback and chose a flight-maintenance pass instead. Dorrik’s current flight receipt needs refreshing before deeper routes, so this is a short preparation segment; I’m letting it complete and will return to XP selection afterward.
+
+
+[2026-10-30 3:49:27 AM NZST] CODEX COMMENTARY
+The flight refresh completed safely and recorded the current boot’s price at 118 copper; there was no loss or combat. The segment did not report a confirmed purchase outcome, so I’m letting the next checkpoint decide whether flight is already active or needs one bounded retry, rather than assuming either way.
+
+
+[2026-10-30 3:50:16 AM NZST] CODEX COMMENTARY
+The next selection is a bounded Lotus shrine-attendant recheck. The campaign is using fresh live evidence to resolve an earlier absence, not waiting for the upstream deployment; it has opened the connection and is checking the exact source mobile before any combat decision.
+
+
+[2026-10-30 3:51:57 AM NZST] CODEX COMMENTARY
+The Lotus recheck also returned safely with no XP change. That is now enough repeated absence/no-decision evidence for me to pause further live dispatches briefly and inspect the current candidate pool and selector state; I’m going to identify why viable level-41 source targets are being deferred instead of spending another bounded connection on the same pattern.
+
+
+[2026-10-30 3:53:52 AM NZST] CODEX COMMENTARY
+The source audit found 49 level-41-band candidates in the deployed catalogue, so the frontier is not empty. The stall is more specific: most high-ranked safe candidates carry exact prior-loss evidence, while the few fresh candidates are gated by psionics, route hazards, or multi-reset research. I’m clearing that live gate through the next source-ranked route and protection check rather than waiting for the upstream deployment or replaying a closed loss.
+
+
+[2026-10-30 3:55:21 AM NZST] CODEX COMMENTARY
+The last bounded campaign command is not attached to the app terminal, so I'm checking its persisted run state directly rather than starting another copy. I'll leave any worker alone and use the database/checkpoint to decide whether to wait or continue.
+
+
+[2026-10-30 3:56:12 AM NZST] CODEX COMMENTARY
+The persisted state confirms the campaign is still in its single bounded Pit segment, with no finished result or safety event yet. I am leaving that worker untouched and monitoring the checkpoint rather than starting a competing run; if it reaches its five-minute cap, the campaign will close the segment and rotate normally.
+
+
+[2026-10-30 3:56:58 AM NZST] CODEX COMMENTARY
+The Pit segment has now closed safely at checkpoint 67221 with no XP change and no loss. The deployment delay is therefore just a live-content boundary, not a project blocker; I am starting the next single bounded Dorrik segment from the healer checkpoint and will keep the work on deployed level-41 progression.
+
+
+[2026-10-30 3:58:00 AM NZST] CODEX COMMENTARY
+The next bounded run selected the deployed shrine-attendant route after excluding the just-checked Pit prototype. It has opened one live segment and is still within its outer window; I am letting this exact visit finish, then I will use its result to move toward the next eligible target rather than waiting on the delayed upstream content.
+
+
+[2026-10-30 3:59:10 AM NZST] CODEX COMMENTARY
+The shrine-attendant visit is still active at about a minute and a half, with no safety stop or XP loss reported. This is a bounded live check rather than local source analysis, so I am keeping the single connection intact and will let its own deadline close it safely if the MUD does not yield a target.
+
+
+[2026-10-30 3:59:20 AM NZST] CODEX COMMENTARY
+The shrine-attendant visit completed safely at checkpoint 67225 with no XP change. The live deployment lag did not block the run; it simply left this deployed reset absent on this visit. I am continuing with the next single segment now so Dorrik keeps advancing through the live level-41 options rather than waiting for newer upstream content.
+
+
+[2026-10-30 4:00:08 AM NZST] CODEX COMMENTARY
+The selector has moved to a different shrine-attendant reset, 10817, and is checking it as a separate source instance rather than replaying the same absence. The live visit is active with no safety event; I am letting this exact check complete before the next rotation.
+
+
+[2026-10-30 4:01:15 AM NZST] CODEX COMMENTARY
+The second shrine-attendant check is still running at about a minute and a half, with no loss or safety stop. I am keeping the single bounded connection intact; the route will close cleanly on its own deadline and the campaign will then rotate to another deployed candidate.
+
+
+[2026-10-30 4:01:44 AM NZST] CODEX COMMENTARY
+The second shrine-attendant reset also completed safely at checkpoint 67229 with no XP change. Two distinct Lotus resets have now produced the same absence pattern, so I am pausing live dispatch long enough to inspect the selector ordering instead of burning another segment on that family; the goal is to reach a real executable target, not merely collect empty-room receipts.
+
+
+[2026-10-30 4:04:19 AM NZST] CODEX COMMENTARY
+The audit explains the stall: the deployed source still has 49 level-41-band entries, but only three are fresh. Arthur is a hard psionic/disintegrate case, the undead Temple Guard adds real combat attacks, and the Terra-kan room can hold four copies; the remaining high-ranked options carry exact prior-loss evidence. I am not waiting for upstream content, and I am using the next bounded rotation to reach the first candidate whose live gates can genuinely pass.
+
+
+[2026-10-30 4:05:43 AM NZST] CODEX COMMENTARY
+The selector has reached the Pit Official after the required source and protection checks, rather than looping another Lotus reset. The live segment is now opening against that exact target; its acid-breath hazard still has to pass fresh identity, crowd, consider, and health checks, so I am letting the MUD decide the outcome within the bounded window.
+
+
+[2026-10-30 4:08:49 AM NZST] CODEX COMMENTARY
+The Pit Official was absent again and the segment closed safely at checkpoint 67233 with no XP change. That is useful locator evidence, not a reason to wait for a reboot. I am moving to the next deployed-source rotation now and will use the remaining fresh route contracts rather than repeating this empty Pit visit.
+
+
+[2026-10-30 6:15:24 PM NZST] CODEX COMMENTARY
+Back on the main goal. I am rechecking the current checkout, campaign checkpoint, and live-worker state first, then I’ll choose the next concrete blocker beyond level 41 rather than inventing another low-level path.
+
+
+[2026-10-30 6:16:31 PM NZST] CODEX COMMENTARY
+Checkpoint is healthy at Dorrik level 41. The recent loss was isolated to the M'rinthas transit guard, while Sanctuary recovery succeeded; I have also confirmed the deployed boot is older than the local source. I’m leaving the code fix in place and starting one fresh bounded segment so the selector can choose a different deployed target.
+
+
+[2026-10-30 6:17:48 PM NZST] CODEX COMMENTARY
+The next segment found a live-service problem before gameplay: `dragons-domain.org:8888` refused both bounded connection attempts, so no character state was touched. I’m verifying whether that is a transient outage before deciding whether to retry the same segment or keep working locally.
+
+
+[2026-10-30 6:22:01 PM NZST] CODEX COMMENTARY
+Understood. I will not start another live MUD worker while the server is down. Dorrik remains safely checkpointed at the healer at level 41; the delayed-GMCP combat fix and the source/live deployment boundary are saved locally, ready to resume when the MUD returns.
+
+
+[2026-10-30 6:43:26 PM NZST] CODEX COMMENTARY
+I’ll use the outage window for offline work: first I’m checking the current source/deployment boundary and resumable HERO workflow, then I’ll make one focused improvement that can be verified without opening a MUD connection.
+
+
+[2026-10-30 6:43:42 PM NZST] CODEX COMMENTARY
+The local code already has the live-deployment filter for the newer undead and archetype/species templates, and the offline HERO preparation path works for a generated human mage. I found the documentation lagging behind the actual level-41 checkpoint, so I’m updating the roadmap and README status now, including the MUD outage and the GMCP ordering fix.
+
+
+[2026-10-30 6:45:29 PM NZST] CODEX COMMENTARY
+The offline pass is complete. I updated README.md and ROADMAP.md to checkpoint 67252 / level 41, documented the refused live connection and delayed-GMCP repair, and added a `--live-deployment` view to `show-hunt-candidates` so upstream undead/archetype/species templates cannot be mistaken for live candidates. The new CLI path compiled and ran against the local source without contacting the MUD; I did not spend another regression batch.
+
+
+[2026-10-30 8:01:57 PM NZST] CODEX COMMENTARY
+I’m continuing the HERO work offline. I’m checking the resume/target-level path now, because that is the part that must support both generated characters and an existing named character before live progression can resume.
+
+
+[2026-10-30 8:02:36 PM NZST] CODEX COMMENTARY
+The resume path is sound offline: the public CLI successfully prepared a new human/female/mage HERO workspace, and the target-level/password plumbing remains character-independent. I also exercised the real candidate report at level 41 with `--live-deployment`; it produced a live-filtered report without contacting the MUD. The new CLI test is written but I am leaving the daily regression allowance untouched.
+
+
+[2026-10-30 8:02:46 PM NZST] CODEX COMMENTARY
+I’m using the MUD outage to audit the executable policy graph across classes rather than simply wait. The next change will target a concrete missing capability in the autonomous progression path, with an offline verification path attached.
+
+
+[2026-10-30 8:04:43 PM NZST] CODEX COMMENTARY
+I’ll keep the live connection untouched while the MUD is down. I’m going to use this window to improve the offline progression machinery, especially the path that turns source-ranked candidates into executable current-band hunts, then verify it with static checks and direct offline commands.
+
+
+[2026-10-30 8:05:35 PM NZST] CODEX COMMENTARY
+The first offline gap is clear: hunt reports can already model the deployed MUD, but the resource, gear, and combat-readiness reports still default to the newer upstream world. I’m adding the same explicit live-deployment switch to those audits so offline planning cannot quietly recommend content that the server has not deployed.
+
+
+[2026-10-30 8:06:08 PM NZST] CODEX COMMENTARY
+The deployment switch is now wired through all three offline audits and their JSON/text output. I’m documenting the distinction and then I’ll run only syntax checks plus small offline invocations; the daily regression allowance has already been used, so I will not launch another pytest batch today.
+
+
+[2026-10-30 8:07:04 PM NZST] CODEX COMMENTARY
+The offline checks are clean: all four audit commands accept the new profile, the live-filtered resource and gear reports run against the upstream checkout without opening a socket, and readiness JSON labels the profile explicitly. I’m adding that capability to the roadmap so the next resume has a clear, reproducible offline preflight command.
+
+
+[2026-10-30 8:08:27 PM NZST] CODEX COMMENTARY
+The current saved Dorrik checkpoint also gives us a useful offline baseline: against the live-filtered source, level 41 has 3,229 ranked target records, 467 in the source band, 280 source-autonomous candidates, and 21 candidates that pass the static admission model. I’m recording those numbers as a planning baseline, clearly marked as offline evidence rather than live permission.
+
+
+[2026-10-30 8:08:39 PM NZST] CODEX COMMENTARY
+This offline pass is complete. No MUD connection was attempted, no worker was started, and no user PowerShell or Python processes were touched. The source-profile changes, documentation, static checks, and direct offline audits are saved locally; I’m leaving the existing worktree uncommitted until the scheduled 9 PM local commit window.
+
+
+[2026-10-30 8:08:52 PM NZST] CODEX COMMENTARY
+I’m continuing the HERO100 work offline while the MUD remains unavailable. The last pass improved the live-source audit boundary; this pass will inspect the current Dorrik progression path and remove the next concrete blocker that can be verified without opening a connection.
+
+
+[2026-10-30 8:10:32 PM NZST] CODEX COMMENTARY
+I’m continuing the offline HERO100 work while the MUD is unavailable. I’m narrowing the level-41 progression path now, looking for a concrete policy or routing gap that can be fixed and verified from local source and saved evidence alone.
+
+
+[2026-10-30 8:13:20 PM NZST] CODEX COMMENTARY
+The saved checkpoint confirms the immediate offline blocker is ordinary provisioning, not a policy dead-end: Dorrik is safe at the healer but has no food reserve, so the next live segment will be the bounded Midgaard restock. I’m updating the operations note to reflect that exact resume state and the current live-source boundary, then I’ll run offline integrity checks only.
+
+
+[2026-10-30 8:15:22 PM NZST] CODEX COMMENTARY
+Offline preparation is clean: the Dorrik hero workspace validates and resumes without opening a connection, the current campaign report still points to checkpoint 67252, and the live-filtered source audits compile and run. I also recorded the service-unavailable rule in OPERATIONS.md. I’m leaving the local changes uncommitted until the scheduled 9 PM window, and I’m not running another regression batch today.
+
+
+[2026-10-30 8:15:35 PM NZST] CODEX COMMENTARY
+I’m continuing the HERO100 work from the saved Dorrik checkpoint, staying entirely offline while the MUD is unavailable. I’m checking the current worktree and the next executable progression handoff, then I’ll make the next concrete fix that can be verified without a live connection.
+
+
+[2026-10-30 8:18:03 PM NZST] CODEX COMMENTARY
+I found the next useful offline audit: the codebase contains several references to named pilots, and the master goal explicitly forbids name-specific behavior. I’m separating historical evidence/commentary from real control-flow dependencies now; if any branch depends on Dorrik/Kestrel by name, I’ll convert it to profile/state conditions and add a focused regression case without touching the live MUD.
+
+
+[2026-10-30 8:18:54 PM NZST] CODEX COMMENTARY
+The audit found no name-based control-flow branch: saved character names are used for storage identity, while the remaining Dorrik/Kestrel references are stale comments or progress prose. I’m cleaning those messages so every campaign reports the active profile’s name, then I’ll add a focused offline check for that invariant.
+
+
+[2026-10-30 8:20:25 PM NZST] CODEX COMMENTARY
+The name-independence fix is complete offline: campaign progress messages now use the active profile name, the policy modules contain no historical pilot-name literals, and a focused guard test will catch regressions. Python compilation and the direct audit pass. The live resume point is unchanged at healer room 3054 with restocking still first; I’m leaving the MUD untouched and keeping the existing local changes uncommitted until the scheduled commit window.
+
+
+[2026-10-30 8:20:54 PM NZST] CODEX COMMENTARY
+The offline source refresh found a new upstream DD4 commit: 528b319, “Convert Graveyard mobs and refine undead archetypes.” It changes graveyard area data and core mobile handling, while the live MUD remains unavailable. I’m updating only the local source mirror, then I’ll re-run the offline deployment-filter audit so the live plan still excludes content that has not reached the server.
+
+
+[2026-10-30 8:21:16 PM NZST] CODEX COMMENTARY
+The source mirror is now at 528b319. Its parser sees 41 mobile templates, with the same 16 undead/archetype templates still filtered out of live planning; no new unlisted template slipped through. The offline level-41 report still produces live-filtered candidates, so I’m updating the repository status notes from e597329 to 528b319 and recording that this is research-only until the MUD deploys it.
+
+
+[2026-10-30 8:22:05 PM NZST] CODEX COMMENTARY
+The local source mirror is clean at 528b319, the live-filtered template audit still matches all 16 known unreleased templates, the level-41 offline hunt report runs, and `hero --prepare-only` resumes Dorrik without opening a socket. Documentation now names the refreshed source and keeps it research-only for live planning. No pytest batch, live connection, worker, or process cleanup was performed.
+
+
+[2026-10-30 8:22:19 PM NZST] CODEX COMMENTARY
+I’m continuing the HERO100 work offline from the current checkpoint. I’ll inspect the saved tree and source revision first, then take the next concrete step that improves uninterrupted progression rather than merely adding another report; the MUD will remain untouched while it is down.
+
+
+[2026-10-30 8:23:15 PM NZST] CODEX COMMENTARY
+The refreshed source audit found a real deployment-boundary leak: commit 528b319 adds a new `wyvern` mobile archetype, but the live-profile exclusion set did not know about it, so offline live planning could have treated it as deployed. I’m adding that template to the unresolved set and updating the evidence counts and docs; this is a concrete correctness fix for live planning, even while the MUD is offline.
+
+
+[2026-10-30 8:26:35 PM NZST] CODEX COMMENTARY
+The source-filter fix is compiling and the direct catalog audit now reports 41 upstream templates, 20 usable in the live profile, and 21 unresolved, including the revised skeleton, zombie, ghoul, ghast, and new wyvern definitions. I’m waiting on one read-only readiness summary against the large campaign database to refresh the documented level-41 counts; it is slow but still running and has not opened a MUD connection.
+
+
+[2026-10-30 8:27:50 PM NZST] CODEX COMMENTARY
+The new filter is verified end to end: 41 upstream templates, 20 live-profile templates, and 21 unresolved or revised definitions, with the Graveyard undead and Miden'nir wyvern archetype excluded from live planning. The large-database readiness audit now reports 2,799 targets, 352 source-band candidates, 258 source-autonomous candidates, and 14 static admission-fit candidates for Dorrik at level 41. Compilation and whitespace checks pass; I have not run pytest because today’s regression allowance is already spent.
+
+
+[2026-10-30 8:28:17 PM NZST] CODEX COMMENTARY
+I’m continuing from the offline deployment-boundary fix. The next useful step is to audit the current source-backed progression machinery for another concrete leak or blocker, while preserving Dorrik as the sole live pilot and leaving the unavailable MUD untouched.
+
+
+[2026-10-30 8:28:50 PM NZST] CODEX COMMENTARY
+The audit found the filter itself is correct, but the existing regression only checked a handful of template names. I’m strengthening that offline guard to assert that every declared unresolved template is absent from the live-profile catalog, so a future source refresh cannot silently reintroduce one without a test failure.
+
+
+[2026-10-30 8:29:09 PM NZST] CODEX COMMENTARY
+The regression guard is now exhaustive for the declared live deployment boundary, and the new source-parser assertions cover the wyvern archetype. The updated test module compiles cleanly; the direct catalog audit remains 41 upstream, 20 live, and 21 unresolved. This closes the source-refresh leak without touching live gameplay.
+
+
+[2026-10-30 8:29:17 PM NZST] CODEX COMMENTARY
+I’m continuing the offline HERO100 work. The deployment boundary is now guarded; I’m shifting the audit back to the master objective and checking the source-legal identity/progression matrix for a concrete genericity gap that can be fixed without a live connection.
+
+
+[2026-10-30 8:29:53 PM NZST] CODEX COMMENTARY
+The MUD is still out of scope, so I’m using this pass to audit the offline autonomy matrix and turn any concrete coverage gap into code or documentation work. I’ll keep the focus on the path from arbitrary legal identities to HERO rather than opening another live session.
+
+
+[2026-10-30 8:31:38 PM NZST] CODEX COMMENTARY
+The source audit is useful: the refreshed checkout defines 25 races, 3 cosmetic sexes, 9 base classes, and 18 subclasses, and the runtime fallback reaches level 100 for every class shape. It also exposes the real offline boundary: the first unverified progression template is level 10, and every class still has declared combat-automation gaps. I’m adding a compact source-wide identity audit so those facts stay visible for every legal combination instead of being inferred from one human mage/warrior sample.
+
+
+[2026-10-30 8:33:25 PM NZST] CODEX COMMENTARY
+The offline matrix command is now implemented and working. Against source revision 528b319, it audited 2,025 combinations: 675 base race/sex/class requests and 1,350 subclass requests. All have a static runtime fallback through level 100; the report correctly keeps the harder truth visible, namely that all 2,025 still need live proof and the first unverified progression band is level 10. I’m doing a final diff and syntax review now, without running today’s already-used regression batch.
+
+
+[2026-10-30 8:33:50 PM NZST] CODEX COMMENTARY
+Offline work is complete for this pass. The source-wide audit is in place, the refreshed live-deployment filter remains fail-closed for the unreleased undead/archetype changes, and the changed Python files compile cleanly. I have not opened a MUD connection or run the regression suite, because the service is down and today’s regression allowance is already used.
+
+
+[2026-10-30 8:33:58 PM NZST] CODEX COMMENTARY
+I’m continuing from the offline identity audit and taking the next concrete blocker: extending the executable path beyond the early level bands without using live MUD access. I’m first checking the current policy graph, training/prerequisite coverage, and source-derived level transitions so the next change addresses an actual missing capability rather than adding another inventory report.
+
+
+[2026-10-30 8:34:49 PM NZST] CODEX COMMENTARY
+I found one concrete provenance gap in the existing hero path: Dorrik’s durable manifest still records the old source revision even though the local DD4 checkout has been refreshed to 528b319. The campaign history keeps its per-run evidence, but a resumed hero workspace should also record the current catalog and retain the old catalog as history. I’m repairing that resume path, then I’ll refresh Dorrik’s manifest offline with `--prepare-only`.
+
+
+[2026-10-30 8:36:27 PM NZST] CODEX COMMENTARY
+The MUD is still offline, so I’m keeping this pass entirely local. I’m tightening the resume/provenance path I just repaired, checking the source-wide audit against the current checkout, and looking for the next concrete offline blocker in progression dispatch rather than spinning on live retries.
+
+
+[2026-10-30 8:38:28 PM NZST] CODEX COMMENTARY
+I found a second offline-safe issue worth fixing: the campaign wrapper already pins live source filtering, but direct starter/research entry points could load the full upstream catalog before that wrapper existed. I’m making the starter runner carry the live-deployment source scope itself, and I’m applying the same scope to its explicit source-world preflights. That keeps the newer undead/archetype checkout available for research without letting it leak into a live run.
+
+
+[2026-10-30 8:40:50 PM NZST] CODEX COMMENTARY
+The cache audit exposed an important companion bug: several source-world caches were keyed only by the directory, even though the result also depends on whether we are reading upstream research or the live-deployment profile. In a long-lived process, one mode could reuse the other mode’s world. I’m fixing that at the loader boundary, then I’ll verify both profiles stay distinct without touching the MUD.
+
+
+[2026-10-30 8:41:23 PM NZST] CODEX COMMENTARY
+The deployment-profile fix is now passing offline checks: the refreshed source has 41 upstream templates, 20 live-eligible templates, and the 21 known unreleased/revised templates stay filtered; the loader now returns distinct cached worlds for those modes. I’m using the remaining offline time to inspect Dorrik’s current level-41 candidate report for a real selector bottleneck, so the next live pass has a concrete progression action ready.
+
+
+[2026-10-30 8:43:07 PM NZST] CODEX COMMENTARY
+Offline work for this pass is complete. The live-source boundary is now enforced for direct starters, explicit route preflights, and every derived source index; the cache also separates upstream and live-filtered worlds. The source-wide identity audit still covers 2,025 race/sex/class shapes to HERO with zero static fallback gaps, and Dorrik’s resumed manifest now points at 528b319 while retaining the older revision. I have not contacted the MUD, run pytest, or touched the large run database; the next live action remains Dorrik’s bounded restock from the healer checkpoint.
+
+
+[2026-10-30 8:43:19 PM NZST] CODEX COMMENTARY
+I’m continuing the HERO100 work from the current checkout, still without touching the offline MUD. I’m auditing the actual executable path now for the next concrete beyond-level-13 blocker, with emphasis on whether a resumed hero run can preserve its source profile, state, and progression policy rather than merely reporting static coverage.
+
+
+[2026-10-30 8:44:15 PM NZST] CODEX COMMENTARY
+MUD is still offline, so I’m staying on the useful side of the boundary: tracing the level-41 selector and its handoff into execution, looking for a concrete blocker we can remove and verify without opening a connection.
+
+
+[2026-10-30 8:47:32 PM NZST] CODEX COMMENTARY
+I found a concrete offline blocker: several source commands accept a DD4 checkout path such as `server\src` but quietly parse zero rooms and mobiles instead of using its paired `server\area` directory. I’m centralizing that path normalization so source audits and future campaign preflights cannot produce an empty, misleading frontier.
+
+
+[2026-10-30 8:50:42 PM NZST] CODEX COMMENTARY
+Offline pass is complete. The source-path fix now resolves checkout root, `server`, `server\src`, `const.c`, and `area` consistently; a direct smoke check loaded 13,052 rooms and 4,126 mobiles from every form, and the gear report also worked through `server\src`. I’ve kept the MUD untouched and did not run pytest because today’s regression allowance was already used.
+
+
+[2026-10-30 8:54:09 PM NZST] CODEX COMMENTARY
+The offline selector is functioning against the live-source profile and is finding a concrete level-45 candidate for Dorrik; I am now auditing why that candidate remains cautionary instead of executable, so we can improve offline progression planning without touching the MUD.

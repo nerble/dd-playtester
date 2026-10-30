@@ -58,6 +58,10 @@ from dd4tester.mudlet import MudletConnection
 from dd4tester.observations import GameEvent, ObservationParser
 from dd4tester.shops import safe_shop_for_item
 from dd4tester.source_purchases import SourcePurchase, SourcePurchaseSession
+from dd4tester.source_paths import (
+    current_live_deployment,
+    source_directory_context,
+)
 from dd4tester.storage import RunStorage
 from dd4tester.training import PracticeListing
 from dd4tester.starter import (
@@ -10407,6 +10411,56 @@ def test_source_sanctuary_staff_can_refresh_once_after_expiry() -> None:
     assert policy._combat_pouch_potion_decision(replace(state, affects=[])) is None
 
 
+def test_precombat_source_sanctuary_is_tracked_for_active_target() -> None:
+    staff = ObjectSource(
+        19173,
+        "staff bard",
+        "Staff of the Bard",
+        4,
+        (30, 10, 10, 0),
+        0,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=route_named("ambush"),
+        gear_catalog=GearCatalog({staff.vnum: staff}),
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": staff.vnum,
+                "object_description": "Staff of the Bard",
+                "spell": "sanctuary",
+                "command": "brandish",
+                "mode": "staff",
+                "requires_hold": False,
+                "consumes_object": False,
+                "consumes_charge": True,
+                "command_keyword": "bard",
+                "charges_remaining": 2,
+            }
+        },
+    )
+    policy.in_world = True
+    policy.active_target = "Apollo"
+    policy.fastwalk_attack_target = "Apollo"
+    state = CharacterState(
+        hp=1000,
+        max_hp=1000,
+        position=7,
+        room_vnum="926",
+        inventory=[{"short_desc": "Staff of the Bard"}],
+        affects=[],
+    )
+
+    decision = policy._combat_pouch_potion_decision(state)
+
+    assert decision is not None
+    assert decision.command == "brandish"
+    assert policy.fastwalk_sanctuary_consumed_in_combat is True
+    assert policy.fastwalk_sanctuary_used_during_segment is True
+
+
 def test_stun_opener_refreshes_source_sanctuary_after_weapon_setup() -> None:
     mace = ObjectSource(
         4003,
@@ -14584,6 +14638,51 @@ def test_moria_locator_follows_late_end_of_tunnel_sighting_after_two_refreshes()
     assert decision.command == "east"
     assert policy.fastwalk_hunt_stops[-1].route_vnums == ("4072", "4073")
     assert policy.fastwalk_where_relocation_attempts == 2
+
+
+def test_live_source_world_preflight_uses_deployment_profile(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    observed: dict[str, object] = {}
+    source_world = object()
+
+    def fake_load_world_source(directory, *, include_all_areas):
+        observed["directory"] = directory
+        observed["include_all_areas"] = include_all_areas
+        observed["live_deployment"] = current_live_deployment()
+        return source_world
+
+    monkeypatch.setattr(starter, "current_source_directory", lambda: tmp_path)
+    monkeypatch.setattr(starter, "load_world_source", fake_load_world_source)
+
+    assert starter._load_live_source_world() is source_world
+    assert observed == {
+        "directory": tmp_path,
+        "include_all_areas": True,
+        "live_deployment": True,
+    }
+
+
+def test_source_indexes_do_not_cross_contaminate_deployment_profiles(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[bool] = []
+
+    def fake_load_world_source(directory, *, include_all_areas, live_deployment):
+        calls.append(live_deployment)
+        return WorldSource()
+
+    monkeypatch.setattr(starter, "load_world_source", fake_load_world_source)
+    directory = str(tmp_path / "profile-isolated-area")
+
+    with source_directory_context(tmp_path, live_deployment=False):
+        starter._load_source_mobile_targets(directory)
+    with source_directory_context(tmp_path, live_deployment=True):
+        starter._load_source_mobile_targets(directory)
+
+    assert calls == [False, True]
 
 
 def test_moria_deep_research_uses_source_audited_route(monkeypatch, tmp_path) -> None:
@@ -24893,6 +24992,33 @@ def test_field_hunt_waits_one_cycle_before_missing_gmcp_withdrawal() -> None:
     assert decision is not None
     assert decision.command == "flee"
     assert policy.fastwalk_emergency_recall_pending is True
+
+
+def test_field_hunt_waits_for_delayed_enemy_packet_without_bound_target() -> None:
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=route_named("foundry"),
+        fastwalk_hunt_stops=foundry_level_six_hunt_stops(),
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    policy.last_response = "A wandering Temple Guard's stab mauls you."
+    state = CharacterState(
+        level=41,
+        hp=945,
+        max_hp=969,
+        position=7,
+        room_name="The Entranceway to the Temple",
+        room_vnum="13007",
+    )
+
+    decision = policy.next_decision(state)
+
+    assert decision is None
+    assert policy.awaiting_enemy_assessment is True
+    assert policy.fastwalk_emergency_recall_pending is False
 
 
 def test_field_hunt_adopts_text_attacker_after_delayed_gmcp_assessment() -> None:
@@ -52121,24 +52247,20 @@ def test_liquidation_recovers_from_item_visibility_refusal() -> None:
 
     policy.observe_text("The weaponsmith tells you 'I can't see that item'.\n")
 
-    assert policy.shop_visibility_rejected is True
-    assert policy.sale_phase == "sell"
+    assert policy.shop_visibility_rejected is False
+    assert policy.sale_phase == "inventory"
+    assert policy.donation_plan == ["axe"]
     shop_state = CharacterState(
         room_name="The Weapon Shop",
         room_vnum=shop.room_vnum,
         position=7,
     )
 
-    visible = policy._liquidate_loot_decision(shop_state)
+    inventory = policy._liquidate_loot_decision(shop_state)
 
-    assert visible is not None
-    assert visible.command == "vis"
+    assert inventory is not None
+    assert inventory.command == "inventory"
     assert policy.shop_visibility_rejected is False
-
-    retry = policy._liquidate_loot_decision(shop_state)
-
-    assert retry is not None
-    assert retry.command == "sell axe"
 
 
 def test_liquidation_donates_known_unsellable_redundant_overflow() -> None:

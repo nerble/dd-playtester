@@ -16,9 +16,9 @@ from typing import Iterator
 DEFAULT_SOURCE_DIRECTORY = Path("runs/dd4-source/server/area")
 
 # The live server is currently deployed before the upstream undead and
-# archetype/species rollout.  Keep the latest checkout available for source
-# research, but do not let these newer templates authorize a live hunt until
-# a live probe proves that deployment has caught up.
+# archetype/species rollout. Keep the latest checkout available for source
+# research, but do not let these newer or revised template definitions
+# authorize a live hunt until a live probe proves that deployment has caught up.
 LIVE_UNDEPLOYED_TEMPLATE_NAMES = frozenset(
     {
         "animated_soft_toy",
@@ -28,15 +28,20 @@ LIVE_UNDEPLOYED_TEMPLATE_NAMES = frozenset(
         "dracolich",
         "dwarf",
         "dwarf_untrained",
+        "ghast",
+        "ghoul",
         "goblin",
         "half_orc",
         "hobgoblin",
         "lich",
         "mummy",
         "ogre_mage",
+        "skeleton",
         "troll",
         "vampire",
         "vampire_bat_form",
+        "wyvern",
+        "zombie",
     }
 )
 
@@ -48,6 +53,35 @@ _CURRENT_LIVE_DEPLOYMENT: ContextVar[bool] = ContextVar(
     "dd4tester_current_live_deployment",
     default=False,
 )
+
+
+def resolve_source_area_directory(
+    directory: Path | str | None = None,
+) -> Path:
+    """Return the area directory paired with a DD4 source checkout.
+
+    Callers commonly have a checkout root, ``server``, ``server/src``,
+    ``const.c``, or the area directory itself. Treating those forms as one
+    source identity prevents a valid source audit from silently parsing zero
+    area files when the caller points at the C source directory.
+    """
+    if directory is None:
+        return DEFAULT_SOURCE_DIRECTORY
+
+    supplied = Path(directory)
+    if supplied.is_file() and supplied.name.casefold() == "const.c":
+        supplied = supplied.parent
+    if supplied.name.casefold() == "area":
+        return supplied
+    if supplied.name.casefold() == "src":
+        paired_area = supplied.parent / "area"
+        return paired_area if paired_area.is_dir() else supplied
+    if (supplied / "area").is_dir() and (supplied / "src").is_dir():
+        return supplied / "area"
+    paired_area = supplied / "server" / "area"
+    if paired_area.is_dir():
+        return paired_area
+    return supplied
 
 
 def current_source_directory() -> Path:
@@ -67,11 +101,7 @@ def source_directory_context(
     live_deployment: bool | None = None,
 ) -> Iterator[Path]:
     """Pin one source directory and deployment profile for nested helpers."""
-    selected = (
-        Path(directory)
-        if directory is not None
-        else DEFAULT_SOURCE_DIRECTORY
-    )
+    selected = resolve_source_area_directory(directory)
     source_token = _CURRENT_SOURCE_DIRECTORY.set(selected)
     deployment_token = _CURRENT_LIVE_DEPLOYMENT.set(
         current_live_deployment()

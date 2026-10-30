@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .archetypes import archetype_registry
-from .dd4_catalog import load_character_catalog
+from .dd4_catalog import CharacterCatalog, load_character_catalog
 from .progression import ProgressionPolicy, policy_for
 from .training import training_analysis_for, training_priorities_for
 
@@ -122,6 +122,7 @@ def audit_hero_request(
     subclass: str | None = None,
     target_level: int = 100,
     source: str | Path | None = None,
+    catalog: CharacterCatalog | None = None,
 ) -> AutonomyAudit:
     """Audit a declarative HERO request without opening a live connection.
 
@@ -131,7 +132,7 @@ def audit_hero_request(
     if not 2 <= target_level <= 100:
         raise ValueError("target level must be between 2 and 100")
 
-    catalog = load_character_catalog(source)
+    catalog = catalog or load_character_catalog(source)
     canonical_race = catalog.race_name(race)
     canonical_sex = catalog.sex_name(sex)
     canonical_class = catalog.class_name(character_class)
@@ -323,10 +324,59 @@ def audit_all_base_classes(
             sex=sex,
             character_class=option.name,
             target_level=target_level,
-            source=source,
+            catalog=catalog,
         )
         for option in catalog.classes
     )
+
+
+def audit_all_source_identities(
+    *,
+    target_level: int = 100,
+    source: str | Path | None = None,
+    include_subclasses: bool = True,
+) -> tuple[AutonomyAudit, ...]:
+    """Audit every source-derived race, sex, class, and subclass shape.
+
+    This is deliberately a static inventory. It proves that the request
+    parser and policy graph cover the source catalog; it does not turn any
+    identity into live progression proof.
+    """
+    catalog = load_character_catalog(source)
+    subclasses_by_class: dict[str, tuple[str, ...]] = {}
+    if include_subclasses:
+        grouped: dict[str, list[str]] = {}
+        for option in catalog.subclasses:
+            grouped.setdefault(option.base_class, []).append(option.name)
+        subclasses_by_class = {
+            base_class: tuple(names) for base_class, names in grouped.items()
+        }
+
+    audits: list[AutonomyAudit] = []
+    for race in catalog.races:
+        for sex in catalog.sexes:
+            for character_class in catalog.classes:
+                audits.append(
+                    audit_hero_request(
+                        race=race.name,
+                        sex=sex,
+                        character_class=character_class.name,
+                        target_level=target_level,
+                        catalog=catalog,
+                    )
+                )
+                for subclass in subclasses_by_class.get(character_class.name, ()):
+                    audits.append(
+                        audit_hero_request(
+                            race=race.name,
+                            sex=sex,
+                            character_class=character_class.name,
+                            subclass=subclass,
+                            target_level=target_level,
+                            catalog=catalog,
+                        )
+                    )
+    return tuple(audits)
 
 
 def render_autonomy_audit(audit: AutonomyAudit) -> str:
@@ -385,6 +435,50 @@ def render_autonomy_audit(audit: AutonomyAudit) -> str:
     lines.extend(f"- {blocker}" for blocker in audit.blockers)
     lines.append(f"Next action: {audit.next_action}")
     return "\n".join(lines) + "\n"
+
+
+def render_autonomy_matrix_summary(audits: tuple[AutonomyAudit, ...]) -> str:
+    """Render a compact operator report for the complete source identity set."""
+    if not audits:
+        return "Source identity matrix: empty\n"
+    base_audits = tuple(audit for audit in audits if audit.subclass is None)
+    subclass_audits = tuple(audit for audit in audits if audit.subclass is not None)
+    runtime_gaps = tuple(
+        audit for audit in audits if not audit.runtime_fallback_through_target
+    )
+    proof_gaps = tuple(
+        audit
+        for audit in audits
+        if not audit.templates_marked_verified_through_target
+    )
+    partial_automation = tuple(
+        audit for audit in audits if audit.combat_automation_status != "covered"
+    )
+    first_proof_levels = sorted(
+        {
+            audit.first_proof_gap_level
+            for audit in audits
+            if audit.first_proof_gap_level is not None
+        }
+    )
+    target = audits[0].target_level
+    target_label = "HERO (100)" if target == 100 else str(target)
+    return "\n".join(
+        [
+            f"Source identity matrix: {len(audits)} static audits to {target_label}",
+            f"Source revision: {audits[0].source_revision or 'unknown'}",
+            f"Base race/sex/class requests: {len(base_audits)}",
+            f"Subclass race/sex/class requests: {len(subclass_audits)}",
+            "Runtime fallback gaps: "
+            f"{len(runtime_gaps)} (static policy selection only)",
+            "Unverified progression templates: "
+            f"{len(proof_gaps)}; first gap levels: "
+            + (", ".join(str(level) for level in first_proof_levels) or "none"),
+            "Combat automation gaps: "
+            f"{len(partial_automation)} audits",
+            "Live progression proof: not assessed by this static audit",
+        ]
+    ) + "\n"
 
 
 def _automation_gaps_for(

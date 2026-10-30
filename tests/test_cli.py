@@ -343,6 +343,24 @@ def test_autonomy_audit_can_compare_all_base_classes(capsys) -> None:
     assert "shifter:" in captured.out
 
 
+def test_autonomy_audit_can_summarize_every_source_identity(capsys) -> None:
+    exit_code = main(
+        [
+            "autonomy-audit",
+            "--all-identities",
+            "--target-level",
+            "100",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Source identity matrix:" in captured.out
+    assert "Base race/sex/class requests:" in captured.out
+    assert "Subclass race/sex/class requests:" in captured.out
+    assert "Live progression proof: not assessed" in captured.out
+
+
 def test_autonomy_audit_rejects_subclass_with_all_classes(capsys) -> None:
     exit_code = main(
         [
@@ -1029,6 +1047,52 @@ def test_show_hunt_candidates_reuses_persisted_recall_origins(
     assert "Recall origins: 0 Default recall, 2 Draagdim" in captured.out
 
 
+def test_show_hunt_candidates_can_use_live_deployment_profile(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    captured_profile: dict[str, object] = {}
+
+    def load_source(_source, *, include_all_areas, live_deployment):
+        captured_profile.update(
+            {
+                "include_all_areas": include_all_areas,
+                "live_deployment": live_deployment,
+            }
+        )
+        return WorldSource()
+
+    monkeypatch.setattr(dd4tester.cli, "load_world_source", load_source)
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "rank_hunt_candidates",
+        lambda *_args, **_kwargs: [],
+    )
+
+    exit_code = main(
+        [
+            "show-hunt-candidates",
+            "--level",
+            "41",
+            "--source",
+            str(tmp_path / "area"),
+            "--database",
+            str(tmp_path / "missing.sqlite3"),
+            "--all-areas",
+            "--live-deployment",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured_profile == {
+        "include_all_areas": True,
+        "live_deployment": True,
+    }
+    assert "Deployment profile: live-filtered" in captured.out
+
+
 def test_show_hunt_candidates_uses_nested_gmcp_alignment(
     tmp_path,
     capsys,
@@ -1087,6 +1151,55 @@ def test_show_hunt_candidates_uses_nested_gmcp_alignment(
     assert captured_alignment["value"] == 1000
     assert "Player alignment: 1000" in captured.out
     assert "Player fame: -12" in captured.out
+
+
+def test_source_audits_forward_live_deployment_profile(monkeypatch) -> None:
+    captured: dict[str, dict[str, object]] = {}
+
+    def record(name):
+        def command(*_args, **kwargs):
+            captured[name] = kwargs
+            return 0
+
+        return command
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "show_resource_sources",
+        record("resource"),
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "show_gear_sources",
+        record("gear"),
+    )
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "show_combat_readiness",
+        record("readiness"),
+    )
+
+    assert main([
+        "show-resource-sources",
+        "--level", "41",
+        "--live-deployment",
+    ]) == 0
+    assert main([
+        "show-gear-sources",
+        "--level", "41",
+        "--class", "warrior",
+        "--live-deployment",
+    ]) == 0
+    assert main([
+        "show-combat-readiness",
+        "--level", "41",
+        "--class", "warrior",
+        "--live-deployment",
+    ]) == 0
+
+    assert captured["resource"]["live_deployment"] is True
+    assert captured["gear"]["live_deployment"] is True
+    assert captured["readiness"]["live_deployment"] is True
 
 
 def test_show_gear_sources_renders_source_and_hazard_fields(

@@ -26,6 +26,7 @@ from .specials import (
 from .source_paths import (
     LIVE_UNDEPLOYED_TEMPLATE_NAMES,
     current_live_deployment,
+    resolve_source_area_directory,
 )
 
 
@@ -3602,7 +3603,6 @@ def load_mobile_template_catalog(
     return templates
 
 
-@lru_cache(maxsize=4)
 def load_world_source(
     area_directory: Path,
     *,
@@ -3610,12 +3610,33 @@ def load_world_source(
     include_all_objects: bool = False,
     live_deployment: bool | None = None,
 ) -> WorldSource:
+    """Parse a source world using a cache key that includes deployment mode."""
+    area_directory = resolve_source_area_directory(area_directory)
+    selected_deployment = (
+        current_live_deployment()
+        if live_deployment is None
+        else bool(live_deployment)
+    )
+    return _load_world_source_cached(
+        area_directory,
+        include_all_areas=include_all_areas,
+        include_all_objects=include_all_objects,
+        live_deployment=selected_deployment,
+    )
+
+
+@lru_cache(maxsize=4)
+def _load_world_source_cached(
+    area_directory: Path,
+    *,
+    include_all_areas: bool = False,
+    include_all_objects: bool = False,
+    live_deployment: bool = False,
+) -> WorldSource:
     """Parse global hazards and selected candidate-area loot evidence."""
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
-    if live_deployment is None:
-        live_deployment = current_live_deployment()
     mobile_templates = load_mobile_template_catalog(
         area_directory.parent / "src",
         include_unreleased_templates=not live_deployment,
@@ -3676,6 +3697,7 @@ def load_world_source(
 
 def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
     """Load prototypes annotated with reset-derived object level ranges."""
+    area_directory = resolve_source_area_directory(area_directory)
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 
@@ -3693,6 +3715,7 @@ def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
 
 def load_object_set_sources(area_directory: Path) -> dict[int, ObjectSetSource]:
     """Load DD4 object sets with their runtime bonus thresholds."""
+    area_directory = resolve_source_area_directory(area_directory)
     if not area_directory.is_dir():
         raise FileNotFoundError(f"DD4 area directory not found: {area_directory}")
 

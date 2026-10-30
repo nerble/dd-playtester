@@ -236,6 +236,12 @@ def prepare_hero_request(
                 character,
                 personality=resumed_request.personality,
             )
+        _refresh_manifest_catalog(
+            manifest_path,
+            manifest,
+            catalog=catalog,
+            source=source,
+        )
         _initialize_mudlet_bridge(resumed_request)
         return HeroPreparation(
             resumed_request,
@@ -1357,6 +1363,47 @@ def _initialize_mudlet_bridge(request: HeroRequest) -> None:
         return
     assert request.mudlet_directory is not None
     MudletBridge(request.mudlet_directory).initialize()
+
+
+def _refresh_manifest_catalog(
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    *,
+    catalog: CharacterCatalog,
+    source: str | Path | None,
+) -> None:
+    """Refresh current source provenance while preserving old revisions.
+
+    A hero workspace is resumable history, but its catalog pointer should not
+    silently remain on the source checkout used when the character was first
+    created. Campaign rows retain their original source revision; the manifest
+    records the current planning catalog and keeps changed prior values in a
+    short history for operators and later audits.
+    """
+    current_catalog = {
+        "source": catalog.source,
+        "source_revision": catalog.source_revision,
+        "source_directory": str(source_area_directory(source).resolve()),
+    }
+    previous_catalog = manifest.get("catalog")
+    if previous_catalog == current_catalog:
+        return
+
+    history_value = manifest.get("catalog_history")
+    history = [
+        dict(entry)
+        for entry in history_value
+        if isinstance(entry, dict)
+    ] if isinstance(history_value, list) else []
+    if isinstance(previous_catalog, dict):
+        history.append(dict(previous_catalog))
+    manifest["catalog"] = current_catalog
+    if history:
+        manifest["catalog_history"] = history[-8:]
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _request_mapping(request: HeroRequest) -> dict[str, Any]:
