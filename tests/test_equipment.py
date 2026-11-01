@@ -17,6 +17,7 @@ from dd4tester.equipment import (
     generated_weapon_damage_floor,
     is_blunt_weapon,
     is_active_light_source,
+    is_combat_weapon,
     item_category,
     item_command_keyword,
     item_keyword,
@@ -420,6 +421,57 @@ def test_rank_executable_ground_gear_sources_keeps_only_safe_current_upgrades() 
     assert placements[0].route == ("south",)
 
 
+def test_rank_executable_ground_gear_sources_requires_full_reset_level_range() -> None:
+    current = ObjectSource(
+        40,
+        "small dagger",
+        "a small dagger",
+        5,
+        (0, 1, 1, 2),
+        10,
+        wear_flags=1 << 13,
+    )
+    upgrade = ObjectSource(
+        50,
+        "needle dagger",
+        "a needle dagger",
+        5,
+        (0, 3, 4, 2),
+        10,
+        wear_flags=1 << 13,
+        load_level_min=5,
+        load_level_max=6,
+    )
+    world = WorldSource(
+        objects={upgrade.vnum: upgrade},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        room_object_resets=[RoomObjectReset(upgrade.vnum, 200)],
+    )
+
+    assert rank_executable_ground_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+    ) == []
+    assert [placement.object_vnum for placement in rank_executable_ground_gear_sources(
+        world,
+        character_level=6,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+    )] == [upgrade.vnum]
+
+
 def test_rank_executable_ground_gear_sources_rejects_neutral_hold_dead_weight() -> None:
     barbell = ObjectSource(
         4414,
@@ -756,6 +808,35 @@ def test_weapon_type_detection_matches_dd4_stun_and_backstab_checks() -> None:
     assert not is_blunt_weapon(piercing_weapon)
     assert is_piercing_weapon(piercing_weapon)
     assert not is_piercing_weapon(pounding_weapon)
+
+
+def test_style_books_encoded_as_weapons_are_not_combat_weapons() -> None:
+    style_book = ObjectSource(
+        10719,
+        "lizard style",
+        "a lizard style technique book",
+        5,
+        (0, 1, 64, 5),
+        41,
+        wear_flags=1 | (1 << 13),
+    )
+    dagger = ObjectSource(
+        3020,
+        "dagger",
+        "a dagger",
+        5,
+        (0, 2, 4, 11),
+        1,
+        wear_flags=1 | (1 << 13),
+    )
+
+    assert not is_combat_weapon(style_book)
+    assert item_category(style_book) is None
+    assert not is_piercing_weapon(style_book)
+    assert not is_blunt_weapon(style_book)
+    assert weapon_damage_score(style_book) == 0
+    assert is_combat_weapon(dagger)
+    assert item_category(dagger) == "wield"
 
 
 def test_body_part_weapons_are_never_usable_gear_candidates() -> None:

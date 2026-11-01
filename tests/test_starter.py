@@ -954,6 +954,58 @@ def test_no_recall_return_resynchronizes_after_flee_advances_midgaard_room() -> 
     assert policy.failure is None
 
 
+def test_preserved_source_ranked_return_route_has_priority_over_generic_recovery() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        return_home=True,
+        preserved_return_commands=("east", "south", "west"),
+    )
+    state = CharacterState(room_vnum="16483")
+
+    for command, room_vnum in (
+        ("east", "16482"),
+        ("south", "3002"),
+        ("west", "3001"),
+    ):
+        decision = policy._return_home_decision(state)
+        assert decision is not None
+        assert decision.command == command
+        state.room_vnum = room_vnum
+
+    decision = policy._return_home_decision(state)
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert policy.failure is None
+
+
+def test_no_recall_refusal_keeps_reversing_the_active_fastwalk() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=Fastwalk("source-ranked return", 1, 100, "2s"),
+        return_home=True,
+    )
+    policy.fastwalk_returning = True
+    policy.fastwalk_recall_failed_in_no_recall = True
+    policy.fastwalk_no_recall_origin = "200"
+    policy.fastwalk_return_index = 1
+
+    decision = policy._return_home_decision(
+        CharacterState(
+            room_vnum="201",
+            room_flags=["no_recall"],
+            exits={"n": "200"},
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "north"
+    assert "official fastwalk" in decision.reason
+    assert policy.return_home_recovery_commands is None
+
+
 def test_fastwalk_return_reverses_only_the_prefix_before_a_randomized_route() -> None:
     route = Fastwalk(
         "source-ranked Mahn-Tor hunt",
@@ -10017,6 +10069,39 @@ def test_low_level_mage_target_can_use_source_proven_healer_recovery() -> None:
     )
 
 
+def test_status_casting_source_accepts_loose_source_verified_cure_potion() -> None:
+    potion = ObjectSource(
+        4050,
+        "potion purple",
+        "a purple potion",
+        10,
+        (10,),
+        500,
+        value_strings=("", "cure blindness", "sanctuary"),
+    )
+    stop = FieldHuntStop(
+        (),
+        "the demon summoner",
+        command_keyword="summoner",
+        require_sanctuary=True,
+        source_mobile_vnum=16122,
+        source_specials=("spec_cast_mage",),
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({potion.vnum: potion}),
+        source_mobile_level_ranges_by_vnum={16122: (35, 39)},
+    )
+
+    state = CharacterState(
+        inventory=[{"quan": 2, "short_desc": "a purple potion"}],
+    )
+
+    assert policy._source_status_recovery_issue(state, stop) is None
+
+
 def test_psionic_opener_requires_verified_disintegration_protection() -> None:
     stop = FieldHuntStop(
         (),
@@ -10170,6 +10255,74 @@ def test_blindness_recovery_uses_source_verified_potion_before_fleeing() -> None
     assert decision is not None
     assert decision.command == "quaff purple"
     assert policy.combat_pouch_potions == {}
+
+
+def test_blindness_recovery_uses_loose_source_verified_potion() -> None:
+    potion = ObjectSource(
+        4050,
+        "potion purple",
+        "a purple potion",
+        10,
+        (10,),
+        500,
+        value_strings=("", "cure blindness", "sanctuary"),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({potion.vnum: potion}),
+    )
+
+    decision = policy._blindness_recovery_decision(
+        CharacterState(
+            room_vnum="9204",
+            inventory=[{"quan": 2, "short_desc": "a purple potion"}],
+            in_combat=True,
+            affects=[[{"name": "blindness"}]],
+        )
+    )
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.combat_pouch_potions == {}
+
+
+def test_blindness_recovery_keeps_last_complete_inventory_after_empty_snapshot() -> None:
+    potion = ObjectSource(
+        4050,
+        "potion purple",
+        "a purple potion",
+        10,
+        (10,),
+        500,
+        value_strings=("", "cure blindness", "sanctuary"),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        gear_catalog=GearCatalog({potion.vnum: potion}),
+    )
+    state = CharacterState(
+        room_vnum="9204",
+        in_combat=True,
+        affects=[[{"name": "blindness"}]],
+    )
+    events = [
+        GameEvent(
+            "inventory_changed",
+            "gmcp",
+            {"value": [[{"quan": "2", "short_desc": "a purple potion"}]]},
+        ),
+        GameEvent("inventory_changed", "gmcp", {"value": [[[]]]}),
+    ]
+    for event in events:
+        state.apply(event)
+    policy.observe_events(events, state)
+
+    decision = policy._blindness_recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
 
 
 def test_known_combat_potion_accepts_source_verified_cure_light() -> None:
@@ -31446,6 +31599,81 @@ def test_plain_current_band_target_holds_source_sanctuary_before_opener() -> Non
     assert policy.fastwalk_attack_started is True
 
 
+def test_plain_target_fights_when_anti_magic_blocks_optional_sanctuary() -> None:
+    staff = ObjectSource(
+        19173,
+        "staff bard",
+        "Staff of the Bard",
+        4,
+        (30, 10, 10, 0),
+        0,
+    )
+    stop = FieldHuntStop(
+        (),
+        "the gallery visitor",
+        exact_target=True,
+        source_mobile_vnum=9546,
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_hunt_stops=(stop,),
+        gear_catalog=GearCatalog({staff.vnum: staff}),
+        verified_source_resources={
+            "sanctuary": {
+                "effect": "sanctuary",
+                "object_vnum": staff.vnum,
+                "object_description": "Staff of the Bard",
+                "spell": "sanctuary",
+                "command": "brandish",
+                "mode": "staff",
+                "requires_hold": True,
+                "consumes_object": False,
+                "consumes_charge": True,
+                "command_keyword": "bard",
+                "charges_remaining": 10,
+            }
+        },
+    )
+    policy.in_world = True
+    policy.current_room = "9204"
+    policy.fastwalk_attack_target = stop.target
+    policy.consider_target = stop.target
+    policy.consider_target_selector = "#5182"
+    policy.consider_viable = True
+    state = CharacterState(
+        level=43,
+        hp=927,
+        max_hp=927,
+        mana=531,
+        max_mana=531,
+        move=500,
+        max_move=583,
+        position=7,
+        room_vnum="9204",
+        inventory=[{"quan": 1, "short_desc": "Staff of the Bard"}],
+        enemies=[[]],
+    )
+
+    hold = policy._consider_fastwalk_target(state)
+    assert hold is not None
+    assert hold.command == "hold bard"
+
+    policy.observe_text("You hold Staff of the Bard.")
+    brandish = policy._consider_fastwalk_target(state)
+    assert brandish is not None
+    assert brandish.command == "brandish"
+
+    policy.observe_text("An anti-magic field prevents any casting here.")
+    policy.prompt_ready = True
+    opener = policy.next_decision(state)
+
+    assert opener is not None
+    assert opener.command.startswith("kill ")
+    assert policy.fastwalk_opening_potion_pending is False
+    assert policy.fastwalk_emergency_recall_pending is False
+
+
 def test_source_special_endpoint_withdraws_before_sanctuary_when_live_hp_exceeds_budget() -> None:
     stop = FieldHuntStop(
         (),
@@ -49089,6 +49317,32 @@ def test_fastwalk_audits_known_combat_potions_at_recall_before_departure() -> No
     assert policy.combat_pouch_potions == {"purple": 2}
 
 
+def test_automatic_pouch_audit_skips_when_live_worn_snapshot_has_no_pouch() -> None:
+    route = route_named("moria")
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=route,
+        audit_combat_pouch=True,
+        skip_unworn_combat_pouch_audit=True,
+    )
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.fastwalk_recall_started = True
+    policy.gear_worn_structured_current = True
+    origin = CharacterState(
+        room_name="The Temple Of Midgaard",
+        room_vnum="3001",
+        position=7,
+    )
+
+    departure = policy.next_decision(origin)
+
+    assert departure is not None
+    assert departure.command == route.commands[0]
+    assert policy.fastwalk_pouch_audited
+
+
 def test_fastwalk_accepts_inline_empty_combat_pouch_listing() -> None:
     route = route_named("moria")
     policy = StarterPolicy(
@@ -50429,6 +50683,70 @@ def test_combat_reserves_sanctuary_for_below_band_required_loot_kill() -> None:
 
     assert decision is None
     assert policy.combat_pouch_potions == {"purple": 1}
+
+
+def test_sanctuary_maintenance_can_use_reserve_for_below_band_carrier() -> None:
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=starter.daycare_ring_hunt_route(),
+    )
+    policy.active_target = "large hobgoblin"
+    policy.fastwalk_below_band_targets.add("large hobgoblin")
+    policy.combat_pouch_potions.update({"purple": 1})
+    state = CharacterState(
+        hp=100,
+        max_hp=100,
+        position=6,
+        room_name="Moria",
+        room_vnum="4071",
+    )
+
+    decision = policy._combat_pouch_potion_decision(
+        state,
+        allow_below_band_sanctuary=True,
+    )
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+
+
+def test_sanctuary_maintenance_can_use_loose_source_verified_potion() -> None:
+    potion = ObjectSource(
+        4050,
+        "potion purple",
+        "a purple potion",
+        ITEM_POTION,
+        (10,),
+        500,
+        value_strings=("", "cure blindness", "sanctuary"),
+    )
+    policy = StarterPolicy(
+        _spec(),
+        "swordfish",
+        fastwalk_route=starter.daycare_ring_hunt_route(),
+        gear_catalog=GearCatalog({potion.vnum: potion}),
+    )
+    policy.active_target = "large hobgoblin"
+    policy.fastwalk_below_band_targets.add("large hobgoblin")
+    state = CharacterState(
+        hp=100,
+        max_hp=100,
+        position=6,
+        room_name="Moria",
+        room_vnum="4071",
+        inventory=[{"quan": 1, "short_desc": "a purple potion"}],
+    )
+
+    decision = policy._combat_pouch_potion_decision(
+        state,
+        allow_below_band_sanctuary=True,
+        allow_inventory_sanctuary=True,
+    )
+
+    assert decision is not None
+    assert decision.command == "quaff purple"
+    assert policy.pending_combat_inventory_potion is True
 
 
 def test_sanctuary_maintenance_allows_below_band_consider_without_inventory_gap() -> None:
@@ -66019,6 +66337,90 @@ def test_plain_transit_attacker_requires_exact_live_source_identity() -> None:
         state,
         policy._current_room_enemy_records(state),
     )
+
+
+def test_source_opportunistic_route_attacker_requires_live_consider() -> None:
+    mobile = MobileSource(
+        17051,
+        "orca",
+        "the orca",
+        40,
+        ACT_AGGRESSIVE | ACT_SENTINEL,
+        0,
+        "pirates_isles.are",
+        room_description="An orca is here.",
+    )
+    world = WorldSource(
+        mobiles={17051: mobile},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"south": ExitSource("south", 17272, 0, -1)},
+            ),
+            17272: RoomSource(
+                17272,
+                "Sailing the Sea of Ice",
+                "pirates_isles.are",
+            ),
+        },
+        mob_resets=[MobReset(17051, 17272, 1, ())],
+    )
+    policy = StarterPolicy(
+        _spec(**{"class": "warrior", "subclass": "knight"}),
+        "swordfish",
+        fastwalk_route=Fastwalk(
+            "source-ranked route to pirates",
+            1,
+            100,
+            "s",
+        ),
+        source_world=world,
+    )
+    policy.current_room = "17272"
+    policy.unapproved_field_attacker = "An orca"
+    state = CharacterState(
+        level=42,
+        hp=950,
+        max_hp=1000,
+        room_vnum="17272",
+        enemies=[[{
+            "name": "An orca",
+            "level": "40",
+            "isnpc": "17051",
+            "long_desc": "An orca is here.",
+        }]],
+    )
+    enemies = policy._current_room_enemy_records(state)
+
+    assert policy._source_opportunistic_route_attacker_is_admitted(
+        state,
+        enemies,
+    )
+    handled, decision = policy._route_attacker_consider_decision(
+        state,
+        enemies,
+    )
+
+    assert handled is True
+    assert decision is not None
+    assert decision.command == "consider orca"
+    assert policy.fastwalk_post_objective_attacker_consider_response_pending is True
+    assert policy.fastwalk_plain_transit_fight_active is False
+
+    policy.fastwalk_post_objective_attacker_consider_target = None
+    policy.fastwalk_post_objective_attacker_consider_selector = None
+    policy.fastwalk_post_objective_attacker_consider_viable = None
+    policy.fastwalk_post_objective_attacker_consider_attempts = 0
+    policy.fastwalk_post_objective_attacker_consider_response_pending = False
+    policy.in_world = True
+    policy.prompt_ready = True
+    policy.combat_active = True
+    decision = policy.next_decision(state)
+
+    assert decision is not None
+    assert decision.command == "consider orca"
 
 
 @pytest.mark.parametrize(

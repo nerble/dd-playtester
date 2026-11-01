@@ -558,8 +558,8 @@ class CityShopTransit:
         reason = None
         if runtime_boundary:
             reason = "city interruption reached the segment runtime boundary"
-        elif self.status not in {"admitted", "fighting"}:
-            reason = "another city interruption is outside the one-fight budget"
+        elif self.status not in {"admitted", "fighting", "finished"}:
+            reason = "city interruption is outside the active transit admission"
         elif not bounded_city_shop_transit_available(world, state):
             reason = "city attacker no longer satisfies source combat bounds"
         elif (

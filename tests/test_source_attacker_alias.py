@@ -55,6 +55,21 @@ def test_current_primary_display_name_is_not_an_extra_attacker() -> None:
     assert not policy.fastwalk_objective_budget_complete
 
 
+def test_selected_primary_enemy_is_bound_before_alias_reconciliation() -> None:
+    policy, state = _encounter()
+    policy.active_target = None
+    policy.active_target_selector = None
+    policy.active_target_mobile_vnum = None
+    policy.fastwalk_attack_target = None
+    policy.unapproved_field_attacker = None
+
+    policy._reconcile_live_enemy_state(policy._current_room_enemy_records(state))
+
+    assert policy.unapproved_field_attacker is None
+    assert policy.active_target == "the buck"
+    assert policy.active_target_mobile_vnum == 19039
+
+
 @pytest.mark.parametrize("failure", (
     "wrong_mobile", "wrong_room", "wrong_description", "wrong_name", "other_attacker",
     "extra_enemy", "duplicate_enemy", "stale", "selector_conflict", "not_opened",

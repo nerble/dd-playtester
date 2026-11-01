@@ -109,14 +109,21 @@ def test_departure_retains_live_readiness_gates(world, changes):
     assert bot.city_shop_transit.status == "idle"
 
 
-def test_one_verified_interruption_can_finish_and_cannot_be_reused(world):
+def test_verified_drunk_interruption_can_repeat_within_transit_deadline(world):
     transit = CityShopTransit()
     transit.admit()
     here = replace(state(), room_vnum="3014").to_dict()
     assert transit.combat_allowed(world, here, [enemy()], now=0, nutrition_ready=True)
     assert transit.combat_allowed(world, here, [enemy(hp="5")], now=10, nutrition_ready=True)
     transit.finish_combat()
-    assert not transit.combat_allowed(world, here, [enemy()], now=11, nutrition_ready=True)
+    assert transit.combat_allowed(world, here, [enemy()], now=11, nutrition_ready=True)
+    transit.finish_combat()
+
+    # The exception is for the exact source-identified Drunk only; another
+    # city attacker still closes the admission rather than becoming a target.
+    assert not transit.combat_allowed(
+        world, here, [enemy(isnpc="9999")], now=12, nutrition_ready=True,
+    )
     assert transit.status == "aborted"
 
 

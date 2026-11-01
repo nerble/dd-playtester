@@ -51,6 +51,13 @@ _TARGET_OUTPUT_EVIDENCE_REJECTION = "source peak round can exceed character HP"
 _SOURCE_NONCOMBAT_RESOURCE_CARRIER_REJECTION = (
     "source mobile is a noncombat resource carrier"
 )
+_SOURCE_OUTPUT_EVIDENCE_REJECTIONS = frozenset(
+    {
+        _TARGET_OUTPUT_EVIDENCE_REJECTION,
+        "source mobile HP modifier is unavailable",
+        "source mobile damage modifier is unavailable",
+    }
+)
 
 # ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
 # after the ordinary area-file hit-point roll.  Keep the source multiplier
@@ -2096,6 +2103,8 @@ class HuntCandidate:
         Older checkpoints recorded a predicted incoming peak as an autonomy
         rejection. That value is still useful report evidence, but it is not
         a target-selection gate under the live level/``consider`` policy.
+        Missing source HP or damage modifiers have the same meaning: the
+        source estimate is incomplete, not that the target is forbidden.
         All other source hazards retain the strict admission behavior.
         """
         nonfatal_transit = {
@@ -2103,7 +2112,7 @@ class HuntCandidate:
             "below-band wandering aggressor is not an XP target",
         }
         rejections = set(self.autonomy_rejections)
-        rejections.discard(_TARGET_OUTPUT_EVIDENCE_REJECTION)
+        rejections.difference_update(_SOURCE_OUTPUT_EVIDENCE_REJECTIONS)
         return bool(
             not (rejections - nonfatal_transit)
             and (not rejections or self.route_aggressive_mobile_vnums)

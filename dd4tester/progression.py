@@ -105,6 +105,7 @@ class ProgressionContext:
     has_food: bool = True
     can_attempt_food_restock: bool = False
     needs_provision_funding: bool = False
+    weapon_funding_required: bool = False
     has_emergency_provision_sale: bool = False
     needs_return_home: bool = False
     has_weapon: bool = True
@@ -6266,6 +6267,7 @@ def policy_for(
     has_food: bool = True,
     can_attempt_food_restock: bool = False,
     needs_provision_funding: bool = False,
+    weapon_funding_required: bool = False,
     has_emergency_provision_sale: bool = False,
     needs_return_home: bool = False,
     has_weapon: bool = True,
@@ -6336,6 +6338,7 @@ def policy_for(
         has_food=has_food,
         can_attempt_food_restock=can_attempt_food_restock,
         needs_provision_funding=needs_provision_funding,
+        weapon_funding_required=weapon_funding_required,
         has_emergency_provision_sale=has_emergency_provision_sale,
         needs_return_home=needs_return_home,
         has_weapon=has_weapon,
@@ -7069,6 +7072,12 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         # handles full item-count capacity, which weight-only rearm checks do
         # not expose to the StarterBot.
         return _LIQUIDATE_LOOT_POLICY
+    if context.weapon_funding_required:
+        # A live shop quote proved that the required combat weapon is not
+        # affordable. Fund that exact quote before walking back to the shop;
+        # the rearm policy must not spend another segment repeating a known
+        # failed purchase.
+        return _PROVISION_FUNDING_POLICY
     # A character without a wielded weapon cannot safely turn a funding trip
     # into combat. Repair the primary slot before spending another segment on
     # provisions or flight money. ``select_policy`` can still promote a

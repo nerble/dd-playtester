@@ -2767,6 +2767,20 @@ def test_bounty_hunter_missing_pounding_weapon_selects_rearm_maintenance() -> No
     assert policy.execution == "rearm-weapon"
 
 
+def test_unaffordable_weapon_rearm_selects_funding_before_retry() -> None:
+    policy = policy_for(
+        41,
+        "warrior",
+        has_food=True,
+        has_weapon=True,
+        needs_pounding_weapon=True,
+        weapon_funding_required=True,
+    )
+
+    assert policy.policy_id == "provision-funding"
+    assert policy.execution == "provision-funding"
+
+
 def test_pounding_rearm_route_failure_does_not_repeat_optional_upgrade() -> None:
     policy = policy_for(
         29,

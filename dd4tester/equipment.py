@@ -57,6 +57,7 @@ ITEM_CURSED = 1 << 61
 PIERCING_DAMAGE_TYPES = frozenset({2, 11})
 BLUNT_DAMAGE_TYPES = frozenset({6, 7, 8})
 DIGGING_DAMAGE_TYPES = frozenset({5, 14, 17})
+_NON_COMBAT_WEAPON_MARKERS = ("book", "style", "technique")
 
 _NON_EQUIPMENT_TYPES = frozenset(
     {ITEM_POTION, ITEM_DRINK_CONTAINER, ITEM_KEY, ITEM_FOOD}
@@ -707,7 +708,12 @@ def rank_executable_ground_gear_sources(
             or not placement.route_vnums
             or item is None
             or not is_releasable_funding_item(item)
-            or item.effective_level > character_level
+            # The parser keeps the full reset-derived range.  The lower edge
+            # is useful for research, but a live object can arrive at any
+            # level in that range and DD4 refuses to wear it above the
+            # character's level.  Executable routes therefore require the
+            # upper edge to be usable too.
+            or (item.load_level_max or item.level) > character_level
             or (require_no_flight and placement.requires_flight)
         ):
             continue
@@ -760,7 +766,10 @@ def rank_executable_carrier_gear_sources(
             or not placement.route
             or item is None
             or not is_releasable_funding_item(item)
-            or item.effective_level > character_level
+            # A carrier's object can have the same reset-level fuzz as a
+            # ground reset. Do not dispatch a required-loot route whose
+            # object may load above the character's current level.
+            or (item.load_level_max or item.level) > character_level
             or (require_no_flight and placement.requires_flight)
         ):
             continue
@@ -794,6 +803,8 @@ def normalize_room_item_name(value: str) -> str:
 
 
 def item_category(item: ObjectSource) -> str | None:
+    if item.item_type == ITEM_WEAPON and not is_combat_weapon(item):
+        return None
     if item.item_type == ITEM_LIGHT:
         return "light"
     # DD4 marks bows and lances as wieldable in the object prototype, but the
@@ -806,6 +817,21 @@ def item_category(item: ObjectSource) -> str | None:
     return None
 
 
+def is_combat_weapon(item: ObjectSource) -> bool:
+    """Return whether an ITEM_WEAPON prototype is an actual attack weapon.
+
+    DD4 encodes some technique and style books as ITEM_WEAPON because they use
+    the wield slot. They are not valid primary weapons for combat or rearming.
+    """
+    if item.item_type != ITEM_WEAPON:
+        return False
+    searchable = f"{item.short_description} {item.keywords}".casefold()
+    return not any(
+        re.search(rf"\b{re.escape(marker)}\b", searchable)
+        for marker in _NON_COMBAT_WEAPON_MARKERS
+    )
+
+
 def is_active_light_source(item: ObjectSource) -> bool:
     """Return whether a light prototype can currently illuminate a room."""
     if item_category(item) != "light":
@@ -816,7 +842,7 @@ def is_active_light_source(item: ObjectSource) -> bool:
 def is_piercing_weapon(item: ObjectSource) -> bool:
     """Mirror DD4's is_piercing_weapon check for backstab-capable weapons."""
     return (
-        item.item_type == ITEM_WEAPON
+        is_combat_weapon(item)
         and len(item.values) > 3
         and item.values[3] in PIERCING_DAMAGE_TYPES
     )
@@ -825,7 +851,7 @@ def is_piercing_weapon(item: ObjectSource) -> bool:
 def is_blunt_weapon(item: ObjectSource) -> bool:
     """Mirror DD4's blunt-weapon check used by the stun command."""
     return (
-        item.item_type == ITEM_WEAPON
+        is_combat_weapon(item)
         and len(item.values) > 3
         and item.values[3] in BLUNT_DAMAGE_TYPES
     )
@@ -839,7 +865,7 @@ def is_digging_tool(item: ObjectSource) -> bool:
 def is_digging_weapon(item: ObjectSource) -> bool:
     """Mirror DD4's scoop, claw, and rake weapon fallback for ``do_dig``."""
     return (
-        item.item_type == ITEM_WEAPON
+        is_combat_weapon(item)
         and len(item.values) > 3
         and item.values[3] in DIGGING_DAMAGE_TYPES
     )
@@ -869,7 +895,7 @@ def generated_weapon_damage_floor(level: int) -> tuple[int, int] | None:
 
 def weapon_damage_score(item: ObjectSource) -> int:
     """Rank ordinary source weapons by conservative generated range damage."""
-    if item.item_type != ITEM_WEAPON or item.extra_flags & ITEM_BODY_PART:
+    if not is_combat_weapon(item) or item.extra_flags & ITEM_BODY_PART:
         return 0
     if item.effective_level <= 0 and len(item.values) > 2:
         # Synthetic and incomplete source fixtures may not carry a reset-derived
@@ -1062,7 +1088,7 @@ def protects_from_sale(item: ObjectSource) -> bool:
         APPLY_CRIT,
         APPLY_SWIFTNESS,
     }
-    if item.item_type == ITEM_WEAPON and any(
+    if is_combat_weapon(item) and any(
         location == APPLY_DAMROLL and modifier < 0
         for location, modifier in item.affects
     ):

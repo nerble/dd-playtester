@@ -2959,7 +2959,44 @@ class RunStorage:
                    started_at, updated_at, status, error
             FROM campaigns
             WHERE config_path = ?
-            ORDER BY id DESC
+              AND status IN ('running', 'ready', 'success')
+            ORDER BY
+                CASE status
+                    WHEN 'running' THEN 0
+                    WHEN 'ready' THEN 1
+                    ELSE 2
+                END,
+                updated_at DESC,
+                id DESC
+            LIMIT 1
+            """,
+            (str(config_path),),
+        )
+        return cursor.fetchone()
+
+    def get_latest_campaign_for_resume(self, config_path: Path) -> sqlite3.Row | None:
+        """Return the newest non-blocked history for a campaign file.
+
+        A bounded worker can mark a campaign failed after it has already
+        written a durable checkpoint.  Resume must keep that newest history;
+        falling back to an older ready duplicate silently rolls back progress.
+        Blocked histories remain excluded because they represent an explicit
+        campaign budget or policy stop rather than an interrupted run.
+        """
+        cursor = self.connection.execute(
+            """
+            SELECT id, name, config_path, character_profile_path, target_level,
+                   started_at, updated_at, status, error
+            FROM campaigns
+            WHERE config_path = ?
+              AND status IN ('running', 'ready', 'success', 'failed')
+            ORDER BY
+                CASE status
+                    WHEN 'running' THEN 0
+                    ELSE 1
+                END,
+                started_at DESC,
+                id DESC
             LIMIT 1
             """,
             (str(config_path),),
@@ -3820,7 +3857,14 @@ class RunStorage:
             JOIN campaign_checkpoints AS checkpoint
               ON checkpoint.campaign_id = c.id
             WHERE lower(json_extract(checkpoint.state_json, '$.name')) = ?
-            ORDER BY checkpoint.id DESC
+              AND c.status IN ('running', 'ready', 'success')
+            ORDER BY
+                CASE c.status
+                    WHEN 'running' THEN 0
+                    WHEN 'ready' THEN 1
+                    ELSE 2
+                END,
+                checkpoint.id DESC
             LIMIT 1
             """,
             (character_name.casefold(),),

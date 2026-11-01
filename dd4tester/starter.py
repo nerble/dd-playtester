@@ -2986,6 +2986,7 @@ class StarterPolicy:
         ota_arena_token_receipts: Collection[Mapping[str, Any]] = (),
         resupply_only: bool = False,
         return_home: bool = False,
+        preserved_return_commands: tuple[str, ...] = (),
         require_full_healer_recovery: bool = False,
         city_restock: bool = False,
         city_rearm: bool = False,
@@ -2994,6 +2995,7 @@ class StarterPolicy:
         city_outfit: bool = False,
         combat_pouch_repack: bool = False,
         audit_combat_pouch: bool = False,
+        skip_unworn_combat_pouch_audit: bool = False,
         use_sanctuary_potions: bool = True,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
@@ -3204,6 +3206,9 @@ class StarterPolicy:
         self.city_outfit = city_outfit
         self.combat_pouch_repack = combat_pouch_repack
         self.audit_combat_pouch = audit_combat_pouch
+        self.skip_unworn_combat_pouch_audit = bool(
+            skip_unworn_combat_pouch_audit
+        )
         self.use_sanctuary_potions = use_sanctuary_potions
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
@@ -3600,6 +3605,10 @@ class StarterPolicy:
         self.fastwalk_recall_blocked = False
         self.text = ""
         self.last_response = ""
+        # DD4 can emit a transient empty Char.Items snapshot while a combat
+        # response is still settling. Keep the last complete carried snapshot
+        # for source-verified emergency recovery decisions.
+        self._last_nonempty_inventory: Any = None
         self._response_line_tail = ""
         self._pending_ansi_escape = ""
         self.last_equipment_audit_response = ""
@@ -4232,6 +4241,7 @@ class StarterPolicy:
         self.source_resource_hold_ready: str | None = None
         self.pending_combat_potion_keyword: str | None = None
         self.pending_combat_potion_spell: str | None = None
+        self.pending_combat_inventory_potion = False
         # DD4 can acknowledge a quaff before Char.Affect reports sanctuary.
         # Remember the target-level attempt so a stale affect snapshot cannot
         # spend the second reserve potion in the same fight.
@@ -4312,8 +4322,13 @@ class StarterPolicy:
         self.pending_fastwalk_outbound_move = False
         self.pending_fastwalk_hunt_move = False
         self.return_home_recall_started = False
-        self.return_home_recovery_commands: tuple[str, ...] | None = None
+        self.return_home_recovery_commands: tuple[str, ...] | None = (
+            tuple(preserved_return_commands)
+            if preserved_return_commands
+            else None
+        )
         self.return_home_recovery_index = 0
+        self.preserved_return_route_active = bool(preserved_return_commands)
         self.purgatory_recovery_active = False
         self.died_during_run = False
         self.purgatory_judgement_step = 0
@@ -4887,6 +4902,7 @@ class StarterPolicy:
         if self.pending_combat_potion_keyword is not None:
             pending_keyword = self.pending_combat_potion_keyword
             pending_spell = self.pending_combat_potion_spell
+            pending_inventory_potion = self.pending_combat_inventory_potion
             already_affected = (
                 "you are already affected by that spell" in recent
             )
@@ -4896,6 +4912,7 @@ class StarterPolicy:
                 # potion and must not be restored to the reserve ledger.
                 self.pending_combat_potion_keyword = None
                 self.pending_combat_potion_spell = None
+                self.pending_combat_inventory_potion = False
                 if pending_spell == "sanctuary":
                     target = (
                         self.active_target
@@ -4906,6 +4923,7 @@ class StarterPolicy:
             elif re.search(r"\byou\s+quaff\b", recent) is not None:
                 self.pending_combat_potion_keyword = None
                 self.pending_combat_potion_spell = None
+                self.pending_combat_inventory_potion = False
                 if (
                     pending_spell == "sanctuary"
                     and self.fastwalk_armed_transit_sanctuary_pending
@@ -4928,9 +4946,11 @@ class StarterPolicy:
             ):
                 # The command did not consume the object. Restore both
                 # ledgers so a verified reserve is not silently lost.
-                self._restore_combat_pouch_potion(pending_keyword)
+                if not pending_inventory_potion:
+                    self._restore_combat_pouch_potion(pending_keyword)
                 self.pending_combat_potion_keyword = None
                 self.pending_combat_potion_spell = None
+                self.pending_combat_inventory_potion = False
                 if pending_spell == "sanctuary":
                     self.fastwalk_armed_transit_sanctuary_pending = False
                     self.fastwalk_armed_transit_sanctuary_acknowledged = False
@@ -4970,6 +4990,11 @@ class StarterPolicy:
                 self._consume_source_resource(pending_effect)
                 self.pending_source_resource_effect = None
                 self.source_resource_hold_ready = None
+                if self.fastwalk_opening_resource_hold_pending:
+                    # The resource has moved past the hold step; do not let
+                    # the old preparation flag intercept its live effect or
+                    # failure response on the next prompt.
+                    self.fastwalk_opening_resource_hold_pending = False
                 if pending_effect == "sanctuary":
                     self.source_resource_effect_acknowledged = pending_effect
                     self.source_resource_effect_snapshot_requested = False
@@ -5000,6 +5025,8 @@ class StarterPolicy:
                     "you cannot recite",
                     "you can't brandish",
                     "you cannot brandish",
+                    "an anti-magic field prevents any casting here",
+                    "an anti magic field prevents any casting here",
                     "you can't zap",
                     "you cannot zap",
                     "you can't quaff",
@@ -5017,6 +5044,8 @@ class StarterPolicy:
                 self.failed_source_resource_effects.add(pending_effect)
                 self.pending_source_resource_effect = None
                 self.source_resource_hold_ready = None
+                if self.fastwalk_opening_resource_hold_pending:
+                    self.fastwalk_opening_resource_hold_pending = False
                 if (
                     pending_effect == "sanctuary"
                     and self.fastwalk_armed_transit_sanctuary_pending
@@ -7939,6 +7968,11 @@ class StarterPolicy:
         state: CharacterState,
     ) -> None:
         self.last_character_level = state.level
+        if (
+            self._last_nonempty_inventory is None
+            and _inventory_descriptions(state.inventory)
+        ):
+            self._last_nonempty_inventory = state.inventory
         batch_enemy_room: str | None = None
         batch_rooms = {
             str(event.data["vnum"])
@@ -7951,6 +7985,13 @@ class StarterPolicy:
                 self._combat_session.observe_xp_loss(event.data)
             if event.type == "inventory_changed" and event.source == "gmcp":
                 self.training_travel_inventory_revision += 1
+                inventory = (
+                    event.data.get("value")
+                    if isinstance(event.data, Mapping)
+                    else None
+                )
+                if _inventory_descriptions(inventory):
+                    self._last_nonempty_inventory = inventory
             if event.type == "progress_changed":
                 level = _int_or_none(event.data.get("level", state.level))
                 xp = _int_or_none(event.data.get("xp", state.xp))
@@ -8487,6 +8528,7 @@ class StarterPolicy:
                             self.sanctuary_potion_target = None
                             self.pending_combat_potion_keyword = None
                             self.pending_combat_potion_spell = None
+                            self.pending_combat_inventory_potion = False
                         self.prompt_ready = True
             if event.type == "equipment_changed" and self.gear_catalog is not None:
                 equipment_value = event.data.get("value", event.data)
@@ -8573,12 +8615,32 @@ class StarterPolicy:
                 structured_weapon_vnum = _equipment_weapon_vnum_from_payload(
                     equipment_value
                 )
+                structured_weapon_source = (
+                    self.gear_catalog.objects.get(structured_weapon_vnum)
+                    if structured_weapon_vnum is not None
+                    else None
+                )
+                structured_weapon_is_combat = (
+                    structured_weapon_source is None
+                    or item_category(structured_weapon_source) == "wield"
+                )
+                observed_combat_weapon_vnum = (
+                    structured_weapon_vnum
+                    if structured_weapon_is_combat
+                    else None
+                )
                 if self.city_rearm:
-                    self.city_rearm_observed_wield_vnum = structured_weapon_vnum
+                    self.city_rearm_observed_wield_vnum = (
+                        observed_combat_weapon_vnum
+                    )
                     if full_worn_snapshot and self.city_rearm_step in {3, 5}:
                         self.city_rearm_wield_result = (
                             "wielded"
-                            if weapon_slot_seen and weapon_description is not None
+                            if (
+                                weapon_slot_seen
+                                and weapon_description is not None
+                                and structured_weapon_is_combat
+                            )
                             else "rejected"
                         )
                     if full_worn_snapshot and self.city_rearm_step == 4:
@@ -8596,9 +8658,12 @@ class StarterPolicy:
                     self.primary_weapon_observed = False
                     self.gear_applied_stance = None
                 if weapon_slot_seen:
-                    self.gear_wielded_vnum = structured_weapon_vnum
-                    self.primary_weapon_observed = weapon_description is not None
-                    self.primary_weapon_lost = weapon_description is None
+                    self.gear_wielded_vnum = observed_combat_weapon_vnum
+                    self.primary_weapon_observed = (
+                        weapon_description is not None
+                        and structured_weapon_is_combat
+                    )
+                    self.primary_weapon_lost = not self.primary_weapon_observed
                 elif full_worn_snapshot:
                     # ``item_category`` treats both wieldable and ranged
                     # weapons as weapon objects. Only the structured wield
@@ -8716,11 +8781,36 @@ class StarterPolicy:
         )
         if enemy is None:
             if current_stop_target is not None:
-                attacker = str(enemies[0].get("name") or "").strip()
-                if attacker and self.unapproved_field_attacker is None:
-                    self.unapproved_field_attacker = attacker
-                return
-            enemy = enemies[0]
+                current_stop = (
+                    self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                    if self.fastwalk_hunt_stop_index
+                    < len(self.fastwalk_hunt_stops)
+                    else None
+                )
+                expected_vnum = self._expected_field_target_mobile_vnum()
+                primary = (
+                    enemies[0]
+                    if len(enemies) == 1
+                    and _enemy_matches_stop_target(
+                        enemies[0],
+                        current_stop_target,
+                        current_stop,
+                    )
+                    and (
+                        expected_vnum is None
+                        or _int_or_none(enemies[0].get("isnpc"))
+                        == expected_vnum
+                    )
+                    else None
+                )
+                if primary is None:
+                    attacker = str(enemies[0].get("name") or "").strip()
+                    if attacker and self.unapproved_field_attacker is None:
+                        self.unapproved_field_attacker = attacker
+                    return
+                enemy = primary
+            else:
+                enemy = enemies[0]
         target = enemy.get("name")
         if not isinstance(target, str) or not target.strip():
             return
@@ -8729,6 +8819,7 @@ class StarterPolicy:
             self.active_target
         )
         self.active_target_level = _int_or_none(enemy.get("level"))
+        self.active_target_mobile_vnum = _int_or_none(enemy.get("isnpc"))
         self.awaiting_enemy_assessment = False
 
     def _current_room_enemy_records(
@@ -13477,6 +13568,14 @@ class StarterPolicy:
                         "flee",
                         "flee once after combat recall failed; avoid repeating the XP-losing recall",
                     )
+                route_attacker_handled, route_attacker_decision = (
+                    self._route_attacker_consider_decision(
+                        state,
+                        live_enemies,
+                    )
+                )
+                if route_attacker_handled:
+                    return route_attacker_decision
                 live_source_below_band_attacker = any(
                     _targets_match(
                         str(enemy.get("name", "")),
@@ -14366,6 +14465,37 @@ class StarterPolicy:
                         state=state,
                     )
                 self.fastwalk_opening_potion_pending = False
+                route_gate_stop = (
+                    self.fastwalk_hunt_stops[self.fastwalk_hunt_stop_index]
+                    if (
+                        self.fastwalk_route_gate_active
+                        and self.fastwalk_hunt_stop_index
+                        < len(self.fastwalk_hunt_stops)
+                    )
+                    else None
+                )
+                sanctuary_required = bool(
+                    (current_stop is not None and current_stop.require_sanctuary)
+                    or (
+                        route_gate_stop is not None
+                        and route_gate_stop.route_gate_requires_sanctuary
+                    )
+                )
+                if not sanctuary_required:
+                    # Sanctuary is a useful opener for ordinary targets, but
+                    # an anti-magic room can block it without making the
+                    # physical fight invalid.  Continue through the normal
+                    # live combat gates when the stop did not require it.
+                    return self._combat_opener_decision(
+                        self.active_target or self.fastwalk_attack_target or "target",
+                        "begin the plain fight after optional Sanctuary was blocked",
+                        command_keyword=(
+                            current_stop.command_keyword
+                            if current_stop is not None
+                            else None
+                        ),
+                        state=state,
+                    )
                 self.fastwalk_abort_reason = (
                     "field combat aborted because sanctuary was not established "
                     "before the audited special opener"
@@ -18953,7 +19083,10 @@ class StarterPolicy:
                     allow_backstab=allow_backstab,
                 )
             ):
-                potion = self._combat_pouch_potion_decision(state)
+                potion = self._combat_pouch_potion_decision(
+                    state,
+                    allow_inventory_sanctuary=True,
+                )
                 if potion is not None:
                     if self.pending_source_resource_hold is not None:
                         self.fastwalk_opening_resource_hold_pending = True
@@ -19974,7 +20107,10 @@ class StarterPolicy:
                 (
                     item
                     for item in self.gear_worn
-                    if item.vnum == self.gear_wielded_vnum
+                    if (
+                        item.vnum == self.gear_wielded_vnum
+                        and item_category(item) == "wield"
+                    )
                 ),
                 None,
             )
@@ -22683,6 +22819,211 @@ class StarterPolicy:
             for reset in self.source_world.mob_resets
             if reset.mobile_vnum == mobile_vnum
         )
+
+    def _source_opportunistic_route_attacker_is_admitted(
+        self,
+        state: CharacterState,
+        enemies: Collection[Mapping[str, Any]],
+    ) -> bool:
+        """Admit one exact plain current-band route interruption.
+
+        A source-ranked route can cross a fixed aggressive mobile that was
+        not part of the endpoint's original hazard list.  Keep this repair
+        deliberately narrow: the live room must be one exact source reset on
+        the audited route, the mobile must be plain and singleton, and the
+        live level and player health must still make a bounded ``consider``
+        check worthwhile.  This only opens the consider step; it never skips
+        the live response or the ordinary combat withdrawal gates.
+        """
+        route = self.fastwalk_route
+        if (
+            route is None
+            or self.source_world is None
+            or self.fastwalk_returning
+            or self.fastwalk_objective_budget_complete
+            or self.fastwalk_plain_transit_fight_active
+            or state.level is None
+            or state.hp is None
+            or state.max_hp is None
+            or state.max_hp <= 0
+            or _health_ratio(state) < 0.75
+            or int(state.hp) <= math.ceil(int(state.max_hp) * 0.20)
+            or len(enemies) != 1
+        ):
+            return False
+        raw_enemies = self._current_room_enemy_records(
+            state,
+            deduplicate=False,
+        )
+        if len(raw_enemies) != 1 and not (
+            raw_enemies
+            and len(
+                {
+                    json.dumps(enemy, sort_keys=True, default=str)
+                    for enemy in raw_enemies
+                }
+            )
+            == 1
+        ):
+            return False
+        enemy = enemies[0]
+        mobile_vnum = _int_or_none(enemy.get("isnpc"))
+        room_vnum = str(state.room_vnum or self.current_room or "")
+        live_level = _int_or_none(enemy.get("level"))
+        if mobile_vnum is None or not room_vnum or live_level is None:
+            return False
+        if any(
+            stop.source_mobile_vnum == mobile_vnum
+            for stop in self.fastwalk_hunt_stops
+        ):
+            # Endpoint mobiles have their own exact stop contract.  This
+            # branch is only for a route interruption outside that contract.
+            return False
+        mobile = self.source_world.mobiles.get(mobile_vnum)
+        if (
+            mobile is None
+            or not mobile.aggressive
+            or mobile.programs
+            or mobile.attack_programs
+            or self.source_world.mobile_specials.get(mobile_vnum)
+            or mobile.non_corporeal
+            or mobile.fear_aura
+            or mobile.costs_fame
+            or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+            or not mobile.room_description.strip()
+            or _target_identity_without_article(str(enemy.get("name") or ""))
+            != _target_identity_without_article(mobile.short_description)
+            or _normalize_mobile_line(str(enemy.get("long_desc") or ""))
+            != _normalize_mobile_line(mobile.room_description)
+        ):
+            return False
+        resets = tuple(
+            reset
+            for reset in self.source_world.mob_resets
+            if reset.mobile_vnum == mobile_vnum
+        )
+        if (
+            len(resets) != 1
+            or str(resets[0].room_vnum) != room_vnum
+            or resets[0].maximum_count != 1
+            or resets[0].equipment
+        ):
+            return False
+        source_maximum_level = _mobile_level_range(mobile.level)[1]
+        if not (
+            int(state.level) - 5 < source_maximum_level <= int(state.level) + 1
+            and int(state.level) - 5 < live_level <= int(state.level) + 1
+        ):
+            return False
+
+        # Confirm that the exact fixed reset room is on this source route.
+        # If a route contains a dynamic or malformed step, fail closed rather
+        # than treating an unrelated current-band mobile as a route hazard.
+        room = self.source_world.rooms.get(route.route_origin_room_vnum)
+        if room is None:
+            return False
+        route_rooms = {str(room.vnum)}
+        for raw_command in route.commands:
+            command = str(raw_command).casefold().strip()
+            if command.startswith(("open ", "unlock ", "pick ")):
+                continue
+            exit_source = room.exits.get(command)
+            if exit_source is None:
+                return False
+            room = self.source_world.rooms.get(exit_source.destination)
+            if room is None:
+                return False
+            route_rooms.add(str(room.vnum))
+        return room_vnum in route_rooms
+
+    def _route_attacker_consider_decision(
+        self,
+        state: CharacterState,
+        enemies: Collection[Mapping[str, Any]],
+    ) -> tuple[bool, BotDecision | None]:
+        """Use live ``consider`` before fleeing from a source-proven joiner."""
+        attacker = self.unapproved_field_attacker
+        if (
+            attacker is None
+            or not self._source_opportunistic_route_attacker_is_admitted(
+                state,
+                enemies,
+            )
+        ):
+            return False, None
+        matching = [
+            enemy
+            for enemy in enemies
+            if _targets_match(str(enemy.get("name") or ""), attacker)
+        ]
+        if len(matching) != 1:
+            return False, None
+        selector = self._target_selector_for(attacker)
+        if selector is None:
+            mobile_vnum = _int_or_none(matching[0].get("isnpc"))
+            mobile = (
+                self.source_world.mobiles.get(mobile_vnum)
+                if self.source_world is not None and mobile_vnum is not None
+                else None
+            )
+            if mobile is not None:
+                selector = _target_keyword(
+                    _target_identity_without_article(mobile.short_description)
+                )
+        if self.fastwalk_post_objective_attacker_consider_target != attacker:
+            self.fastwalk_post_objective_attacker_consider_target = attacker
+            self.fastwalk_post_objective_attacker_consider_selector = selector
+            self.fastwalk_post_objective_attacker_consider_viable = None
+            self.fastwalk_post_objective_attacker_consider_attempts = 0
+            self.fastwalk_post_objective_attacker_consider_response_pending = False
+        else:
+            selector = self.fastwalk_post_objective_attacker_consider_selector
+
+        if self.fastwalk_post_objective_attacker_consider_viable is None:
+            if self.fastwalk_post_objective_attacker_consider_response_pending:
+                self.prompt_ready = False
+                return True, None
+            if (
+                selector is None
+                or self.fastwalk_post_objective_attacker_consider_attempts >= 1
+            ):
+                return False, None
+            self.fastwalk_post_objective_attacker_consider_attempts += 1
+            self.fastwalk_post_objective_attacker_consider_response_pending = True
+            return True, BotDecision(
+                f"consider {selector}",
+                "assess a source-identified route attacker before paying an escape penalty",
+            )
+        if self.fastwalk_post_objective_attacker_consider_viable is False:
+            return False, None
+
+        enemy = matching[0]
+        self.active_target = str(enemy.get("name") or attacker).strip() or attacker
+        self.active_target_selector = selector
+        self.active_target_level = _int_or_none(enemy.get("level"))
+        self.active_target_mobile_vnum = _int_or_none(enemy.get("isnpc"))
+        self.unapproved_field_attacker = None
+        self.fastwalk_post_objective_attacker_consider_target = None
+        self.fastwalk_post_objective_attacker_consider_selector = None
+        self.fastwalk_post_objective_attacker_consider_viable = None
+        self.fastwalk_post_objective_attacker_consider_attempts = 0
+        self.fastwalk_post_objective_attacker_consider_response_pending = False
+        self.fastwalk_plain_transit_fight_active = True
+        self.fastwalk_plain_transit_fight_count += 1
+        self.fastwalk_attack_started = True
+        self.combat_active = True
+        mobile_vnum = self.active_target_mobile_vnum
+        marker = (
+            "source-identified current-band route interruption fight: "
+            f"{mobile_vnum}"
+        )
+        if marker not in self.fastwalk_route_hazards:
+            self.fastwalk_route_hazards.append(marker)
+        combat = self._between_round_combat_decision(state)
+        if combat is not None:
+            return True, combat
+        self.prompt_ready = False
+        return True, None
 
     def _source_plain_transit_attacker_is_admitted(
         self,
@@ -28341,29 +28682,42 @@ class StarterPolicy:
                 and room_vnum == "3001"
                 and not self.fastwalk_pouch_audited
             ):
-                if not self.fastwalk_pouch_audit_pending:
+                pouch_is_worn = any(
+                    item_category(item) == "pouch" for item in self.gear_worn
+                )
+                if (
+                    self.skip_unworn_combat_pouch_audit
+                    and self.gear_worn_structured_current
+                    and not pouch_is_worn
+                ):
+                    # A field route normally audits emergency potions, but a
+                    # complete live Char.Worn snapshot with no pouch has
+                    # nothing to inspect. Explicit audits remain strict.
+                    self.fastwalk_pouch_audited = True
+                elif not self.fastwalk_pouch_audit_pending:
                     return self._begin_combat_pouch_audit(
                         "look in pouch",
                         "audit identified emergency potions before field departure",
                     )
-                contaminated_keyword = self._record_combat_pouch_audit()
-                if contaminated_keyword is not None:
-                    self.combat_pouch_potions.pop(
-                        contaminated_keyword,
-                        None,
-                    )
-                    self.verified_combat_pouch_potions.pop(
-                        contaminated_keyword,
-                        None,
-                    )
-                    self.fastwalk_pouch_cleanup_keyword = (
-                        contaminated_keyword
-                    )
-                    self.fastwalk_pouch_cleanup_inventory_requested = False
-                    return BotDecision(
-                        f"get all.{contaminated_keyword} pouch",
-                        "remove a same-keyword non-potion from the combat pouch",
-                    )
+                else:
+                    contaminated_keyword = self._record_combat_pouch_audit()
+                    if contaminated_keyword is not None:
+                        self.combat_pouch_potions.pop(
+                            contaminated_keyword,
+                            None,
+                        )
+                        self.verified_combat_pouch_potions.pop(
+                            contaminated_keyword,
+                            None,
+                        )
+                        self.fastwalk_pouch_cleanup_keyword = (
+                            contaminated_keyword
+                        )
+                        self.fastwalk_pouch_cleanup_inventory_requested = False
+                        return BotDecision(
+                            f"get all.{contaminated_keyword} pouch",
+                            "remove a same-keyword non-potion from the combat pouch",
+                        )
             if self.fastwalk_pouch_cleanup_keyword is not None:
                 potion_keyword = self.fastwalk_pouch_cleanup_keyword
                 stow_keyword = _combat_potion_stow_keyword(
@@ -32098,9 +32452,34 @@ class StarterPolicy:
                 and self.source_pair_encounter.budget.source_only
             ):
                 self._start_field_combat_damage_probe(state)
+            maintenance_sanctuary = bool(
+                stop is not None
+                and self._is_sanctuary_maintenance_stop(stop)
+                and self.use_sanctuary_potions
+                and not _has_named_affect(state.affects, "sanctuary")
+                and (
+                    _verified_combat_potion_keyword_for_spell(
+                        self._known_combat_pouch_potions(),
+                        self.gear_catalog,
+                        "sanctuary",
+                    ) is not None
+                    or self._source_resource_record(
+                        state,
+                        effect="sanctuary",
+                    ) is not None
+                    or _inventory_source_spell_potion(
+                        state.inventory,
+                        self.gear_catalog,
+                        "sanctuary",
+                    ) is not None
+                )
+            )
             proactive_sanctuary = bool(
                 stop is not None
-                and not self._allows_below_band_resource_kill(state, stop)
+                and (
+                    not self._allows_below_band_resource_kill(state, stop)
+                    or maintenance_sanctuary
+                )
                 and self.use_sanctuary_potions
                 and not _has_named_affect(state.affects, "sanctuary")
                 and (
@@ -32120,7 +32499,14 @@ class StarterPolicy:
                 and (stop.require_sanctuary or proactive_sanctuary)
                 and not _has_named_affect(state.affects, "sanctuary")
             ):
-                potion = self._combat_pouch_potion_decision(state)
+                potion = self._combat_pouch_potion_decision(
+                    state,
+                    allow_below_band_sanctuary=maintenance_sanctuary,
+                    allow_inventory_sanctuary=bool(
+                        maintenance_sanctuary
+                        or (stop is not None and stop.require_sanctuary)
+                    ),
+                )
                 if potion is None:
                     if stop.require_sanctuary:
                         self.fastwalk_abort_reason = (
@@ -32218,6 +32604,40 @@ class StarterPolicy:
                     or self._target_selector_for(target, stop)
                 )
                 self.combat_active = True
+                maintenance_sanctuary = bool(
+                    stop is not None
+                    and self._is_sanctuary_maintenance_stop(stop)
+                    and self.use_sanctuary_potions
+                    and not _has_named_affect(state.affects, "sanctuary")
+                    and (
+                        _verified_combat_potion_keyword_for_spell(
+                            self._known_combat_pouch_potions(),
+                            self.gear_catalog,
+                            "sanctuary",
+                        ) is not None
+                        or self._source_resource_record(
+                            state,
+                            effect="sanctuary",
+                        ) is not None
+                        or _inventory_source_spell_potion(
+                            state.inventory,
+                            self.gear_catalog,
+                            "sanctuary",
+                        ) is not None
+                    )
+                )
+                if maintenance_sanctuary:
+                    potion = self._combat_pouch_potion_decision(
+                        state,
+                        allow_below_band_sanctuary=True,
+                        allow_inventory_sanctuary=True,
+                    )
+                    if potion is not None:
+                        if self.pending_source_resource_hold is not None:
+                            self.fastwalk_opening_resource_hold_pending = True
+                        else:
+                            self.fastwalk_opening_potion_pending = True
+                        return potion
                 return self._combat_opener_decision(
                     target,
                     (
@@ -32517,6 +32937,9 @@ class StarterPolicy:
     def _combat_pouch_potion_decision(
         self,
         state: CharacterState,
+        *,
+        allow_below_band_sanctuary: bool = False,
+        allow_inventory_sanctuary: bool = False,
     ) -> BotDecision | None:
         """Use only source-identified emergency potions from the worn pouch."""
         health_ratio = _health_ratio(state)
@@ -32565,6 +32988,17 @@ class StarterPolicy:
             self.gear_catalog,
             "sanctuary",
         )
+        loose_sanctuary = (
+            _inventory_source_spell_potion(
+                state.inventory,
+                self.gear_catalog,
+                "sanctuary",
+            )
+            if allow_inventory_sanctuary and sanctuary_keyword is None
+            else None
+        )
+        if sanctuary_keyword is None and loose_sanctuary is not None:
+            sanctuary_keyword = loose_sanctuary[0]
         current_target = (
             state.combat_target
             or self.active_target
@@ -32614,15 +33048,22 @@ class StarterPolicy:
                 or arena_sanctuary_refresh
             )
             and (
-                not self.active_target
+                allow_below_band_sanctuary
+                or not self.active_target
                 or self.active_target.casefold()
                 not in self.fastwalk_below_band_targets
             )
         ):
-            self._queue_combat_pouch_potion(
-                sanctuary_keyword,
-                spell="sanctuary",
-            )
+            if loose_sanctuary is not None:
+                self._queue_combat_inventory_potion(
+                    sanctuary_keyword,
+                    spell="sanctuary",
+                )
+            else:
+                self._queue_combat_pouch_potion(
+                    sanctuary_keyword,
+                    spell="sanctuary",
+                )
             self.sanctuary_potion_target = (
                 current_target_key or "current combat"
             )
@@ -32655,7 +33096,8 @@ class StarterPolicy:
                 or source_sanctuary_refresh
             )
             and (
-                not self.active_target
+                allow_below_band_sanctuary
+                or not self.active_target
                 or self.active_target.casefold()
                 not in self.fastwalk_below_band_targets
             )
@@ -32830,6 +33272,13 @@ class StarterPolicy:
         self._consume_combat_pouch_potion(keyword)
         self.pending_combat_potion_keyword = keyword
         self.pending_combat_potion_spell = spell
+        self.pending_combat_inventory_potion = False
+
+    def _queue_combat_inventory_potion(self, keyword: str, *, spell: str) -> None:
+        """Record a source-verified loose potion without changing pouch counts."""
+        self.pending_combat_potion_keyword = keyword
+        self.pending_combat_potion_spell = spell
+        self.pending_combat_inventory_potion = True
 
     def _restore_combat_pouch_potion(self, keyword: str) -> None:
         """Restore a reserve object when the server rejects its quaff."""
@@ -38467,6 +38916,16 @@ class StarterPolicy:
             "cure blindness",
         )
         if cure_keyword is None:
+            recovery_inventory = state.inventory
+            if not _inventory_descriptions(recovery_inventory):
+                recovery_inventory = self._last_nonempty_inventory
+            loose_cure = _inventory_source_spell_potion(
+                recovery_inventory,
+                self.gear_catalog,
+                "cure blindness",
+            )
+            if loose_cure is not None:
+                return None
             if healer_recovery_allowed:
                 return None
             specials = ", ".join(sorted(set(stop.source_specials)))
@@ -43610,7 +44069,10 @@ class StarterPolicy:
                     allow_backstab=False,
                 )
             ):
-                potion = self._combat_pouch_potion_decision(state)
+                potion = self._combat_pouch_potion_decision(
+                    state,
+                    allow_inventory_sanctuary=True,
+                )
                 if potion is None:
                     self.combat_active = False
                     self.active_target = None
@@ -46121,6 +46583,64 @@ class StarterPolicy:
     def _return_home_decision(self, state: CharacterState) -> BotDecision | None:
         """Recall from an interrupted field run and return to the healer."""
         room_vnum = state.room_vnum
+
+        # A no-recall refusal belongs to the active official route.  Keep
+        # reversing that route until the character reaches a legal recall
+        # room; rebuilding a shortest path here can choose a different area
+        # and expose the return trip to source-backed wandering attackers.
+        if (
+            self.fastwalk_route is not None
+            and self.fastwalk_returning
+            and self.fastwalk_recall_failed_in_no_recall
+            and self.fastwalk_no_recall_origin is not None
+            and self.fastwalk_recovery_commands is None
+        ):
+            return_commands = (
+                self.fastwalk_route.return_commands
+                or self.fastwalk_route.commands
+            )
+            try:
+                reverse = _reverse_fastwalk_commands(
+                    return_commands,
+                    allow_open=self.fastwalk_route.return_commands_allow_open,
+                )
+            except ValueError as exc:
+                self.failure = str(exc)
+                return None
+            if self.fastwalk_return_index < len(reverse):
+                command = reverse[self.fastwalk_return_index]
+                self.fastwalk_return_index += 1
+                return BotDecision(
+                    command,
+                    "continue reversing the official fastwalk after no-recall refused",
+                )
+
+        if self.preserved_return_route_active:
+            if self.return_home_recovery_commands is None:
+                self.preserved_return_route_active = False
+            elif self.return_home_recovery_index < len(
+                self.return_home_recovery_commands
+            ):
+                command = self.return_home_recovery_commands[
+                    self.return_home_recovery_index
+                ]
+                self.return_home_recovery_index += 1
+                return BotDecision(
+                    command,
+                    "follow the preserved source-ranked return route to the Midgaard healer",
+                )
+            elif room_vnum not in _MIDGAARD_HEALER_ROUTES and room_vnum != "3054":
+                self.failure = (
+                    "preserved source-ranked return route did not reach a "
+                    "Midgaard healer waypoint from "
+                    f"room {state.room_name!r} ({state.room_vnum})"
+                )
+                return None
+            else:
+                self.return_home_recovery_commands = None
+                self.return_home_recovery_index = 0
+                self.preserved_return_route_active = False
+
         adjacent = self._recovery_session.adjacent_recall_escape
         if adjacent is None and not state.dead and not state.in_combat and not self.combat_active:
             plans = adjacent_recall_exits(
@@ -47799,6 +48319,20 @@ class StarterPolicy:
                 f"quaff {cure_keyword}",
                 "restore vision with a source-verified cure blindness potion",
             )
+        recovery_inventory = state.inventory
+        if not _inventory_descriptions(recovery_inventory):
+            recovery_inventory = self._last_nonempty_inventory
+        loose_cure = _inventory_source_spell_potion(
+            recovery_inventory,
+            self.gear_catalog,
+            "cure blindness",
+        )
+        if loose_cure is not None and not self.blindness_recovery_cure_attempted:
+            self.blindness_recovery_cure_attempted = True
+            return BotDecision(
+                f"quaff {loose_cure[0]}",
+                "restore vision with a source-verified carried cure blindness potion",
+            )
         if self.combat_active or state.in_combat:
             if self.flee_pending:
                 self.prompt_ready = False
@@ -49402,6 +49936,7 @@ class StarterBotRunner:
         ota_arena_token_receipts: Collection[Mapping[str, Any]] = (),
         resupply_only: bool = False,
         return_home: bool = False,
+        preserved_return_commands: tuple[str, ...] = (),
         require_full_healer_recovery: bool = False,
         world_time_probe: bool = False,
         deity_protection_probe: bool = False,
@@ -49414,6 +49949,7 @@ class StarterBotRunner:
         city_outfit: bool = False,
         combat_pouch_repack: bool = False,
         audit_combat_pouch: bool = False,
+        skip_unworn_combat_pouch_audit: bool = False,
         recall_list_research: bool = False,
         guildmaster_research: bool = False,
         magic_shop_research: bool = False,
@@ -49585,6 +50121,7 @@ class StarterBotRunner:
         )
         self.resupply_only = resupply_only
         self.return_home = return_home
+        self.preserved_return_commands = tuple(preserved_return_commands)
         self.require_full_healer_recovery = bool(require_full_healer_recovery)
         self.world_time_probe = world_time_probe
         self.deity_protection_probe = deity_protection_probe
@@ -49597,6 +50134,9 @@ class StarterBotRunner:
         self.city_outfit = city_outfit
         self.combat_pouch_repack = combat_pouch_repack
         self.audit_combat_pouch = audit_combat_pouch
+        self.skip_unworn_combat_pouch_audit = bool(
+            skip_unworn_combat_pouch_audit
+        )
         self.recall_list_research = recall_list_research
         self.guildmaster_research = guildmaster_research
         self.magic_shop_research = magic_shop_research
@@ -50374,6 +50914,7 @@ class StarterBotRunner:
                 ota_arena_token_receipts=self.ota_arena_token_receipts,
                 resupply_only=self.resupply_only,
                 return_home=self.return_home,
+                preserved_return_commands=self.preserved_return_commands,
                 require_full_healer_recovery=self.require_full_healer_recovery,
                 city_restock=self.city_restock,
                 city_rearm=self.city_rearm,
@@ -50387,6 +50928,14 @@ class StarterBotRunner:
                     or (
                         self.fastwalk_route is not None
                         and not self.urgent_food_acquisition
+                    )
+                ),
+                skip_unworn_combat_pouch_audit=(
+                    self.skip_unworn_combat_pouch_audit
+                    or (
+                        self.fastwalk_route is not None
+                        and not self.urgent_food_acquisition
+                        and not self.audit_combat_pouch
                     )
                 ),
                 use_sanctuary_potions=self.use_sanctuary_potions,
