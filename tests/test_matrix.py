@@ -41,14 +41,18 @@ def test_active_hero_rotation_includes_all_hero_target_workspaces() -> None:
     assert data["target_level"] == 100
     assert [entry["id"] for entry in data["entries"]] == [
         "aeloria",
+        "ararisa",
         "astrevo",
+        "corararfen",
         "dorrik",
+        "fenanallor",
         "kestrel",
         "praelarran",
         "serevian",
+        "velnor",
     ]
     assert all(
-        str(entry["campaign"]).startswith("../runs/heroes/")
+        str(entry["campaign"]).startswith("../runs/")
         for entry in data["entries"]
     )
 

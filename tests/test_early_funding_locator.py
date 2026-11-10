@@ -95,7 +95,7 @@ def test_locator_uses_first_safe_area_room_and_keeps_reset_fallback():
     )
     assert stops[0].actions == ("where orc",) and not stops[0].route_vnums
     assert stops[1].route_vnums == ("4002",)
-    assert stops[0].maximum_where_relocations == 1
+    assert stops[0].maximum_where_relocations == 8
 
 
 def test_late_locator_remains_default_for_legacy_staging():
@@ -131,6 +131,7 @@ def test_fresh_exact_locator_routes_from_entrance_not_from_reset_room():
         "You detect the presence of:\n"
         "The orc                      The reset room\n"
         "The large orc                The valley\n"
+        "<100/100 hits 100/100 mana 100/100 move [Town]> "
     )
     assert policy.fastwalk_where_locations == ("the valley",)
     assert len(policy.fastwalk_hunt_stops) == 2
@@ -166,6 +167,7 @@ def test_run_12800_source_replay_saves_ten_moves_before_valley():
         "The large orc                The valley\n"
         "The orc                      The cave entrance\n"
         "The orc                      The large tunnel\n"
+        "<100/100 hits 100/100 mana 100/100 move [Town]> "
     )
     target = policy.fastwalk_hunt_stops[1]
     assert target.route_vnums == (

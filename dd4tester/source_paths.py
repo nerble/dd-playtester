@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -44,6 +45,46 @@ LIVE_UNDEPLOYED_TEMPLATE_NAMES = frozenset(
         "zombie",
     }
 )
+
+
+@dataclass(frozen=True)
+class LiveMobileSourceOverride:
+    """Legacy prototype facts preserved across a known source conversion."""
+
+    source_revision: str
+    template_name: str
+    keywords: str
+    short_description: str
+    level: int
+    alignment: int
+    act_flags: int
+    affected_flags: int
+
+
+# Dwarven Home's October 26 conversion only replaced these prototypes' direct
+# flags with the new dwarf template. The live MUD still uses the old records.
+LIVE_MOBILE_SOURCE_OVERRIDES = {
+    ("dwarven_home.are", 20512): LiveMobileSourceOverride(
+        source_revision="6b1ffdab647b3329a056a9d122c2fda59de6b9ec",
+        template_name="dwarf",
+        keywords="dwarf chess player",
+        short_description="the dwarf",
+        level=40,
+        alignment=-750,
+        act_flags=66,
+        affected_flags=8712,
+    ),
+    ("dwarven_home.are", 20515): LiveMobileSourceOverride(
+        source_revision="6b1ffdab647b3329a056a9d122c2fda59de6b9ec",
+        template_name="dwarf",
+        keywords="dwarf gambler",
+        short_description="the dwarven gambler",
+        level=49,
+        alignment=-750,
+        act_flags=66,
+        affected_flags=8712,
+    ),
+}
 
 _CURRENT_SOURCE_DIRECTORY: ContextVar[Path | None] = ContextVar(
     "dd4tester_current_source_directory",

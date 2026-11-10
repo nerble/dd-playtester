@@ -3,33 +3,69 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: October 30, 2026
+## Current Status: November 10, 2026
 
-Latest durable campaign checkpoint **67252** (campaign **35**; latest persisted
-segment **20819**, live run **21425**): Dorrik is a level **41 Dwarf Knight**
-with **1,511,314 XP**, **18 quest points**, and no current level-up shortfall.
-He is safely recovered at the Midgaard healer (room **3054**) with full health,
-mana, and movement. HERO remains unproved, and Dorrik remains the sole
-progression pilot.
+The latest durable campaign checkpoint is **76265** (campaign **39**); the
+latest live activity includes runs **24139-24145**. Dorrik is a level **45
+Knight** with **2,051,243 XP** and **18 quest points**, safely recovered at the
+Midgaard healer in room **3054**. Run **24134** was stopped after a live I/O
+stall; run **24135** completed normally after the recovery and training fixes,
+and the later bounded frontier visits all returned safely. The latest frontier
+checkpoint records a Cyclops route hazard as route-local evidence and does not
+wait for a reboot.
+HERO remains unproved, and Dorrik is still the sole progression pilot.
 
-The last completed gameplay segment, **20818** / run **21424**, safely checked
-the Pit Official and found no target. The preceding Sanctuary recovery succeeded
-in segment **20817**; segment **20816** recorded a real M'rinthas transit-guard
-loss. The local combat fix now waits one bounded turn for authoritative GMCP
-enemy identity when DD4 sends the first attack text early, preventing a
-premature flee before the live target can be assessed. The latest restock
-segment stopped before gameplay because `dragons-domain.org:8888` refused the
-bounded connection attempts; no character state changed and no worker remains
-running. The source-hunt selector continues against the deployed snapshot and
-does not wait for upstream undead or archetype/species changes.
+The Ice Hall recovery first uses the source-verified open exit to the
+recallable room only when live flight, water travel, or an equivalent movement
+capability is present. Otherwise it tries the locked-door or Rescue fallbacks
+only when their live gates pass. If Rescue produces only the ordinary prayer
+acknowledgement, the bot may remain connected and retry at bounded intervals
+for the source-derived six-hour timer window. In this exact no-combat room, the
+source clamp prevents a starvation or dehydration tick that would cross zero
+from killing the character, although it can still reduce health sharply; live
+room, health, and combat checks remain mandatory. If health falls below 25%
+while a learned cure spell can be paid for without crossing the normal mana
+reserve, the bot wakes, casts no more often than once per 30 seconds, and
+returns to sleep; this exact recovery path may use the 5% floor, not the
+combat floor, with an emergency cast below that floor. Transport is used only
+when the source healer mobile (3012 in room 3054) has a non-empty, resolvable
+player-name field; the current live healer does not, so Rescue is the valid
+fallback.
+It accepts success only after the live room changes. A usable `bash door` skill still has priority when the live
+training state provides it. The campaign wrapper now honors this exact
+source-bounded wait past the ordinary outer deadline; no other live policy gets
+an unbounded extension.
 
-The upstream source mirror is **528b319c82a1d3b2fc6a55ff8790b07410a3a6cb**.
-It now includes the Graveyard conversion and refined undead archetypes, which
-are not deployed on the live MUD and may remain ahead of the server for a month
-or two. Research tools may inspect that source, but live campaigns use a
-deployment filter that keeps the 21 known unreleased or revised mobile templates
-unresolved until live probes confirm deployment. This avoids turning upstream
-source changes into live combat permission; it does not wait for deployment.
+The November 10 full regression batch recorded **9,902 passed and 20 failed**
+before the current repairs; the reported failures were repaired and the
+affected focused harnesses now pass. The focused runner/recovery sweep is now
+**19 passed**, with **9** additional route-hazard campaign checks passing. The
+full suite was not rerun because the daily regression
+allowance was already spent. Routine observations now stay on the bounded
+SQLite writer queue instead of flushing synchronously before every live socket
+read or command.
+
+The Nov 4 bounded invocation safely achieved **7,993 XP** against the
+source-audited Mirror Realm proprietor and returned to the healer. Fresh live
+identity, relative level, consider, isolation, Dorrik's 20% health floor,
+provisions, and return checks still decide every fight. Target HP remains
+observation only.
+
+The upstream source mirror was refreshed from GitHub on November 3 and is now
+**b9a20e151b2adea19e1aa6780a7791dcbfb327db**. Several area and mobile-archetype
+updates are not deployed on the live MUD. The live deployment filter continues
+to keep known unreleased or revised templates unresolved; the Mirror Realm area
+file did not change in this source update. The November 10 full regression
+allowance is spent; the focused runner/recovery checks and compile checks listed
+above are the validation for the current changes. Campaign **39** is the
+current profile-owned history; older blocked campaign history must not roll
+Dorrik back.
+
+Resume the active campaign with one bounded segment using:
+
+```powershell
+python -m dd4tester campaign runs/heroes/dorrik/campaign.yaml --segments 1 --reset-retries 0 --max-segment-runtime 300 --progress
+```
 
 Runs **20558-20563** completed the bounded Sanctuary rotation and several
 current-band hunts; run **20561** acquired the source-verified red dragonorb
@@ -1452,8 +1488,25 @@ Exact message text
 $body | python tools/conversation_log.py append --speaker USER --body-stdin
 ```
 
-Use `CODEX COMMENTARY` or `CODEX FINAL` for assistant messages. The standing
-capture rule is in `AGENTS.md`. Verify the file with
+Use `CODEX COMMENTARY` or `CODEX FINAL` for assistant messages. For a live
+assistant update, append with `--quiet` and suppress the command output so the
+message is displayed once in chat and recorded once in the relay source:
+
+```powershell
+$body | python tools/conversation_log.py append --speaker "CODEX COMMENTARY" --body-stdin --quiet | Out-Null
+```
+
+Do not add `Write-Output $body` to that logging command or repeat the same body
+as a second chat message: command output plus the chat update creates a
+duplicate visible post. The logger also rejects nested timestamped assistant
+bodies and repeats within its recent 128-record window. The `$body` assignment
+must be part of the same
+PowerShell command invocation; a variable from the surrounding tool wrapper is
+not available to PowerShell and would append an empty record.
+
+Without `--quiet`, the helper prints its generated header for callers that need
+to publish the returned record themselves. The standing capture rule is in
+`AGENTS.md`. Verify the file with
 `python tools/conversation_log.py validate`, then check the streamer's delivery
 log for `Delivered USER` and an empty queue at the source-file end. Keep the
 worker in `--new-only` mode; do not rewind history or start a duplicate. On
@@ -2584,6 +2637,10 @@ Campaign and HERO commands also print separate `execution`, bounded-segment
 prints the same target outcome from its latest checkpoint, so a safe
 checkpoint can be inspected or resumed without being mistaken for a completed
 hunt or HERO target.
+Campaign YAML may set `max_segments` for a deliberate lifetime experiment;
+when it is omitted, campaigns have no hidden lifetime segment cap. Each live
+invocation remains bounded by its segment count and runtime, and the configured
+total command/runtime budgets still apply.
 An exhausted, already-dispatched sanctuary recheck remains blocked across
 process restarts; it does not authorize another identical area-reset wait.
 

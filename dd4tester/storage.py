@@ -913,6 +913,9 @@ class RunStorage:
             CREATE INDEX IF NOT EXISTS idx_campaign_segments_campaign_id
             ON campaign_segments(campaign_id, sequence);
 
+            CREATE INDEX IF NOT EXISTS idx_campaign_segments_run_id
+            ON campaign_segments(run_id);
+
             CREATE TABLE IF NOT EXISTS campaign_run_links (
                 campaign_id INTEGER NOT NULL
                     REFERENCES campaigns(id) ON DELETE CASCADE,
@@ -985,6 +988,9 @@ class RunStorage:
 
             CREATE INDEX IF NOT EXISTS idx_campaign_checkpoints_campaign_id
             ON campaign_checkpoints(campaign_id, id);
+
+            CREATE INDEX IF NOT EXISTS idx_campaign_checkpoints_segment_reason
+            ON campaign_checkpoints(campaign_id, segment_id, reason, id);
             """
         )
         loot_sale_columns = {
@@ -1668,6 +1674,88 @@ class RunStorage:
         self._invalidate_campaign_history()
         return recovered
 
+    def fail_unbound_character_runs(
+        self,
+        *,
+        character_name: str,
+        reason: str,
+        since: str | None = None,
+    ) -> int:
+        """Fail stale, unlinked runs belonging to the resumed character.
+
+        Campaign resume may find a worker run that was created after its
+        segment row but before the segment could store the run id.  Keep this
+        cleanup character- and time-scoped; the global recovery command
+        remains the only path that touches unrelated characters.
+        """
+        suffixes = (
+            f":{character_name.casefold()}",
+            f"-{character_name.casefold()}",
+        )
+        candidate_run_ids: list[int] = []
+        for row in self.connection.execute(
+            """
+            SELECT id, scenario_name, started_at
+            FROM runs
+            WHERE status = 'running'
+            ORDER BY id DESC
+            LIMIT 1024
+            """
+        ):
+            scenario_name = str(row["scenario_name"] or "").casefold()
+            if not scenario_name.endswith(suffixes):
+                continue
+            if since is not None and str(row["started_at"]) < since:
+                continue
+            candidate_run_ids.append(int(row["id"]))
+        if not candidate_run_ids:
+            return 0
+
+        # Resolve all candidate links in two indexed queries.  The old
+        # per-run lookup could rescan the large JSON-bearing segment table for
+        # every running row during resume.
+        placeholders = ", ".join("?" for _ in candidate_run_ids)
+        linked_ids = {
+            int(row["run_id"])
+            for row in self.connection.execute(
+                f"""
+                SELECT run_id FROM campaign_segments
+                WHERE run_id IN ({placeholders})
+                """,
+                candidate_run_ids,
+            )
+            if row["run_id"] is not None
+        }
+        if self._table_exists("campaign_run_links"):
+            linked_ids.update(
+                int(row["run_id"])
+                for row in self.connection.execute(
+                    f"""
+                    SELECT run_id FROM campaign_run_links
+                    WHERE run_id IN ({placeholders})
+                    """,
+                    candidate_run_ids,
+                )
+                if row["run_id"] is not None
+            )
+        run_ids = [
+            run_id for run_id in candidate_run_ids if run_id not in linked_ids
+        ]
+        if not run_ids:
+            return 0
+        timestamp = _now()
+        placeholders = ", ".join("?" for _ in run_ids)
+        cursor = self.connection.execute(
+            f"""
+            UPDATE runs
+            SET finished_at = ?, status = 'failed', error = ?
+            WHERE status = 'running' AND id IN ({placeholders})
+            """,
+            (timestamp, reason, *run_ids),
+        )
+        self.connection.commit()
+        return int(cursor.rowcount)
+
     def recover_interrupted_campaign_segments(
         self,
         campaign_id: int,
@@ -1675,6 +1763,8 @@ class RunStorage:
         reason: str,
         character_name: str | None = None,
         running_segments: Collection[Any] | None = None,
+        classify_zero_command_as_failed: bool = False,
+        fail_unbound_character_runs: bool = False,
     ) -> int:
         """Close orphaned work for one campaign before it is resumed.
 
@@ -1686,7 +1776,7 @@ class RunStorage:
             running_segments = list(
                 self.connection.execute(
                     """
-                    SELECT id, run_id, started_at, command_count, phase
+                    SELECT id, campaign_id, run_id, started_at, command_count, phase
                     FROM campaign_segments INDEXED BY idx_campaign_segments_campaign_id
                     WHERE campaign_id = ? AND status = 'running'
                     ORDER BY sequence DESC
@@ -1726,6 +1816,19 @@ class RunStorage:
                 )
             )
 
+        if fail_unbound_character_runs and character_name:
+            self.fail_unbound_character_runs(
+                character_name=character_name,
+                reason=reason,
+                since=min(
+                    str(segment["started_at"])
+                    for segment in running_segments
+                    if segment["started_at"] is not None
+                )
+                if any(segment["started_at"] is not None for segment in running_segments)
+                else None,
+            )
+
         if all(
             segment["run_id"] is None
             and segment["command_count"] in (None, 0)
@@ -1737,20 +1840,26 @@ class RunStorage:
             cursor = self.connection.execute(
                 f"""
                 UPDATE campaign_segments
-                SET finished_at = ?, status = 'ready', error = ?,
+                SET finished_at = ?, status = ?, error = ?,
                     execution_status = 'interrupted',
                     objective_outcome = 'unknown', safety_outcome = 'unknown'
                 WHERE status = 'running' AND id IN ({placeholders})
                 """,
-                (timestamp, reason, *segment_ids),
+                (
+                    timestamp,
+                    "failed" if classify_zero_command_as_failed else "ready",
+                    reason,
+                    *segment_ids,
+                ),
             )
+            campaign_status = "failed" if classify_zero_command_as_failed else "ready"
             self.connection.execute(
                 """
                 UPDATE campaigns
-                SET status = 'ready', error = ?, updated_at = ?
+                SET status = ?, error = ?, updated_at = ?
                 WHERE id = ? AND status = 'running'
                 """,
-                (reason, timestamp, campaign_id),
+                (campaign_status, reason, timestamp, campaign_id),
             )
             self.connection.commit()
             self._invalidate_campaign_history(campaign_id)
@@ -2094,6 +2203,11 @@ class RunStorage:
                 reason=reason,
                 character_name=character_name,
                 running_segments=running_segments,
+                # A segment with no commands can represent an interruption
+                # before the worker opened its live run.  Keep that checkpoint
+                # resumable; the campaign-opening path explicitly classifies
+                # orphaned worker segments as failed when appropriate.
+                classify_zero_command_as_failed=False,
             )
             return repaired_events, recovered_runs, segments
 
@@ -2206,7 +2320,10 @@ class RunStorage:
                     (campaign_id, *segment_ids),
                 )
             )
-        if running_segments and all(
+        pre_run_setup_timeout = str(reason).startswith(
+            "setup timeout before run creation"
+        )
+        if pre_run_setup_timeout and running_segments and all(
             segment["run_id"] is None
             and segment["command_count"] in (None, 0)
             for segment in running_segments
@@ -2943,8 +3060,10 @@ class RunStorage:
     def get_campaign(self, campaign_id: int) -> sqlite3.Row | None:
         cursor = self.connection.execute(
             """
-            SELECT id, name, config_path, character_profile_path, target_level,
-                   started_at, updated_at, status, error
+            SELECT campaigns.id, campaigns.name, campaigns.config_path,
+                   campaigns.character_profile_path, campaigns.target_level,
+                   campaigns.started_at, campaigns.updated_at, campaigns.status,
+                   campaigns.error
             FROM campaigns
             WHERE id = ?
             """,
@@ -2955,8 +3074,10 @@ class RunStorage:
     def get_latest_campaign_for_config(self, config_path: Path) -> sqlite3.Row | None:
         cursor = self.connection.execute(
             """
-            SELECT id, name, config_path, character_profile_path, target_level,
-                   started_at, updated_at, status, error
+            SELECT campaigns.id, campaigns.name, campaigns.config_path,
+                   campaigns.character_profile_path, campaigns.target_level,
+                   campaigns.started_at, campaigns.updated_at, campaigns.status,
+                   campaigns.error
             FROM campaigns
             WHERE config_path = ?
               AND status IN ('running', 'ready', 'success')
@@ -2966,15 +3087,20 @@ class RunStorage:
                     WHEN 'ready' THEN 1
                     ELSE 2
                 END,
-                updated_at DESC,
-                id DESC
+                campaigns.updated_at DESC,
+                campaigns.id DESC
             LIMIT 1
             """,
             (str(config_path),),
         )
         return cursor.fetchone()
 
-    def get_latest_campaign_for_resume(self, config_path: Path) -> sqlite3.Row | None:
+    def get_latest_campaign_for_resume(
+        self,
+        config_path: Path,
+        *,
+        include_blocked: bool = False,
+    ) -> sqlite3.Row | None:
         """Return the newest non-blocked history for a campaign file.
 
         A bounded worker can mark a campaign failed after it has already
@@ -2983,23 +3109,178 @@ class RunStorage:
         Blocked histories remain excluded because they represent an explicit
         campaign budget or policy stop rather than an interrupted run.
         """
-        cursor = self.connection.execute(
+        blocked_clause = ""
+        if include_blocked:
+            blocked_clause = """
+              OR (
+                  status = 'blocked'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM campaign_checkpoints AS checkpoint
+                      WHERE checkpoint.campaign_id = campaigns.id
+                  )
+              )
             """
-            SELECT id, name, config_path, character_profile_path, target_level,
-                   started_at, updated_at, status, error
+        cursor = self.connection.execute(
+            f"""
+            SELECT campaigns.id, campaigns.name, campaigns.config_path,
+                   campaigns.character_profile_path, campaigns.target_level,
+                   campaigns.started_at, campaigns.updated_at, campaigns.status,
+                   campaigns.error
             FROM campaigns
+            LEFT JOIN campaign_checkpoints AS latest_checkpoint
+              ON latest_checkpoint.id = (
+                  SELECT MAX(checkpoint.id)
+                  FROM campaign_checkpoints AS checkpoint
+                  WHERE checkpoint.campaign_id = campaigns.id
+              )
             WHERE config_path = ?
-              AND status IN ('running', 'ready', 'success', 'failed')
+              AND (
+                  status IN ('running', 'ready', 'success', 'failed')
+                  {blocked_clause}
+              )
             ORDER BY
+                CASE
+                    WHEN json_valid(COALESCE(latest_checkpoint.state_json, ''))
+                    THEN CAST(
+                        COALESCE(
+                            json_extract(latest_checkpoint.state_json, '$.level'),
+                            -1
+                        ) AS INTEGER
+                    )
+                    ELSE -1
+                END DESC,
+                CASE
+                    WHEN json_valid(COALESCE(latest_checkpoint.state_json, ''))
+                    THEN CAST(
+                        COALESCE(
+                            json_extract(latest_checkpoint.state_json, '$.xp'),
+                            -1
+                        ) AS INTEGER
+                    )
+                    ELSE -1
+                END DESC,
                 CASE status
                     WHEN 'running' THEN 0
                     ELSE 1
                 END,
-                started_at DESC,
-                id DESC
+                campaigns.updated_at DESC,
+                campaigns.id DESC
             LIMIT 1
             """,
             (str(config_path),),
+        )
+        return cursor.fetchone()
+
+    def get_latest_campaign_for_resume_profile(
+        self,
+        character_profile_path: Path,
+        *,
+        include_blocked: bool = False,
+    ) -> sqlite3.Row | None:
+        """Return the newest resumable campaign for one character profile.
+
+        A character can have both a generated campaign YAML and an older
+        profile-as-campaign record.  Resume must follow the profile's newest
+        active history across those paths, otherwise a stale duplicate can
+        silently roll back the character before the next live segment.
+        """
+        blocked_clause = ""
+        if include_blocked:
+            blocked_clause = """
+              OR (
+                  status = 'blocked'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM campaign_checkpoints AS checkpoint
+                      WHERE checkpoint.campaign_id = campaigns.id
+                  )
+              )
+            """
+        cursor = self.connection.execute(
+            f"""
+            SELECT campaigns.id, campaigns.name, campaigns.config_path,
+                   campaigns.character_profile_path, campaigns.target_level,
+                   campaigns.started_at, campaigns.updated_at, campaigns.status,
+                   campaigns.error
+            FROM campaigns
+            LEFT JOIN campaign_checkpoints AS latest_checkpoint
+              ON latest_checkpoint.id = (
+                  SELECT MAX(checkpoint.id)
+                  FROM campaign_checkpoints AS checkpoint
+                  WHERE checkpoint.campaign_id = campaigns.id
+              )
+            WHERE lower(replace(character_profile_path, '/', char(92)))
+                    = lower(replace(?, '/', char(92)))
+              AND (
+                  status IN ('running', 'ready', 'success', 'failed')
+                  {blocked_clause}
+              )
+            ORDER BY
+                CASE
+                    WHEN json_valid(COALESCE(latest_checkpoint.state_json, ''))
+                    THEN CAST(
+                        COALESCE(
+                            json_extract(latest_checkpoint.state_json, '$.level'),
+                            -1
+                        ) AS INTEGER
+                    )
+                    ELSE -1
+                END DESC,
+                CASE
+                    WHEN json_valid(COALESCE(latest_checkpoint.state_json, ''))
+                    THEN CAST(
+                        COALESCE(
+                            json_extract(latest_checkpoint.state_json, '$.xp'),
+                            -1
+                        ) AS INTEGER
+                    )
+                    ELSE -1
+                END DESC,
+                CASE status
+                    WHEN 'running' THEN 0
+                    ELSE 1
+                END,
+                campaigns.updated_at DESC,
+                campaigns.id DESC
+            LIMIT 1
+            """,
+            (str(character_profile_path),),
+        )
+        return cursor.fetchone()
+
+    def get_latest_legacy_campaign_for_profile(
+        self,
+        profile_path: Path,
+    ) -> sqlite3.Row | None:
+        """Find an old profile-as-campaign record without scanning checkpoints.
+
+        Legacy HERO launches stored the character profile itself in both path
+        columns.  The older character-name fallback inspected checkpoint JSON
+        across the whole shared database, which becomes unbounded as evidence
+        grows.  Path metadata is enough to identify that legacy shape.
+        """
+        profile = str(profile_path.resolve())
+        cursor = self.connection.execute(
+            """
+            SELECT id, name, config_path, character_profile_path,
+                   target_level, started_at, updated_at, status, error
+            FROM campaigns
+            WHERE config_path = ?
+              AND character_profile_path = ?
+              AND status IN ('running', 'ready', 'success', 'failed')
+            ORDER BY
+                CASE status
+                    WHEN 'running' THEN 0
+                    WHEN 'ready' THEN 1
+                    WHEN 'success' THEN 2
+                    ELSE 3
+                END,
+                updated_at DESC,
+                id DESC
+            LIMIT 1
+            """,
+            (profile, profile),
         )
         return cursor.fetchone()
 
@@ -3288,6 +3569,169 @@ class RunStorage:
         if isinstance(outcomes, dict):
             self.sync_run_outcomes(run_id, outcomes)
         self.connection.commit()
+
+    def save_compact_campaign_run_summary(
+        self,
+        run_id: int,
+        *,
+        segment_id: int | None = None,
+    ) -> None:
+        """Cache campaign metrics without rereading a run's event history."""
+        if self.read_only or not self._run_summaries_available:
+            return
+        existing = self.get_run_summary(run_id)
+        if existing is not None and existing.get("summary_kind") != "campaign_compact":
+            return
+        run = self.get_run(run_id)
+        if run is None:
+            return
+        if segment_id is None:
+            segment = self.connection.execute(
+                """
+                SELECT id, start_state_json, end_state_json, status,
+                       execution_status, objective_outcome, safety_outcome,
+                       command_count, duration_seconds
+                FROM campaign_segments
+                WHERE run_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+        else:
+            segment = self.connection.execute(
+                """
+                SELECT id, start_state_json, end_state_json, status,
+                       execution_status, objective_outcome, safety_outcome,
+                       command_count, duration_seconds
+                FROM campaign_segments
+                WHERE id = ? AND run_id = ?
+                """,
+                (segment_id, run_id),
+            ).fetchone()
+        if segment is None or not segment["end_state_json"]:
+            return
+        try:
+            start_state = json.loads(segment["start_state_json"] or "{}")
+            end_state = json.loads(segment["end_state_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(start_state, dict) or not isinstance(end_state, dict):
+            return
+
+        def _change(key: str) -> dict[str, Any]:
+            initial = start_state.get(key)
+            final = end_state.get(key)
+            if type(initial) is int and type(final) is int:
+                return {"initial": initial, "final": final, "change": final - initial}
+            return {"initial": initial, "final": final, "change": None}
+
+        kills = end_state.get("campaign_objective_kills")
+        if not isinstance(kills, list):
+            kills = []
+        kills = [dict(kill) for kill in kills if isinstance(kill, dict)]
+        if not kills:
+            rows = self.connection.execute(
+                """
+                SELECT mob_name, xp_gained, source_mobile_vnum,
+                       source_policy_id, selector, below_useful_band,
+                       objective_eligible, route_gate, transit_only
+                FROM mob_kills
+                WHERE run_id = ? AND objective_eligible = 1
+                ORDER BY id
+                """,
+                (run_id,),
+            ).fetchall()
+            for row in rows:
+                kill = {
+                    "mob_name": str(row["mob_name"]),
+                    "xp_gained": row["xp_gained"],
+                }
+                for key in ("source_mobile_vnum", "source_policy_id", "selector"):
+                    if row[key] is not None:
+                        kill[key] = row[key]
+                for key in (
+                    "below_useful_band", "objective_eligible", "route_gate",
+                    "transit_only",
+                ):
+                    if bool(row[key]):
+                        kill[key] = True
+                kills.append(kill)
+
+        execution = (
+            segment["execution_status"]
+            or run["execution_status"]
+            or segment["status"]
+            or run["status"]
+            or "unknown"
+        )
+        objective = (
+            segment["objective_outcome"]
+            or run["objective_outcome"]
+            or ("achieved" if kills else "unknown")
+        )
+        safety = (
+            segment["safety_outcome"]
+            or run["safety_outcome"]
+            or ("unsafe" if end_state.get("dead") is True else "safe")
+        )
+        duration = segment["duration_seconds"]
+        if duration is None:
+            try:
+                duration = (
+                    datetime.fromisoformat(str(run["finished_at"]))
+                    - datetime.fromisoformat(str(run["started_at"]))
+                ).total_seconds()
+            except (TypeError, ValueError):
+                duration = None
+        level_change = _change("level")
+        summary = {
+            "summary_version": RUN_REPORT_SUMMARY_VERSION,
+            "summary_kind": "campaign_compact",
+            "run": {
+                "id": int(run["id"]),
+                "scenario_name": run["scenario_name"],
+                "scenario_path": run["scenario_path"],
+                "status": run["status"],
+                "started_at": run["started_at"],
+                "finished_at": run["finished_at"],
+                "duration_seconds": duration,
+                "transcript_path": run["transcript_path"],
+            },
+            "character": {},
+            "objective": {},
+            "outcomes": {
+                "execution": str(execution),
+                "objective": str(objective),
+                "safety": str(safety),
+            },
+            "progress": {
+                "level": level_change,
+                "experience": _change("xp"),
+                "health": _change("hp"),
+                "room": {
+                    "initial": start_state.get("room_name"),
+                    "final": end_state.get("room_name"),
+                },
+                "combat_starts": len(kills),
+                "combat_decisions": 0,
+                "confirmed_kills": kills,
+                "level_gains_observed": max(0, int(level_change["change"] or 0)),
+                "items_acquired": 0,
+                "quests_received": 0,
+                "training": {},
+                "loot_sales": {},
+                "loot_sale_rejections": [],
+            },
+            "activity": {},
+            "evidence": {
+                "compact": True,
+                "segment_id": int(segment["id"]),
+                "command_count": segment["command_count"],
+            },
+            "commentary": [],
+        }
+        self.save_run_summary(run_id, summary)
 
     def sync_run_outcomes(
         self, run_id: int, outcomes: dict[str, Any],
@@ -4083,7 +4527,11 @@ class RunStorage:
                         before_loss = int(start_state["xp_loss_total"])
                         after_loss = int(end_state["xp_loss_total"])
                 except (KeyError, TypeError, ValueError):
-                    safety_outcome = "unknown"
+                    # A linked run summary may already contain the
+                    # authoritative safety outcome. Leave this unset so that
+                    # summary can be used below; the final database fallback
+                    # remains unknown when no comparable evidence exists.
+                    safety_outcome = None
                 else:
                     safety_outcome = "loss" if after_loss > before_loss else "safe"
         if safety_outcome is None and linked_outcomes is not None:
@@ -4150,6 +4598,12 @@ class RunStorage:
         )
         self.connection.commit()
         self._invalidate_campaign_history(campaign_id)
+
+        if run_id is not None:
+            self.save_compact_campaign_run_summary(
+                run_id,
+                segment_id=segment_id,
+            )
 
     def list_campaign_segments(self, campaign_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(

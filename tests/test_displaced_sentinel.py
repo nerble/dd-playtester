@@ -229,17 +229,12 @@ def real_source_approach():
     return policy, state
 
 
-def test_real_source_smithy_with_miner_and_confirmed_familiar_reaches_player_opener():
+def test_real_source_smithy_with_miner_and_confirmed_familiar_uses_proven_player_opener():
     policy, state = real_source_approach()
     decision = policy._fastwalk_research_decision(state)
     assert decision.command == "consider #18435"
     policy.after_command(decision)
     policy.observe_text("The lemming smithy looks like an easy kill.\n\r")
-    decision = policy._fastwalk_research_decision(state)
-    assert decision.command == "order #42 kill #18435"
-    policy.after_command(decision)
-    assert policy.next_decision(state) is None
-    policy.observe_text("Ok.\n\r")
     decision = policy._fastwalk_research_decision(state)
     assert decision.command == "cast 'burning hands' #18435"
     assert policy.familiar_active

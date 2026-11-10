@@ -381,7 +381,7 @@ def test_indoor_combat_cannot_use_an_unconfirmed_companion(boundary):
     (18, 218, 628, 29953, 29966, "29950", "burning hands"),
     (8, 113, 324, 609, 600, "3052", "chill touch"),
 ])
-def test_real_source_staging_contract_reaches_field_stops(level, hp, mana, mobile, room, waypoint, skill):
+def test_real_source_staging_contract_does_not_bypass_route_safety(level, hp, mana, mobile, room, waypoint, skill):
     world = campaign.load_world_source(Path("runs/dd4-source/server/area"), include_all_areas=True)
     state = {
         "level": level, "max_hp": hp, "max_mana": mana, "character_class": "mage",
@@ -398,24 +398,28 @@ def test_real_source_staging_contract_reaches_field_stops(level, hp, mana, mobil
     )
     target = next(t for t in candidates if t.mobile_vnum == mobile and t.room_vnum == room)
     assert campaign._source_ranked_familiar_staging_room(target, world) == waypoint
-    assert campaign._source_ranked_familiar_probe_allowed(target, state, character_level=level, source_world=world)
-    assert campaign._select_source_ranked_hunt_candidate(
+    # A source staging room is useful evidence, but it cannot override the
+    # full withdrawal-destination audit or the target's other live gates.
+    assert not campaign._source_ranked_familiar_probe_allowed(
+        target, state, character_level=level, source_world=world,
+    )
+    selected = campaign._select_source_ranked_hunt_candidate(
         (target,), state, world=world, character_level=level, character_max_hp=hp,
-    ) == target
+    )
+    if target.autonomy_rejections:
+        assert selected is None
+    else:
+        assert selected == target
     stops = campaign._source_ranked_hunt_stops(target, world, character_level=level, state=state)
     target_stops = [s for s in stops if s.source_mobile_vnum == mobile]
     assert target_stops
-    assert all(s.require_familiar and not s.require_sanctuary for s in target_stops)
-    assert all(s.familiar_staging_room_vnum == waypoint for s in target_stops)
-    if mobile == 609:
-        assert all(s.familiar_withdraw_before_opener for s in target_stops)
-    if mobile == 29953:
-        assert all(s.familiar_withdraw_before_opener for s in target_stops)
+    assert all(not s.require_familiar for s in target_stops)
+    assert all(s.familiar_staging_room_vnum is None for s in target_stops)
     state["campaign_known_skill_levels"].pop("summon familiar")
     assert not campaign._source_ranked_familiar_probe_allowed(target, state, character_level=level, source_world=world)
 
 
-def test_real_source_low_load_target_withdraws_familiar_before_player_opener():
+def test_real_source_low_load_target_does_not_bypass_route_safety():
     world = campaign.load_world_source(
         Path("runs/dd4-source/server/area"), include_all_areas=True,
     )
@@ -460,7 +464,8 @@ def test_real_source_low_load_target_withdraws_familiar_before_player_opener():
     ]
 
     assert stops
-    assert all(stop.familiar_withdraw_before_opener for stop in stops)
+    assert all(not stop.require_familiar for stop in stops)
+    assert all(not stop.familiar_withdraw_before_opener for stop in stops)
 
 
 def test_wild_lookalike_is_not_exempted_with_the_owned_familiar():

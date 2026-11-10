@@ -13,6 +13,7 @@ from dd4tester.combat_losses import (
     SOURCE_COMBAT_LOSSES_KEY,
     recover_source_combat_losses,
     source_combat_loss_records,
+    source_stop_identity,
 )
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import SourceCombatOutput
@@ -24,6 +25,12 @@ from dd4tester.state import CharacterState
 
 PRIMARY = "source-ranked-hunt-example-101-201-31"
 SECONDARY = "source-ranked-hunt-example-102-202-31"
+
+
+def test_source_stop_identity_accepts_recall_origin_suffix() -> None:
+    assert source_stop_identity(
+        "source-ranked-hunt-example-101-201-31-recall-2"
+    ) == (101, 201, 31)
 
 
 def test_withdrawal_retains_actual_combat_output_only_with_explicit_loss(monkeypatch) -> None:

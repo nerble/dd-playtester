@@ -107,7 +107,7 @@ def test_early_origin_changes_only_the_first_circuit_leg():
     assert after[first_count:] == before[first_count:]
 
 
-def test_run_12812_dispatch_preserves_staging_and_locates_before_expensive_reset(monkeypatch):
+def test_run_12812_dispatch_preserves_locator_without_unverified_familiar_staging(monkeypatch):
     world = load_world_source(Path("runs/dd4-source/server/area"), include_all_areas=True)
     state = {
         "level": 8, "character_class": "mage", "max_hp": 113, "max_mana": 324, "max_move": 220,
@@ -121,9 +121,9 @@ def test_run_12812_dispatch_preserves_staging_and_locates_before_expensive_reset
     ) if c.mobile_vnum == 4005 and c.room_vnum == 4022)
     captured, spec = _capture_dispatch(monkeypatch, world, candidate, state)
     route, stops = captured["fastwalk_route"], captured["fastwalk_hunt_stops"]
-    assert len(candidate.route) == 21 and len(route.commands) == 13
-    assert all(stop.familiar_staging_room_vnum == "4002" for stop in stops if stop.target)
-    assert all(stop.require_familiar for stop in stops if stop.target)
+    assert len(candidate.route) == 21 and len(route.commands) == 11
+    assert all(stop.familiar_staging_room_vnum is None for stop in stops if stop.target)
+    assert all(not stop.require_familiar for stop in stops if stop.target)
     assert stops[0].actions == ("where orc",) and not stops[0].route_vnums
     policy = StarterPolicy(spec, "fixture-password", source_world=world, fastwalk_route=route, fastwalk_hunt_stops=stops)
     policy.current_room = "4002"
@@ -134,10 +134,11 @@ def test_run_12812_dispatch_preserves_staging_and_locates_before_expensive_reset
         "The large orc                The cave\n"
         "The orc                      The cave entrance\n"
         "The orc                      The tunnel\n"
+        "<100/100 hits 100/100 mana 100/100 move [Town]> "
     )
     assert policy.fastwalk_where_locations == ("the cave",)
     target = policy.fastwalk_hunt_stops[1]
-    assert target.source_mobile_vnum == 4005 and target.require_familiar and target.require_isolated
-    assert target.familiar_staging_room_vnum == "4002"
+    assert target.source_mobile_vnum == 4005 and not target.require_familiar and target.require_isolated
+    assert target.familiar_staging_room_vnum is None
     assert len(route.commands) + len(target.route_vnums) < len(candidate.route) + 7
-    assert "4022" not in target.route_vnums
+    assert "4022" in target.route_vnums

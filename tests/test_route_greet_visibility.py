@@ -39,18 +39,16 @@ def policy_and_state(world):
     return policy, state
 
 
-def test_live_invisibility_does_not_skip_registered_greet_preflight(source_world):
+def test_source_bounded_under_band_drunk_transit_needs_no_locator(source_world):
     policy, state = policy_and_state(source_world)
     assert policy.fastwalk_route.route_preflight_source_mobile_vnum == 3064
     decision = policy._fastwalk_route_preflight_decision(state)
-    assert decision.command == "where drunk"
-    assert not policy.fastwalk_route_preflight_complete
+    assert decision is None
+    assert policy.fastwalk_route_preflight_complete
 
-    policy._resolve_fastwalk_route_preflight(locations=("main street", "the main street"))
-    decision = policy._fastwalk_route_preflight_decision(state)
-    assert decision.command == "recall"
-    assert policy.fastwalk_returning
-    assert policy.fastwalk_route_preflight_hazard_observed
+    assert policy._fastwalk_route_preflight_decision(state) is None
+    assert not policy.fastwalk_returning
+    assert not policy.fastwalk_route_preflight_hazard_observed
 
 
 def test_live_invisibility_does_not_skip_adjacent_greet_scan(source_world):
@@ -245,7 +243,7 @@ def test_expiring_route_invisibility_waits_at_healer_before_recasting(
     ).command == "south"
     state.room_vnum = "3001"
     assert policy._fastwalk_invisibility_expiry_wait_decision(state, "3001") is None
-    assert policy._fastwalk_invisibility_expiry_wait_phase is None
+    assert policy.fastwalk_invisibility_expiry_wait_phase is None
     assert policy._fastwalk_invisibility_decision(
         state,
         failure_command="north",

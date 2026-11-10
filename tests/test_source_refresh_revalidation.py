@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import replace
 from types import SimpleNamespace
 
 import dd4tester.campaign as campaign_module
@@ -6,6 +7,33 @@ from dd4tester.hunt_candidates import load_world_source, rank_hunt_candidates
 
 
 SOURCE = Path("runs/dd4-source/server/area")
+
+
+_ROUTE_HAZARD_PREFIXES = (
+    "route:",
+    "route program attacker:",
+    "route combat-joining special:",
+    "reachable wanderer:",
+    "reachable program attacker:",
+    "reachable special mobile:",
+    "reachable combat-joining special:",
+)
+
+
+def _audited_route_candidate(candidate):
+    """Model a separately audited alternate route for receipt unit tests."""
+    return replace(
+        candidate,
+        route=(),
+        route_aggressive_mobile_vnums=(),
+        estimated_move_cost=0,
+        estimated_flying_move_cost=0,
+        hazards=tuple(
+            hazard
+            for hazard in candidate.hazards
+            if not str(hazard).casefold().startswith(_ROUTE_HAZARD_PREFIXES)
+        ),
+    )
 
 
 def _candidate_and_world():
@@ -28,7 +56,7 @@ def _candidate_and_world():
         for item in candidates
         if item.mobile_vnum == 20513 and item.room_vnum == 20532
     )
-    return candidate, world
+    return _audited_route_candidate(candidate), world
 
 
 def _other_plain_candidate(world):
@@ -45,11 +73,11 @@ def _other_plain_candidate(world):
         character_alignment=100,
         recall_origins={0: 3001},
     )
-    return next(
+    return _audited_route_candidate(next(
         item
         for item in candidates
         if item.mobile_vnum == 917 and item.room_vnum == 936
-    )
+    ))
 
 
 def _hermes_candidate_and_world():
@@ -72,7 +100,7 @@ def _hermes_candidate_and_world():
         for item in candidates
         if item.mobile_vnum == 903 and item.room_vnum == 947
     )
-    return candidate, world
+    return _audited_route_candidate(candidate), world
 
 
 def _hephaestus_candidate_and_world():
@@ -95,7 +123,7 @@ def _hephaestus_candidate_and_world():
         for item in candidates
         if item.mobile_vnum == 908 and item.room_vnum == 937
     )
-    return candidate, world
+    return _audited_route_candidate(candidate), world
 
 
 def _cave_beast_candidate_and_world():
@@ -118,7 +146,7 @@ def _cave_beast_candidate_and_world():
         for item in candidates
         if item.mobile_vnum == 9936 and item.room_vnum == 9951
     )
-    return candidate, world
+    return _audited_route_candidate(candidate), world
 
 
 def _orca_candidate_and_world():
@@ -141,7 +169,7 @@ def _orca_candidate_and_world():
         for item in candidates
         if item.mobile_vnum == 17051 and item.room_vnum == 17272
     )
-    return candidate, world
+    return _audited_route_candidate(candidate), world
 
 
 def _state(candidate, *, source_revision: str = "new-source") -> dict:
@@ -497,7 +525,7 @@ def test_source_refresh_does_not_replay_current_source_success():
     )
 
 
-def test_route_level_invisibility_preparation_covers_visible_orca_route():
+def test_visible_orca_route_does_not_request_unneeded_invisibility_preparation():
     candidate, world = _orca_candidate_and_world()
     state = {
         **_state(candidate),
@@ -517,8 +545,8 @@ def test_route_level_invisibility_preparation_covers_visible_orca_route():
         source_world=world,
     )
 
-    assert policy is not None
-    assert policy.execution == "buy-see-invisible"
+    assert candidate.requires_detect_invisibility is False
+    assert policy is None
 
 
 def test_source_selector_can_handoff_hephaestus_to_visibility_preparation():

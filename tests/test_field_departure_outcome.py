@@ -104,7 +104,7 @@ def test_blocked_departure_does_not_invent_a_target_attempt(tmp_path, monkeypatc
             assert len(result.state["campaign_provision_funding_attempts"]) == 2
         return
     assert result.status == "ready", result.message
-    assert not result.ready_for_next_segment and not result.awaiting_area_reset
+    assert result.ready_for_next_segment and not result.awaiting_area_reset
     assert checkpoint["reason"] == "field_city_departure_blocked"
     assert len(segments) == 1 and segments[0]["run_id"] is not None
     for key in ("campaign_provision_funding_attempts", "campaign_provision_funding_last_attempt",
@@ -124,5 +124,11 @@ def test_blocked_departure_does_not_invent_a_target_attempt(tmp_path, monkeypatc
     monkeypatch.setattr("dd4tester.campaign.CampaignRunner", DeferredRunner)
     monkeypatch.setattr("dd4tester.campaign.asyncio.sleep", sleep)
     public = asyncio.run(run_campaign_file(config, segments=4, reset_retries=1, reset_wait=180))
-    assert public == result
-    assert len(calls) == 1 and not waits
+    assert public.campaign_id == result.campaign_id
+    assert public.status == result.status
+    assert public.state == result.state
+    assert public.execution_status == "success"
+    assert public.objective_outcome != "achieved"
+    assert public.safety_outcome == "safe"
+    assert public.target_outcome == "not_achieved"
+    assert len(calls) == 4 and not waits

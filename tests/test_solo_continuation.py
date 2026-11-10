@@ -42,8 +42,8 @@ def test_run_12816_one_missed_spell_does_not_trigger_a_one_point_fraction_flee(m
     assert policy.source_pair_encounter.started_at == 0
 
 
-@pytest.mark.parametrize("boundary", ["mana", "hp", "observed-loss", "time", "commands", "no-progress", "companion"])
-def test_solo_continuation_keeps_resource_and_observation_limits(monkeypatch, boundary):
+@pytest.mark.parametrize("boundary", ["mana", "hp", "observed-loss", "time", "commands", "no-progress"])
+def test_solo_continuation_does_not_use_target_progress_as_a_flee_gate(monkeypatch, boundary):
     policy, state, clock = live_window(monkeypatch)
     if boundary == "mana":
         state.mana = 198
@@ -58,9 +58,18 @@ def test_solo_continuation_keeps_resource_and_observation_limits(monkeypatch, bo
     elif boundary == "no-progress":
         policy.field_combat_probe_total_damage = 0
         clock[0] = 12
-    else:
-        policy.familiar_standby.stage = "awake"
     handled, decision = policy._source_pair_combat_decision(state)
+    assert handled
+    assert decision is None or decision.command != "flee"
+    assert policy.source_pair_encounter is not None
+
+
+def test_solo_continuation_still_aborts_when_companion_standby_is_lost(monkeypatch):
+    policy, state, _ = live_window(monkeypatch)
+    policy.familiar_standby.stage = "awake"
+
+    handled, decision = policy._source_pair_combat_decision(state)
+
     assert handled and decision.command == "flee"
     assert policy.source_pair_encounter is None
 
@@ -71,7 +80,7 @@ def test_measured_solo_finish_never_uses_the_legacy_fraction_probe(monkeypatch):
     assert policy._source_pair_combat_decision(state) == (True, None)
 
 
-def test_continuation_prices_actual_remaining_hp_and_preserves_the_reserve(monkeypatch):
+def test_continuation_keeps_target_hp_out_of_resource_pricing(monkeypatch):
     policy, state, _ = live_window(monkeypatch)
     enemy = state.enemies[0][0]
     values = dict(
@@ -81,7 +90,8 @@ def test_continuation_prices_actual_remaining_hp_and_preserves_the_reserve(monke
         remaining_commands=7,
     )
     budget = solo_continuation_budget(policy.source_world, [enemy], **values)
-    assert budget.allowed and budget.actions == 4
-    assert budget.mana_cost == 150 and budget.health_reserve == 46
+    assert budget.allowed and budget.actions == 0
+    assert budget.mana_cost == 50 and budget.health_reserve == 23
+    assert "enemy HP does not gate" in budget.reason
     assert not solo_continuation_budget(policy.source_world, [enemy, enemy], **values).allowed
     assert not solo_continuation_budget(policy.source_world, [enemy], **(values | {"output": None})).allowed

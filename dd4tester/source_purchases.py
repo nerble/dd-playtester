@@ -20,6 +20,12 @@ from .training import training_priorities_for
 
 
 TRAINING_TRAVEL_SUPPLY_KEY = "campaign_training_travel_supply"
+ROUTE_INVISIBILITY_SUPPLY_KEY = "campaign_route_invisibility_supply"
+ROUTE_INVISIBILITY_OBJECT_VNUM = 19021
+ROUTE_INVISIBILITY_SHOPKEEPER_VNUM = 19024
+ROUTE_INVISIBILITY_SHOP_ROOM_VNUM = 19070
+_MIRROR_GARDENER_VNUM = 19036
+_MIRROR_GARDENER_MAX_PURSE = 6250
 SHOP_LIST_ITEM = re.compile(
     r"^\s*\[\s*(?P<level>\d+)\s+(?P<price>\d+)\]\s+"
     r"(?:(?P<target>\[#\d+\])\s+)?(?P<name>.+?)\s*$", re.MULTILINE,
@@ -76,6 +82,202 @@ class TrainingTravelSupply:
             "effect": "invis", "maximum_price": self.purchase.maximum_price,
             "budget_revision": 2,
         }
+
+
+@dataclass(frozen=True)
+class RouteInvisibilitySupply:
+    """Source-audited pure invisibility purchase for a blocked field route."""
+
+    purchase: SourcePurchase
+    commands: tuple[str, ...]
+    room_vnums: tuple[int, ...]
+    required_move: int
+
+    def evidence(self) -> dict[str, Any]:
+        return {
+            "object_vnum": self.purchase.object_vnum,
+            "shopkeeper_vnum": self.purchase.shopkeeper_vnum,
+            "room_vnum": self.purchase.room_vnum,
+            "effect": "invis",
+            "route_rooms": list(self.room_vnums),
+            "required_move": self.required_move,
+            "maximum_price": self.purchase.maximum_price,
+            "policy_revision": 1,
+        }
+
+
+def _known_coin_value(state: Mapping[str, Any]) -> int | None:
+    currencies = state.get("currencies")
+    if not isinstance(currencies, Mapping):
+        currencies = state.get("progress")
+    if not isinstance(currencies, Mapping):
+        return None
+    multipliers = {
+        "copper": 1,
+        "silver": 10,
+        "gold": 100,
+        "platinum": 1000,
+        "electrum": 50,
+        "adamantite": 10000,
+        "starmetal": 100000,
+        "steel": 1000000,
+        "titanium": 10000000,
+    }
+    total = 0
+    for name, multiplier in multipliers.items():
+        value = currencies.get(name, 0)
+        if type(value) is not int or value < 0:
+            return None
+        total += value * multiplier
+    return total
+
+
+def route_invisibility_supply(
+    world: WorldSource | None,
+    state: Mapping[str, Any],
+    *,
+    carried_descriptions: Sequence[str] = (),
+    ignore_attempt: bool = False,
+) -> RouteInvisibilitySupply | None:
+    """Plan the exact Mirror Realm invisibility-potion purchase.
+
+    The route crosses the Mirror gardener's economic-only thief special. DD4
+    can steal at most 20 percent per attempt, so the source-backed route is
+    admitted only while the known purse is at most 6,250 copper-equivalent.
+    The live shop quote, purchase acknowledgement, inventory gain, quaff, and
+    active affect remain authoritative.
+    """
+    level = state.get("level")
+    boot = state.get("world_boot_id")
+    if (
+        world is None
+        or type(level) is not int
+        or level < 2
+        or not boot
+        or str(state.get("room_vnum")) != "3054"
+        or state.get("dead") is True
+        or state.get("in_combat") is True
+        or type(state.get("hp")) is not int
+        or type(state.get("max_hp")) is not int
+        or state.get("max_hp", 0) <= 0
+        or state["hp"] < state["max_hp"] * 0.95
+        or any(
+            normalize_item_name(description)
+            == "a clear potion of invisibility"
+            for description in carried_descriptions
+        )
+    ):
+        return None
+    prior = state.get(ROUTE_INVISIBILITY_SUPPLY_KEY)
+    if (
+        not ignore_attempt
+        and isinstance(prior, Mapping)
+        and prior.get("boot_id") == boot
+        and prior.get("level") == level
+    ):
+        return None
+    purse = _known_coin_value(state)
+    if purse is None or purse <= 0 or purse > _MIRROR_GARDENER_MAX_PURSE:
+        return None
+
+    item = world.objects.get(ROUTE_INVISIBILITY_OBJECT_VNUM)
+    vendor = world.mobiles.get(ROUTE_INVISIBILITY_SHOPKEEPER_VNUM)
+    item_spells = potion_spell_names(item) if item is not None else ()
+    if (
+        item is None
+        or item.item_type != ITEM_POTION
+        or not item_spells
+        or item_spells[0] != "invis"
+        or vendor is None
+        or vendor.vnum not in world.shopkeepers
+        or vendor.aggressive
+        or not vendor.sentinel
+        or vendor.wanders
+        or vendor.programs
+        or vendor.attack_programs
+        or set(world.mobile_specials.get(vendor.vnum, ()))
+        - {"spec_cast_mage"}
+        or sum(
+            normalize_item_name(other.short_description)
+            == normalize_item_name(item.short_description)
+            for other in world.objects.values()
+        ) != 1
+    ):
+        return None
+    reset = next(
+        (
+            value
+            for value in world.mob_resets
+            if value.mobile_vnum == vendor.vnum
+            and value.room_vnum == ROUTE_INVISIBILITY_SHOP_ROOM_VNUM
+            and ROUTE_INVISIBILITY_OBJECT_VNUM in _reset_object_vnums(value)
+            and value.maximum_count == 1
+        ),
+        None,
+    )
+    if reset is None:
+        return None
+    paths = _shortest_paths_from(world.rooms, 3001)
+    path = paths.get(ROUTE_INVISIBILITY_SHOP_ROOM_VNUM)
+    if path is None or not path[0]:
+        return None
+    commands, rooms = path[0], tuple(path[1])
+    if (
+        any(world.rooms[vnum].random_exits for vnum in rooms)
+        or any(
+            world.rooms[vnum].room_flags & ((1 << 9) | (1 << 11) | (1 << 13))
+            for vnum in rooms
+        )
+    ):
+        return None
+    route_hazards = source_route_hazard_rejections(
+        world,
+        rooms,
+        character_level=level,
+        combat_at_destination=False,
+        economic_special_mobile_vnums=(_MIRROR_GARDENER_VNUM,),
+        economic_transit_allow_equipped_mobile_vnums=(
+            _MIRROR_GARDENER_VNUM,
+        ),
+    )
+    if route_hazards:
+        gardener = world.mobiles.get(_MIRROR_GARDENER_VNUM)
+        if (
+            len(route_hazards) != 1
+            or "gardener" not in route_hazards[0].casefold()
+            or gardener is None
+            or gardener.aggressive
+            or not gardener.wanders
+            or gardener.programs
+            or gardener.attack_programs
+            or set(world.mobile_specials.get(_MIRROR_GARDENER_VNUM, ()))
+            != {"spec_thief"}
+        ):
+            return None
+    keyword = next(
+        (
+            value
+            for value in item.keywords.casefold().split()
+            if re.fullmatch(r"[a-z][a-z0-9-]*", value)
+        ),
+        None,
+    )
+    if keyword is None:
+        return None
+    return RouteInvisibilitySupply(
+        purchase=SourcePurchase(
+            ROUTE_INVISIBILITY_OBJECT_VNUM,
+            ROUTE_INVISIBILITY_SHOPKEEPER_VNUM,
+            ROUTE_INVISIBILITY_SHOP_ROOM_VNUM,
+            item.short_description,
+            keyword,
+            maximum_price=10000,
+            coin_reserve=0,
+        ),
+        commands=tuple(commands),
+        room_vnums=rooms,
+        required_move=source_route_movement_cost(world, rooms) + 20,
+    )
 
 
 def training_travel_supply(
@@ -374,7 +576,17 @@ class SourcePurchaseSession:
             self.stage, command = "buying", f"buy {self.selector}"
         elif self.stage == "buying":
             if not re.search(r"\bYou buy\b", self.response):
-                self.failure, self.stage = "shop did not acknowledge the purchase", "failed"
+                if re.search(
+                    r"can't carry that (?:many items|much weight)",
+                    self.response,
+                    re.IGNORECASE,
+                ):
+                    self.failure = (
+                        "shop rejected purchase because carrying capacity was full"
+                    )
+                else:
+                    self.failure = "shop did not acknowledge the purchase"
+                self.stage = "failed"
                 return None
             self.stage, command = "inventory", "inventory"
         elif self.stage == "inventory":

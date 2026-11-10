@@ -24,6 +24,7 @@ from dd4tester.populations import (
     plain_bounded_population,
     source_sequential_duplicate_reset_limit,
 )
+import dd4tester.populations as populations
 
 
 def population_case():
@@ -83,6 +84,24 @@ def test_source_ranked_plain_multiroom_population_is_capacity_researchable():
         candidate,
         character_level=27,
     )
+
+
+def test_bounded_population_reuses_world_reset_index():
+    candidate, world = population_case()
+
+    class CountingResets(list):
+        iterations = 0
+
+        def __iter__(self):
+            type(self).iterations += 1
+            return super().__iter__()
+
+    world.mob_resets = CountingResets(world.mob_resets)
+    populations._WORLD_RESET_INDEX_CACHE.pop(id(world), None)
+
+    assert plain_bounded_population(candidate, world)
+    assert plain_bounded_population(candidate, world)
+    assert CountingResets.iterations == 1
 
 
 def test_capacity_history_quarantines_source_ranked_plain_population():

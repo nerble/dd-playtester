@@ -60,7 +60,7 @@ def test_legacy_campaign_stats_use_the_same_sanitized_output(character_class, sk
     baseline = source_combat_output_estimate(
         character_level=8, character_class=character_class,
         known_skills=tuple(skills), known_skill_levels=skills,
-        weapon_damage_range=(5, 7), weapon_vnum=3020, weapon_damage_type=2,
+        weapon_damage_range=(1, 4), weapon_vnum=3020, weapon_damage_type=2,
         player_damroll=0, player_swiftness=None, target_body_form_flags=0,
     )
     assert baseline is not None

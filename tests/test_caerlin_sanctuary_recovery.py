@@ -35,6 +35,7 @@ from dd4tester.campaign import (
     _caerlin_staff_reserve_reacquisition_allowed,
     _caerlin_staff_source_revision_retry_allowed,
     _caerlin_staff_retry_open,
+    _caerlin_staff_dispatch_candidate_allowed,
     _moria_sanctuary_second_fixed_reset_reacquisition_allowed,
     _select_source_ranked_alternate_sanctuary_candidate,
     _select_source_ranked_moria_4071_reacquisition_candidate,
@@ -740,6 +741,7 @@ def test_olympus_viability_result_opens_athena_fallback(
                     "level": 39,
                     "observed": True,
                     "completed_kill": False,
+                    "consider_viable": False,
                     "viable": False,
                 },
             },
@@ -844,6 +846,7 @@ def test_olympus_hephaestus_fallback_opens_after_athena_closes(
                     "level": 39,
                     "observed": True,
                     "completed_kill": False,
+                    "consider_viable": False,
                     "viable": False,
                 },
                 _SOURCE_RANKED_OLYMPUS_ADEPT_SANCTUARY_POLICY.policy_id: {
@@ -1152,6 +1155,50 @@ def test_caerlin_combat_abort_closes_attempt_without_locator_retry() -> None:
     assert marker["status"] == "closed"
     assert marker["outcome"] == "combat_aborted_no_acquisition"
     assert marker["retry_count"] == 0
+
+
+def test_stale_caerlin_revalidation_marker_cannot_dispatch_again() -> None:
+    world = load_world_source(SOURCE_DIRECTORY, include_all_areas=True)
+    state = _level_39_healer_state()
+    state.update(
+        {
+            _SOURCE_REVISION_KEY: "test-source",
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                "boot_id": "test-boot",
+                "level": 39,
+                "source_revision": "test-source",
+                "status": "attempted",
+                "retry_count": 1,
+                "locator_revalidation_revision": 3,
+                "mobile_vnum": 19004,
+                "room_vnum": 19068,
+                "object_vnums": [19173],
+            },
+        }
+    )
+    selection = _select_source_consumable_candidate(
+        state,
+        spell_name="sanctuary",
+        short_description=None,
+        source_directory=SOURCE_DIRECTORY,
+        source_world=world,
+        require_unarmed=True,
+        required_reset=(19004, 19068),
+    )
+
+    assert selection is not None
+    candidate, _object_vnums = selection
+    assert not _caerlin_staff_dispatch_candidate_allowed(state, candidate)
+    assert _caerlin_staff_dispatch_candidate_allowed(
+        {
+            **state,
+            _CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY: {
+                **state[_CAERLIN_STAFF_RECOVERY_ATTEMPT_KEY],
+                "dispatch_authorized": True,
+            },
+        },
+        candidate,
+    )
 
 
 def test_stale_caerlin_combat_abort_marker_is_reconciled_from_history() -> None:

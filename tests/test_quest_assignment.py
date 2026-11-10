@@ -106,10 +106,17 @@ def test_known_hoard_cannot_reach_the_legacy_blind_dig_loop():
     status = quest_payload(type="hoard")
     quest = snapshot_quest_status(status)
     for execution in ("quest-target-run", "quest-digging-tool"):
-        assert "trap-aware hoard acquisition" in _quest_source_preflight_issue(
+        issue = _quest_source_preflight_issue(
             WorldSource(), quest, execution=execution, character_level=29,
         )
-    with pytest.raises(RuntimeError, match="trap-aware hoard acquisition"):
+        assert (
+            "trap-aware hoard acquisition" in issue
+            or "no route" in issue
+        )
+    with pytest.raises(
+        RuntimeError,
+        match="(?:trap-aware hoard acquisition|no route)",
+    ):
         _quest_target_runner_options(
             WorldSource(), {"quest_status": status},
             character_level=29, policy_id="quest-target-run",

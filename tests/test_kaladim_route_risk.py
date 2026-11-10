@@ -49,7 +49,7 @@ def _state(candidate, *, source_policy_ids):
     }
 
 
-def test_kaladim_mirror_route_risk_is_exact_and_selectable():
+def test_kaladim_mirror_route_risk_rejects_unarmed_transit():
     world, candidate = _candidate_and_world()
     state = _state(
         candidate,
@@ -61,7 +61,7 @@ def test_kaladim_mirror_route_risk_is_exact_and_selectable():
         ],
     )
 
-    assert campaign_module._source_ranked_kaladim_mirror_route_risk_allowed(
+    assert not campaign_module._source_ranked_kaladim_mirror_route_risk_allowed(
         candidate,
         state,
         character_level=39,
@@ -74,7 +74,7 @@ def test_kaladim_mirror_route_risk_is_exact_and_selectable():
         world=world,
         character_level=39,
         character_max_hp=919,
-    ) == candidate
+    ) is None
 
 
 def test_kaladim_mirror_route_risk_does_not_borrow_another_policy_receipt():
@@ -96,7 +96,7 @@ def test_kaladim_mirror_route_risk_does_not_borrow_another_policy_receipt():
     )
 
 
-def test_kaladim_mirror_route_risk_survives_productive_kill_cap():
+def test_kaladim_mirror_route_risk_stays_closed_after_productive_kill_cap():
     world, candidate = _candidate_and_world()
     candidate = replace(candidate, boot_kills=6)
     policy_id = campaign_module._source_ranked_policy_id(
@@ -105,7 +105,7 @@ def test_kaladim_mirror_route_risk_survives_productive_kill_cap():
     )
     state = _state(candidate, source_policy_ids=[policy_id])
 
-    assert campaign_module._source_ranked_kaladim_mirror_route_risk_allowed(
+    assert not campaign_module._source_ranked_kaladim_mirror_route_risk_allowed(
         candidate,
         state,
         character_level=39,
@@ -119,4 +119,4 @@ def test_kaladim_mirror_route_risk_survives_productive_kill_cap():
         character_level=39,
         character_max_hp=919,
         allow_repeated_policy_ids=(policy_id,),
-    ) == candidate
+    ) is None

@@ -9,8 +9,10 @@ from dd4tester.hunt_candidates import (
     source_invisibility_blocks_mobile_aggression,
 )
 from dd4tester.source_purchases import (
+    ROUTE_INVISIBILITY_SUPPLY_KEY,
     TRAINING_TRAVEL_SUPPLY_KEY, SourceLiquidation, SourceLiquidationSession,
     SourcePurchase, SourcePurchaseSession,
+    route_invisibility_supply,
     training_travel_supply,
 )
 
@@ -39,6 +41,19 @@ def test_purchase_uses_live_price_selector_and_confirmed_inventory_gain():
     assert step(session, 5, inventory=(("anti-cyclops elixir", "#456"),)) is None
     assert session.stage == "complete"
     assert step(session, 6) is None
+
+
+def test_purchase_records_capacity_rejection_separately_from_missing_ack():
+    session = SourcePurchaseSession(PLAN)
+    assert step(session) == "list elixir"
+    session.observe("[Lvl Price] Item for sale\n[2 27] [#123] anti-cyclops elixir\n" + PROMPT)
+    assert step(session, 2) == "buy #123"
+    session.observe("You can't carry that many items.\n" + PROMPT)
+    assert step(session, 3) is None
+    assert session.stage == "failed"
+    assert session.failure == (
+        "shop rejected purchase because carrying capacity was full"
+    )
 
 
 def test_purchase_can_fund_one_live_price_with_confirmed_redundant_sale():
@@ -310,3 +325,128 @@ def test_other_purchase_outcomes_do_not_reopen_a_legacy_attempt(supply_state, ch
         "failure": "no single affordable, level-usable exact shop offer", **change,
     }]
     assert training_travel_supply(world, state, "warrior") is None
+
+
+def test_route_invisibility_supply_accepts_source_potion_and_safe_vendor_special(
+    monkeypatch,
+):
+    item = ObjectSource(
+        19021,
+        "potion invisibility",
+        "a clear potion of invisibility",
+        10,
+        (15,),
+        10,
+        value_strings=("20", "invis", "detect magic", ""),
+        weight=1,
+    )
+    world = WorldSource(
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Temple",
+                "city.are",
+                {"east": ExitSource("east", 19070, 0, -1)},
+            ),
+            19070: RoomSource(19070, "Mirror shop", "mirror.are"),
+        },
+        mobiles={
+            19024: MobileSource(
+                19024,
+                "wizard",
+                "a standard issue wizard",
+                130,
+                ACT_SENTINEL,
+                900,
+                "mirror.are",
+            ),
+        },
+        objects={19021: item},
+        shopkeepers={19024},
+        mob_resets=[MobReset(19024, 19070, 1, (19021,))],
+    )
+    world.mobile_specials[19024] = ("spec_cast_mage",)
+    monkeypatch.setattr(
+        "dd4tester.source_purchases.source_route_hazard_rejections",
+        lambda *args, **kwargs: (),
+    )
+    state = {
+        "level": 45,
+        "world_boot_id": "boot",
+        "room_vnum": "3054",
+        "hp": 1098,
+        "max_hp": 1098,
+        "currencies": {
+            "copper": 50,
+            "silver": 0,
+            "gold": 0,
+            "platinum": 0,
+        },
+    }
+
+    plan = route_invisibility_supply(world, state)
+
+    assert plan is not None
+    assert plan.purchase.object_vnum == 19021
+    assert plan.purchase.shopkeeper_vnum == 19024
+    assert plan.commands == ("east",)
+    assert plan.required_move > 0
+    state[ROUTE_INVISIBILITY_SUPPLY_KEY] = {
+        "boot_id": "boot",
+        "level": 45,
+        "status": "attempted",
+    }
+    assert route_invisibility_supply(world, state) is None
+
+
+def test_route_invisibility_supply_rejects_unknown_vendor_special(monkeypatch):
+    item = ObjectSource(
+        19021,
+        "potion invisibility",
+        "a clear potion of invisibility",
+        10,
+        (15,),
+        10,
+        value_strings=("20", "invis", "detect magic", ""),
+        weight=1,
+    )
+    world = WorldSource(
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Temple",
+                "city.are",
+                {"east": ExitSource("east", 19070, 0, -1)},
+            ),
+            19070: RoomSource(19070, "Mirror shop", "mirror.are"),
+        },
+        mobiles={
+            19024: MobileSource(
+                19024,
+                "wizard",
+                "a standard issue wizard",
+                130,
+                ACT_SENTINEL,
+                900,
+                "mirror.are",
+            ),
+        },
+        objects={19021: item},
+        shopkeepers={19024},
+        mob_resets=[MobReset(19024, 19070, 1, (19021,))],
+    )
+    world.mobile_specials[19024] = ("spec_unknown",)
+    monkeypatch.setattr(
+        "dd4tester.source_purchases.source_route_hazard_rejections",
+        lambda *args, **kwargs: (),
+    )
+    state = {
+        "level": 45,
+        "world_boot_id": "boot",
+        "room_vnum": "3054",
+        "hp": 1098,
+        "max_hp": 1098,
+        "currencies": {"copper": 50},
+    }
+
+    assert route_invisibility_supply(world, state) is None

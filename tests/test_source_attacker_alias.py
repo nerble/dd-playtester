@@ -99,7 +99,8 @@ def test_alias_reconciliation_cannot_hide_changed_or_crowded_encounter(failure: 
     elif failure == "not_opened":
         policy.fastwalk_attack_started = False
     elif failure == "completed":
-        policy.fastwalk_objective_budget_complete = True
+        policy.fastwalk_kill_limit = 1
+        policy.completed_kills = [{"mob_name": "deer"}]
     elif failure == "two_room_targets":
         policy.room_target_counts["19132"]["deer"] = 2
     elif failure == "no_source":

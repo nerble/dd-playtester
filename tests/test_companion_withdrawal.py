@@ -58,7 +58,7 @@ def test_silence_stops_after_deadline_without_retry_or_claiming_success():
 def test_acknowledged_unsuccessful_orders_are_limited_to_three():
     withdrawal = FamiliarWithdrawal(selector="#1")
     for attempt in range(3):
-        assert withdrawal.next_command(now=attempt) == "order #1 flee"
+        assert withdrawal.next_command(now=attempt) == "order #1 flee Fear"
         withdrawal.observe("Ok.\n", now=attempt + .1)
     assert withdrawal.next_command(now=3) is None
     assert not withdrawal.pending and not withdrawal.confirmed
@@ -77,11 +77,11 @@ def test_live_replay_prioritizes_retry_over_cast_and_requires_departure(monkeypa
     policy.familiar_active = True
     policy.familiar_preparation.selector = "#23691"
     first = policy._between_round_combat_decision(state)
-    assert first.command == "order #23691 flee"
+    assert first.command == "order #23691 flee Fear"
     assert policy.familiar_active
     clock[0] = 3.2
     policy.observe_text("Ok.\n<113/113 hits 224/324 mana 197/220 move [Ultima]> ")
-    assert policy._between_round_combat_decision(state).command == "order #23691 flee"
+    assert policy._between_round_combat_decision(state).command == "order #23691 flee Fear"
     assert policy.familiar_active and policy.familiar_withdrawal.attempts == 2
     clock[0] = 3.8
     policy.observe_text("\nThe pony has fled!\nOk.\n<113/113 hits 224/324 mana 197/220 move [Ultima]> ")
@@ -104,7 +104,7 @@ def test_lost_companion_cannot_leave_withdrawal_pending_forever(monkeypatch):
 def test_source_order_ack_follows_synchronous_interpret_without_player_wait():
     text = Path("runs/dd4-source/server/src/act_comm.c").read_text(encoding="utf-8")
     order = text.split("void do_order(", 1)[1].split("void do_group(", 1)[0]
-    assert order.index("interpret(och, argument)") < order.index('send_to_char("Ok.')
+    assert order.index("interpret_ordered(och, argument, ch)") < order.index('send_to_char("Ok.')
     assert "WAIT_STATE" not in order
 
 
@@ -310,6 +310,7 @@ def test_familiar_handoff_accepts_parsed_mobile_without_specials(monkeypatch):
         source_reset_room_vnum="1570",
         require_familiar=True,
     )
+    state = replace(state, room_vnum="1570")
 
     assert policy._source_familiar_withdrawal_room_available(stop, state)
 
@@ -376,11 +377,9 @@ def test_no_xp_familiar_withdraws_after_low_hp_opening_hit_before_player_opener(
     assert not policy.fastwalk_attack_started
 
     policy.observe_text("Ok.\n<prompt>")
-    sleep = policy._familiar_precombat_decision(state)
-    assert sleep is not None and sleep.command == "order #23700 sleep"
-    policy.observe_text("Ok.\n<prompt>")
-    assert policy.familiar_active and not policy.familiar_withdrawal.confirmed
-    policy.observe_text("The pony sleeps.\n<prompt>")
+    retry = policy._familiar_precombat_decision(state)
+    assert retry is not None and retry.command == "order #23700 flee Fear"
+    policy.observe_text("The pony has fled!\n<prompt>")
     opener = policy._familiar_precombat_decision(state)
     assert opener is not None
     assert not opener.command.startswith("order #23700")
@@ -416,16 +415,16 @@ def test_runtime_source_charmed_pony_requires_positive_sleep(monkeypatch):
     policy.familiar_active = True
     policy.familiar_preparation.selector = "#23700"
     assert policy._between_round_combat_decision(state).command == "order #23700 flee Fear"
-    assert policy.familiar_withdrawal.settle_in_place
+    assert not policy.familiar_withdrawal.settle_in_place
     clock[0] = 3
     policy.observe_text("Ok.\n<prompt>")
     assert policy._between_round_combat_decision(state).command == (
-        "order #23700 sleep"
+        "order #23700 flee Fear"
     )
-    policy.observe_text("Ok.\n<prompt>")
-    assert policy.familiar_active and not policy.familiar_withdrawal.confirmed
-    policy.observe_text("The pony sleeps.\n<prompt>")
+    policy.observe_text("The pony has fled!\n<prompt>")
     assert not policy.familiar_active
+    policy.between_round_action_issued = False
+    policy.between_round_action_ready_at = 0
     assert policy._between_round_combat_decision(state).command == "cast 'chill touch' #22916"
 
 
@@ -437,7 +436,7 @@ def test_source_charm_blocks_departure_and_sleep_requires_no_fighting():
     assert 'act("$n sleeps."' in sleep
     fight = Path("runs/dd4-source/server/src/fight.c").read_text(encoding="utf-8")
     flee = fight.split("void do_flee(", 1)[1].split("void do_bomb(", 1)[0]
-    assert flee.index("stop_fighting(ch, TRUE)") < flee.index("move_char(ch, door)")
+    assert "move_char_flee(ch, door)" in flee
 
 
 def test_companion_kill_uses_death_name_even_when_room_alias_differs(monkeypatch):

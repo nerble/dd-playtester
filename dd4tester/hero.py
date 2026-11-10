@@ -279,7 +279,6 @@ def prepare_hero_request(
                     else f"{name} to level {target_level}"
                 ),
                 "target_level": target_level,
-                "max_segments": 10000,
                 "max_total_runtime": 31536000,
                 "max_total_commands": 1000000,
                 "max_stalled_segments": 3,

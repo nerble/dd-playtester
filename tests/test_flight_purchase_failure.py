@@ -104,6 +104,7 @@ def _preflight_segment(state=None):
         "status": "failed",
         "error": "buy-flight-potion segment failed: no source-identified redundant gear could free the required item slot",
         "start_state_json": json.dumps(checkpoint),
+        "end_state_json": json.dumps(checkpoint),
     }
 
 

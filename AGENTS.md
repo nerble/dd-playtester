@@ -16,6 +16,9 @@ at most two, each reset has one known weapon plus armor only, and the source
 shows no scripts or specials. This classification never authorizes fighting
 them or the endpoint: live identity, consider, crowd, Sanctuary, health-floor,
 and return checks still decide the route.
+Do not let a favorable source damage estimate broaden this exception or turn a
+below-band route aggressor into an XP fight; if it fails the source transit
+proof, choose another route or target.
 
 Build for every source-legal race, cosmetic
 sex, base class, optional subclass, name, and personality, capable of creating
@@ -43,6 +46,10 @@ on later bounded visits whenever fresh source, route, identity, live
 `consider`, health, crowd, and loss gates still pass. Only fresh terminal
 evidence such as a loss, crowd, route hazard, identity mismatch, or negative
 `consider` closes that exact target.
+A route hazard closes only the exact route that produced it; it must not be
+reported as a reboot wait for the whole current-band frontier. Record a
+`frontier_recheck` checkpoint and rank independent routes on the next bounded
+invocation. Preserve explicit crowd, absence, and Sanctuary reset contracts.
 The generic frontier-retry receipt is provenance only: recording or consuming
 it never creates a one-shot or per-reboot retry quota for a viable target.
 When several loss-free current-band absence candidates are eligible, rotate
@@ -63,6 +70,14 @@ fresh Sanctuary refill, or a carried charged source-verified Sanctuary
 staff when its acquisition receipt has been compacted, can repair one exact
 prior unprotected plain-target loss. This is not disintegration protection
 and never reopens a psionic.
+Source `special.c` shows that `spec_breath_any` can choose acid, fire, frost,
+gas, lightning, or steam; Sanctuary reduces damage but does not remove the
+gas or acid hazards. Run 22895 proved the point against Ra (mobile 919, room
+931): Sanctuary expired, recall failed while combat remained active, and a
+later gas breath killed Dorrik. Preserve that exact current-level loss and do
+not retry Ra under the ordinary selector. When any protected breath fight
+loses Sanctuary while DD4 still reports combat, keep using the bounded flee
+path rather than issuing another recall command.
 Favor productive, risk-adjusted fights: when fresh live `consider`, source
 damage/output bounds, current gear, and practiced skills support a bounded kill,
 take the useful-XP opportunity instead of detouring merely to avoid ordinary
@@ -150,6 +165,10 @@ Duplicate-login quarantine may admit only complete prior-matched same-room
 metadata with valid exit-cost-only changes. Preserve identity, exits, door/state,
 malformed/foreign snapshot rejection and existing quarantine; never replay old
 character packets or clear quarantine from a merely matching room label.
+Campaign resume identity is character-profile-owned across generated and legacy
+campaign paths. Choose the newest resumable history for that profile, then
+reattach it to the requested campaign file; never roll a character back to an
+older duplicate merely because its config path is the one being invoked.
 At a verified safe route origin, retain already-applied combat gear through
 movement-only checks; this never authorizes sleeping there or lowers readiness.
 An opted-in required-loot stop may inspect one exact carrier with `look #<id>`
@@ -224,7 +243,11 @@ A repeat requires its exact current-version achieved/safe summary, matching
 boot and current terminal level, a useful source-tagged kill, and no
 loss during that encounter. An exact observed one-level transition may retain
 its prior-level source identity. Later unrelated losses retain their ledgers;
-exact current-level target loss records still close the hunt. After the
+an exact current-level combat loss closes that mobile across its reset rooms,
+while a different mobile remains an independent target. Route-only loss stays
+scoped to its recorded route hazard. The original loss policy may use only its
+explicit, narrowly approved revalidation; another reset room is not a retry.
+Exact current-level target loss records still close the hunt. After the
 ordinary current-band frontier is exhausted, one source- and boot-bound
 `campaign_source_ranked_prior_level_loss_revalidation` may reopen an exact
 prior-level loss only when the new level has no exact loss and all source/live
@@ -516,6 +539,10 @@ incidental, or route-gate kills. A proven productive route stopped solely for
 a missing sanctuary reserve may pass its kill cap after fresh supply repairs
 that prerequisite, but retain every loss, crowd, route, consider, and cooldown
 gate. Reject unsupported passive armed-special HP probes before travelling.
+One bounded stale-consider recheck may include a target past the ordinary
+three-kill cap only when the existing productive-repeat evidence admits that
+exact policy. Preserve its negative result, require a fresh live consider, and
+do not let the recheck reopen any target with a loss or other terminal failure.
 
 When a current-band route needs a food reserve, prefer the existing bounded
 Bakery restock over small forage meals only from the noncombat healer, with
@@ -560,6 +587,15 @@ useful target threshold, and exact blocker. Set thresholds from source behavior,
 combat evidence, and teacher limits; raise key damage, attack, control, and
 protection skills at the earliest eligible trainer visit rather than treating
 initial unlock as completion.
+
+For martial characters near a level gain, prefer training constitution for its
+hitpoint benefit unless constitution is maxed; measured carrying-capacity
+pressure may keep strength as the priority. At a healer, if a fresh live
+listing and source-backed plan show the current teacher has no useful lesson,
+prefer the lowest higher-level teacher that can advance a priority skill. This
+selects a candidate only: full source route, hazard, resource, and live safety
+checks still decide whether to travel. Defer optional training when those gates
+fail and keep progression moving.
 
 Verify each lesson with live proficiency changes and refresh the unlock plan.
 Record the next useful skill, target proficiency, prerequisites, and actual
@@ -730,6 +766,42 @@ direction scan; immediate occupation or a closed door stops it, while distant
 sightings retain their distance. Confirm the exact step and recall rooms with
 five-second reply deadlines, and save its three-command audit on success or
 failure. Do not use it in Purgatory or reinterpret a failed return as success.
+Generic source-ranked hunts need the same return proof before dispatch: a
+no-recall endpoint must have either a source-proved direct route to its origin
+or a source-replayed reverse of the audited outbound route. Never copy an
+outbound route as its return, because DD4 source exits can be one-way. At the
+Ice Hall, take the source-verified open exit to the recallable room before
+considering the deity fallback only when live flight, water travel, or another
+source-supported movement capability is present. Without that capability, the
+locked west exit is a recovery option only
+when the live character actually knows a usable `bash door` skill; an unknown
+skill must not be issued as a speculative escape. Inspect an existing deity
+prayer menu if present, but do not automatically choose Brutus. If the existing
+patron offers Rescue and the command produces only DD4's generic prayer
+acknowledgement, keep the exact character connected in room 17299, repair
+hunger/thirst from carried supplies, sleep, and retry Rescue at bounded
+intervals for at most the source-derived six-hour timer window; a room change
+is the only success receipt. If a needed food or water supply is absent, this
+exact no-combat room may still sleep through the wait because DD4 clamps a
+starvation or dehydration hit that would cross zero, but the damage can still
+reduce health sharply. If health falls below 25%, wake and use a learned cure
+spell when the normal mana reserve allows it, then return to sleep; pace casts
+at least 30 seconds apart, except for an emergency cure below 5%, and keep the
+exact wait bounded by its six-hour runtime and 5% recovery floor. The 5% floor
+is recovery-only and does not
+change the ordinary 20% combat withdrawal floor. Keep the live-health, room,
+and no-combat checks active.
+When the live prayer menu offers Transport, with or without Rescue, target only the
+source-verified Midgaard healer mobile 3012 in room 3054, and only when its
+source player-name field is non-empty and therefore resolvable by
+`get_char_world`. The current live healer has an empty player-name field, so
+`pray transport healer` is not a valid route for this deployment; prefer Rescue
+when it is offered. Treat a refusal or missing target as terminal evidence for
+that exact fallback; never guess at a remote NPC name or destination.
+The campaign wrapper may honor this same exact wait past its ordinary outer
+deadline, through the source-derived hard deadline plus cleanup grace. This is
+the only outer runtime extension. This exception is route recovery only and
+must never become a generic timer wait.
 
 Startup equipment reconstruction must use ordered live slot evidence, not a
 source match on an ambiguous worn description. A failed pre-login connection
@@ -1430,8 +1502,11 @@ checkpoint may select the next executable
 registered policy for the current level. Preserve the funding marker, retain
 the policy's ordinary route and combat gates, and do not wait for a reboot
 solely because flight remains unfunded.
-Dorrik currently has 18 quest points at level 30 and no source-derived
-next-level shortfall. Keep all quest activity shelved: do not request optional
+Dorrik is the sole progression pilot. At the latest verified checkpoint he is
+level 45 with 2,051,243 XP, 18 quest points, full health and mana, and a safe
+healer-room position at VNUM 3054 (checkpoint 76265; latest live run 24145).
+Keep all quest
+activity shelved: do not request optional
 frontier quests, wait out a quest timer, or turn an empty XP frontier or an
 exhausted sanctuary route into a quest handoff. Resume questing only when fresh
 live evidence shows a positive next-level QP shortfall is blocking progression.
@@ -1443,6 +1518,12 @@ requests once the QP gate is open. Policy selection alone is not a dispatched
 request; use one request command per phase and rely on a fresh MUD observation
 for the assignment or server cooldown before selecting another attempt. Funding
 exhaustion grants no cooldown bypass or target permission.
+Campaign 39 is the current profile-owned Dorrik history, with checkpoint
+76265 and latest live run 24145 at `runs/heroes/dorrik/campaign.yaml`. Older campaign 7
+history is blocked and must not roll the character back. Verify the selected
+campaign with `show-campaign 39` before and after live work.
+Verify the campaign ID and checkpoint with `show-campaign 39` before and after
+live work; do not merge histories implicitly.
 DD4 advances the quest timer while the character is connected. Honor every
 fresh server timer, including the short delay after an unavailable quest and
 the delay after an explicit abort. If a bounded worker reaches its runtime cap
@@ -1602,6 +1683,23 @@ Python console encoding is Windows-1252. The relay cannot read Codex chat
 directly. If a post is missing, check the source record and streamer delivery
 log first; do not replay history or launch a second streamer when the existing
 worker is healthy.
+
+Use the helper's `--quiet` option for outgoing commentary and final records so
+the append operation does not echo a second visible copy of the message. Pipe
+the command output to `Out-Null` and do not also use `Write-Output $body`; then
+pass only the unheaded message body to the helper; it generates the single
+timestamped header. Display the timestamped body exactly once as the chat
+update. The append-only
+ log remains the relay source. The logger rejects nested timestamped assistant
+ bodies and assistant bodies repeated in its recent 128-record window; the
+ logger and relay normalize harmless Unicode punctuation and common
+ contractions when identifying assistant duplicates. Treat either rejection
+ as a signal to emit no second copy. Never bypass that guard with a manual
+ append or replay an old record to repair a missed post.
+When invoking this from a Codex shell tool, the
+PowerShell `$body = @' ... '@` assignment must be inside the same shell command
+that pipes to the helper; a JavaScript or host-language variable is not visible
+inside PowerShell and would append an empty record.
 
 ## Work Rhythm
 

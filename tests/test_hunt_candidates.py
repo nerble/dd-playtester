@@ -22,6 +22,7 @@ from dd4tester.hunt_candidates import (
     AFF_MINDLESS,
     AFF_DETECT_MAGIC,
     AFF_CONFUSION,
+    AFF_NON_CORPOREAL,
     BODY_HUGE,
     BODY_INORGANIC,
     BODY_NO_HEAD,
@@ -93,6 +94,8 @@ from dd4tester.hunt_candidates import (
     source_mobile_can_join_player_fight,
     source_mobile_can_join_target_fight,
     source_mobile_is_ordinary_below_level_aggressor,
+    source_mobile_deep_transit_route_is_bounded,
+    source_mobile_unresolved_deep_plain_wanderer_is_preflight_safe,
     source_mobile_route_aggressor_is_bounded,
     source_mobile_route_aggressor_level_only_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
@@ -228,6 +231,50 @@ def test_required_consumable_can_rank_a_mob_equipped_carrier() -> None:
 
     assert candidate.mobile_vnum == 100
     assert candidate.loot == ("a black potion",)
+
+
+def test_plain_target_with_unknown_template_modifiers_reaches_live_consider() -> None:
+    mobile = MobileSource(
+        104,
+        "uncertain guard",
+        "an uncertain guard",
+        8,
+        ACT_SENTINEL,
+        0,
+        "test.are",
+        room_description="An uncertain guard is here.",
+        hp_modifier=None,
+        hp_modifier_known=False,
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+    world = WorldSource(
+        mobiles={104: mobile},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "A quiet guard post", "test.are"),
+        },
+        mob_resets=[MobReset(104, 200, 1, ())],
+    )
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=8,
+        include_xp_only=True,
+        include_all_areas=True,
+    )
+
+    assert candidate.mobile_vnum == 104
+    assert candidate.status != "reject"
+    assert candidate.autonomous_safe is True
+    assert candidate.target_selection_safe is True
+    assert "source mobile HP modifier is unavailable" not in candidate.autonomy_rejections
+    assert "source mobile damage modifier is unavailable" not in candidate.autonomy_rejections
 
 
 def test_hunt_candidate_loot_includes_separately_recorded_equipment() -> None:
@@ -1882,6 +1929,30 @@ def test_live_source_profile_does_not_promote_unreleased_archetypes() -> None:
     assert mobile.damage_modifier_known is False
 
 
+def test_live_source_restores_only_audited_legacy_dwarven_targets() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        live_deployment=True,
+    )
+
+    chess_player = world.mobiles[20512]
+    gambler = world.mobiles[20515]
+    for mobile, level in ((chess_player, 40), (gambler, 49)):
+        assert mobile.level == level
+        assert mobile.template_name is None
+        assert mobile.hp_modifier == 0
+        assert mobile.hp_modifier_known is True
+        assert mobile.damage_modifier == 0
+        assert mobile.damage_modifier_known is True
+        assert mobile.live_compatibility_source_revision == (
+            "6b1ffdab647b3329a056a9d122c2fda59de6b9ec"
+        )
+    assert chess_player.affected_flags == 8712
+    assert gambler.affected_flags == 8712
+    assert "dwarf" not in world.mobile_templates
+
+
 def test_live_deployment_profile_propagates_to_nested_source_loads() -> None:
     with source_directory_context(
         Path("runs/dd4-source/server/area"),
@@ -2410,7 +2481,7 @@ def test_source_class_teacher_route_uses_midgaard_level_ten_teacher(
     assert source_class_teacher_skill(character_class)
 
 
-def test_source_class_teacher_route_finds_exact_level_fifteen_mage_teacher() -> None:
+def test_source_class_teacher_route_does_not_restore_removed_level_fifteen_teacher() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
         include_all_areas=True,
@@ -2418,19 +2489,7 @@ def test_source_class_teacher_route_finds_exact_level_fifteen_mage_teacher() -> 
 
     route = source_class_teacher_route_for_level(world, "mage", 15)
 
-    assert route is not None
-    assert route.mobile_vnum == 603
-    assert route.room_vnum == 699
-    assert route.keyword == "jacklyn"
-    assert not route.wanders
-    assert route.steps[0] == ("3001", "south", "3005")
-    assert route.steps[-1][2] == "699"
-    hazards = source_route_hazard_rejections(
-        world,
-        (int(route.steps[0][0]), *(int(step[2]) for step in route.steps)),
-        character_level=18,
-    )
-    assert any("higher-level combat-joining special" in hazard for hazard in hazards)
+    assert route is None
 
 
 def test_source_mobile_attack_program_is_a_candidate_hard_gate() -> None:
@@ -2462,6 +2521,12 @@ def test_non_corporeal_source_mobile_is_a_candidate_hard_gate() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
         include_all_areas=True,
+    )
+    # Keep the fixture tied to a currently present reset while explicitly
+    # modelling the source trait this hard-gate test is about.
+    world.mobiles[20505] = replace(
+        world.mobiles[20505],
+        affected_flags=world.mobiles[20505].affected_flags | AFF_NON_CORPOREAL,
     )
 
     candidate = next(
@@ -4024,7 +4089,7 @@ def test_armed_near_band_aggressor_needs_damage_bound_proof() -> None:
         200,
         "crewman",
         "a below-level crewman",
-        35,
+        40,
         ACT_AGGRESSIVE,
         0,
         "transit.are",
@@ -4268,6 +4333,118 @@ def test_level_only_route_aggressor_allows_two_source_instances_not_a_crowd() ->
         crowded_world,
         mobile,
         character_level=41,
+    )
+
+
+def test_level_only_route_aggressor_allows_unknown_damage_template() -> None:
+    mobile = MobileSource(
+        203,
+        "guard",
+        "the armed guard",
+        40,
+        ACT_AGGRESSIVE,
+        0,
+        "target.are",
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+    world = WorldSource(
+        mobiles={203: mobile},
+        objects={
+            9003: ObjectSource(
+                9003,
+                "mace",
+                "a mace",
+                ITEM_WEAPON,
+                (0, 2, 6, 3),
+                100,
+            ),
+            9004: ObjectSource(
+                9004,
+                "vest",
+                "a vest",
+                ITEM_ARMOR,
+                (0, 0, 0, 0),
+                0,
+            ),
+        },
+        mob_resets=[
+            MobReset(
+                203,
+                7003,
+                1,
+                (),
+                ((WEAR_WIELD, 9003), (6, 9004)),
+            )
+        ],
+    )
+
+    assert source_mobile_route_aggressor_level_only_is_bounded(
+        world,
+        mobile,
+        character_level=45,
+    )
+
+
+def test_deep_transit_route_rejects_unarmed_unknown_template_population() -> None:
+    mobile = MobileSource(
+        202,
+        "goblin",
+        "the goblin",
+        6,
+        ACT_AGGRESSIVE,
+        0,
+        "solace.are",
+        damage_modifier=None,
+        damage_modifier_known=False,
+        hp_modifier=None,
+        hp_modifier_known=False,
+    )
+    world = WorldSource(
+        mobiles={202: mobile},
+        mob_resets=[
+            MobReset(202, 10301, 8, ()),
+            MobReset(202, 10306, 8, ()),
+        ],
+    )
+
+    assert not source_mobile_deep_transit_route_is_bounded(
+        world,
+        mobile,
+        character_level=43,
+    )
+
+
+def test_unresolved_deep_plain_wanderer_is_preflight_only() -> None:
+    mobile = MobileSource(
+        202,
+        "goblin",
+        "the goblin",
+        6,
+        ACT_AGGRESSIVE,
+        0,
+        "midennir.are",
+        template_name="goblin",
+        hp_modifier=None,
+        hp_modifier_known=False,
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+    world = WorldSource(
+        mobiles={202: mobile},
+        mob_resets=[MobReset(202, 10301, 8, ())],
+    )
+
+    assert source_mobile_unresolved_deep_plain_wanderer_is_preflight_safe(
+        world,
+        mobile,
+        character_level=45,
+    )
+    world.mobile_specials[202] = ("spec_poison",)
+    assert not source_mobile_unresolved_deep_plain_wanderer_is_preflight_safe(
+        world,
+        mobile,
+        character_level=45,
     )
 
 
@@ -5106,8 +5283,12 @@ def test_candidate_ranking_keeps_nonaggressive_room_companion_in_caution(
         include_xp_only=True,
     )[0]
 
-    assert candidate.status == "caution"
+    assert candidate.status == "reject"
+    assert not candidate.autonomous_safe
     assert "target reset capacity exceeds one" not in candidate.autonomy_rejections
+    assert "target room has a source-capable assisting companion" in (
+        candidate.autonomy_rejections
+    )
     assert "room companion: the Hierophant L15 (up to 1)" in candidate.hazards
 
 
@@ -5614,7 +5795,7 @@ def test_fleshmonger_passive_cook_companion_does_not_block_hunt() -> None:
     )
     boy = world.mobiles[9404]
 
-    assert not source_mobile_can_join_player_fight(
+    assert source_mobile_can_join_player_fight(
         world,
         boy,
         character_level=9,
@@ -5631,16 +5812,16 @@ def test_fleshmonger_passive_cook_companion_does_not_block_hunt() -> None:
         if candidate.mobile_vnum == 9403 and candidate.room_vnum == 9403
     )
 
-    assert candidate.autonomous_safe
+    assert not candidate.autonomous_safe
     assert (
         "source-backed companion may join player combat: the cook's boy"
-        not in candidate.hazards
+        in candidate.hazards
     )
     assert (
         "target room has a source-capable assisting companion"
-        not in candidate.autonomy_rejections
+        in candidate.autonomy_rejections
     )
-    assert "source-backed trivial companion: the cook's boy" in candidate.hazards
+    assert "source-backed trivial companion: the cook's boy" not in candidate.hazards
 
 
 def test_candidate_rejects_special_procedure_room_companion(monkeypatch) -> None:
@@ -6378,7 +6559,7 @@ def test_passive_mobile_can_join_an_npc_fight_even_without_direct_aggression() -
     )
     world = WorldSource(mobiles={100: target, 200: bystander})
 
-    assert not source_mobile_can_join_player_fight(
+    assert source_mobile_can_join_player_fight(
         world, bystander, character_level=8, character_alignment=-500,
     )
     assert source_mobile_can_join_target_fight(
@@ -6401,7 +6582,7 @@ def test_masked_player_alignment_keeps_good_bystander_possible() -> None:
     )
 
 
-def test_mirror_realm_green_lord_is_not_an_automatic_joiner() -> None:
+def test_mirror_realm_green_lord_can_join_an_existing_fight() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
         include_all_areas=True,
@@ -6412,7 +6593,7 @@ def test_mirror_realm_green_lord_is_not_an_automatic_joiner() -> None:
     assert not green_lord.aggressive
     assert not green_lord.programs
     assert not world.mobile_specials.get(green_lord.vnum)
-    assert not source_mobile_can_join_player_fight(
+    assert source_mobile_can_join_player_fight(
         world,
         green_lord,
         character_level=39,

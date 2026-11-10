@@ -103,6 +103,9 @@ class Fastwalk:
     # recovery. Keep the complete outbound path available if recall fails
     # after the route has been shortened to its first leg.
     return_commands: tuple[str, ...] = ()
+    # Some source maps contain one-way exits, so the outbound route cannot be
+    # reversed even though an explicit source path home is available.
+    direct_return_commands: tuple[str, ...] = ()
     # Only source-validated routes may reverse their closed-door commands.
     return_commands_allow_open: bool = False
     # Exact source identity for visibility-aware program preflight only.

@@ -7,12 +7,15 @@
 `runs/dd4-source` is the current upstream checkout and remains useful for
 research, parser tests, and future planning. The live MUD has not deployed the
 recent undead and archetype/species changes, and may remain on that deployment
-for months. Live campaign loading therefore filters the known unreleased
-mobile templates and treats any matching area record as unresolved. Such a
-record cannot authorize a hunt until a live probe and a confirmed deployment
-update establish the template. This boundary is intentionally separate from
-the source revision recorded for provenance; it is not a reboot wait or a
-reason to stop selecting other live-verified targets.
+for months. Live campaign loading filters the known unreleased mobile
+templates. A narrow compatibility record restores the two Dwarven Home
+prototypes 20512 and 20515 from pre-conversion source revision
+`6b1ffdab647b3329a056a9d122c2fda59de6b9ec`; it does not add the dwarf template
+to the live catalog or bypass fresh identity, route, isolation, consider,
+health, or return checks. Other matching area records remain unresolved until
+their legacy source is audited or deployment is confirmed. This boundary is
+separate from reboot timing and is not a reason to stop selecting other
+live-verified targets.
 
 This deployment profile is installed by `CampaignRunner` and by direct
 `StarterBotRunner` entry points. Specialized source-world preflights use the
@@ -50,6 +53,12 @@ selector prefers one without a same-context dispatch receipt before repeating
 an already checked circuit. This only improves rotation; after the alternatives
 are checked, every still-viable target remains reusable.
 
+A source-ranked route hazard closes only the exact route that produced it; it
+does not make the whole current-band frontier wait for a reboot. The campaign
+records a `frontier_recheck` checkpoint and can rank independent routes again
+on the next bounded invocation. Explicit crowd, absence, and Sanctuary reset
+contracts retain their separate wait behavior.
+
 ### Armed transit noise
 
 A source-proven armed route mobile may be treated as transit noise when its
@@ -59,20 +68,74 @@ only, with no scripts or specials. This is route permission only. It does not
 authorize combat with the mobile or the selected endpoint; live identity,
 consider, crowd, Sanctuary, health-floor, and return checks remain mandatory.
 
-The current durable checkpoint is **67252** (campaign **35**). Dorrik is level
-**41** with **1,511,314 XP**, 18 quest points, no level-up shortfall, and a safe
-healer checkpoint in room **3054**. The latest completed gameplay segment is
-**20818** (run **21424**), a safe Pit Official absence check. Segment **20817**
-completed Sanctuary recovery; segment **20816** recorded the M'rinthas
-transit-guard loss. Segment **20819** (run **21425**) stopped before gameplay
-because the live MUD refused its bounded TCP connection attempts. Dorrik's
-next live action is the bounded Midgaard restock: his saved inventory has no
-food reserve, while water and the healer checkpoint remain available. The
-current source mirror is **528b319c82a1d3b2fc6a55ff8790b07410a3a6cb**.
-The upstream checkout now includes the Graveyard conversion and refined undead
-archetypes, which are not deployed on the live MUD; live campaign loading keeps
-the 21 known unreleased or revised templates unresolved until deployment is
-confirmed.
+### Vampire Catacombs, levels 41-44
+
+The current-level fallback uses a distinct `vampire-catacombs-hunt-41-44`
+policy so it does not inherit the 38-40 campaign result. Once generic selection
+has no executable route (or ranks only a weak solo probe), it can use the
+source-verified recall route to the room-9571 bouncer; characters above level
+14 are transferred into room 9500. The exact candidate set is Grok (9510), the
+wandering art critic (9545), Mavralyn (9523), Augus (9541), and Grieb (9542).
+The last three require the verified spiked key, whether carried or confirmed in
+the current-boot room-3007 cache. Grok still requires a verified Sanctuary
+reserve. Every reset is re-audited, and fresh live identity, isolation,
+consider, combat, and return checks remain mandatory. Absence or reboot timing
+does not create a permanent target ban.
+
+The active Dorrik checkpoint is **76265** (campaign **39**, latest live run
+**24145**);
+Dorrik is level **45** with **2,051,243 XP** and 18 quest points, safely
+recovered at the Midgaard healer in room **3054**. Older campaign **7** history
+is blocked and must not roll the character back. Resume is profile-owned: the
+runner chooses the newest resumable history across generated and legacy config
+paths and reattaches it to the requested campaign file. The exact Ra loss
+remains closed; preserve loss records and do not reopen lost targets merely
+because recovery succeeded. The current source mirror is
+**b9a20e151b2adea19e1aa6780a7791dcbfb327db** (refreshed from upstream on
+November 3). The refresh changed other areas and combat code but not
+`mirror_realm.are`; live deployment remains a separate, older profile.
+
+The Nov 4 bounded invocation selected the source-audited Mirror Realm
+proprietor route and safely achieved **7,993 XP**, returning to the healer with
+**2 Sanctuary charges** remaining. Fresh live identity, isolation, relative
+level, consider, Dorrik's 20% health floor, provisions, and return checks still
+decide every fight; target HP remains observation only. The next invocation
+should use the normal campaign command and verify the newest profile-owned
+checkpoint rather than naming an older campaign ID.
+
+Run **22652** also reached live play: its 140-command transcript shows Dorrik
+fought a level-40 orca before reaching the selected Pirate Isles guard, dealt
+1,004 XP worth of damage, and paid a 1,330 XP recall penalty (net **-326 XP**).
+The earlier recovery annotation claiming no live commands was wrong; Dorrik
+escaped and run **22653** returned him safely. Do not repeat that 115-command
+guard route without a distinct source-audited approach. The incidental orca
+remains a separate target subject to its own live consider and combat gates.
+
+Run **22657** reached the Kerofk Recruiting Office and live-considered the
+Sergeant. “Laughs at you mercilessly” means the target is 6-9 levels higher
+under `act_info.c`; the accompanying “built like a tank” line compares hit
+points and is observation-only. Reject this target for its level, not its HP.
+
+The healer-side rearm controller now accepts a verified primary-plus-pounding
+weapon pair at room 3054 even when a saved shop route begins elsewhere. This
+repairs the stale-origin failure recorded in run **22655**; its focused test
+was added and the touched modules compile. The November 10 full regression
+allowance is spent; the focused runner/recovery sweep passed 19 tests, with 9
+additional route-hazard campaign checks now passing.
+The upstream checkout has since added area conversions and mobile-archetype
+revisions across Fleshmonger, Kaladim, Dragon Cult, Shaolin, Juargan, Freeport,
+Smugglers Ship, Fortress, Foundry, Dangerous Neighborhood, Mega-City One, and
+Abandoned Cathedral. These changes are not deployed on the live MUD; live
+campaign loading keeps the known unreleased or revised templates unresolved
+until deployment is confirmed.
+
+Route admission and emergency return still require fresh source, identity,
+consider, and own-health checks. Runtime Sanctuary and consider-repair history
+uses bounded phase tails (256 rows normally, up to 1,024 for the active
+consider repair), while full current-boot combat-loss history remains intact.
+Preparation reports separate Sanctuary, consider, and combat-loss
+reconciliation stages. The November 10 full-suite allowance is spent; rely on
+focused checks, compile, and whitespace validation for further edits today.
 
 ### Offline service boundary
 
@@ -212,8 +275,12 @@ movement and recovery checks, and the character's own health withdrawal floor.
 Historical rejection records remain evidence for their exact target and boot;
 they are not permission to reject an otherwise valid current target merely
 because an old predicted output estimate was unfavorable.
-An exact current-level XP loss still closes that reset. After ordinary
-current-band selection is exhausted, one
+An exact current-level combat XP loss closes that mobile VNUM across all of
+its reset rooms; another reset room is not a way to retry the same target.
+Keep unrelated mobile siblings eligible, and keep route-only losses scoped to
+their recorded route hazard. The original exact policy can use only its
+explicit, narrowly approved revalidation. After ordinary current-band
+selection is exhausted, one
 `campaign_source_ranked_prior_level_loss_revalidation` may reopen an exact
 same-boot loss from the immediately previous level when the new level has no
 loss for that reset and the source-safe/current-band gates pass. Consume the
@@ -268,6 +335,16 @@ steam breath as real combat risk, and requires Sanctuary, fresh live identity,
 isolation, `consider`, route/recovery checks and the normal 20-percent health
 floor. It does not generalize to other breathers, endpoint casters or
 psionics, and it does not waive live target or abort checks.
+
+Source `special.c` confirms that `spec_breath_any` selects among acid, fire,
+frost, gas, lightning and steam. Live segment **22274** showed why Sanctuary
+is not enough by itself: Ra (mobile **919**, room **931**) used acid and gas
+after the Sanctuary effect expired; recall failed while the fight was active,
+and Dorrik died before the escape completed. The exact current-level loss stays
+closed. The field controller now prefers its bounded flee path after a
+protected breath fight loses Sanctuary and does not issue another recall while
+DD4 still reports combat. This is an escape correction, not permission to
+reopen Ra or generalize the breath exception.
 
 Policy revision **359** also opens a source-audited Mirror Realm transit
 exception for the level-39 frontier. The route from Midgaard recall crosses
@@ -375,8 +452,18 @@ Exact update text
 $body | python tools/conversation_log.py append --speaker "CODEX COMMENTARY" --body-stdin
 ```
 
-Publish the exact returned header and the same body. Use `USER` for user turns
-and `CODEX FINAL` for the final response. Headers must be exactly:
+For a live Codex update, add `--quiet` to the append command. Display the
+timestamped update once in chat, then record that same body once in the
+append-only log; pipe the command to `Out-Null` and do not also use
+`Write-Output $body`, because command output plus the chat update duplicates the
+post. The logger also rejects nested timestamped assistant bodies and an
+assistant body repeated in its recent 128-record window; do not bypass either
+rejection. Keep the
+here-string assignment inside the same PowerShell command that
+invokes the helper; variables from the surrounding tool wrapper are not
+available to PowerShell. Without `--quiet`, the helper prints its generated header for callers
+that need to publish the returned record themselves. Use `USER` for user turns and
+`CODEX FINAL` for the final response. Headers must be exactly:
 
 ```text
 [YYYY-MM-DD h:mm:ss AM/PM NZST] CODEX COMMENTARY
@@ -727,6 +814,11 @@ totals cannot rewind. A completed productive independent hunt may repeat beyond
 the initial three-kill discovery cap, retaining its one-kill visit limit and
 every fresh source/live check. Absence, crowd, loss, or failed objective cannot
 qualify. Historical rows and parent failure ledgers are not rewritten.
+The one-shot stale-consider rotation may recheck such a capped target only
+when the same productive-repeat helper admits its exact policy from meaningful
+same-boot XP evidence and no terminal loss. Preserve the old negative result;
+the fresh live `consider` remains authoritative, and this exception never
+reopens a loss, crowd, route hazard, or identity failure.
 
 `hunt_efficiency.py` compares at most eight linked completed visits using their
 actual net XP and full run duration, including safe zero-progress visits to the
@@ -996,6 +1088,12 @@ policy-loss checks. Audited route-program admission receives the bounded
 capacity-endpoint flag only from this source proof; it retains its own route
 hazard preflight. The live executor still requires one exact isolated useful-XP
 target before combat, with the ordinary finite search and action budgets.
+For this audited passive population only, the first live `Do you feel lucky,
+punk?` result may enter the +2..+5 level band while the visit remains marked
+capacity research. It still requires fresh same-room isolation, target identity,
+route, and consider checks, and uses the 20% own-health withdrawal floor for
+an unarmed target with no special. The separate HP comparison is report-only;
+a sibling room's higher-level consider cannot override this target's reply.
 When that capacity route is explicitly marked `no_combat_probe`, the endpoint
 and every unregistered attacker remain observation-only, but one exact,
 source-registered VNUM for an unarmed current-band transit mobile may use the
@@ -2648,7 +2746,13 @@ not a duplicate connection. Finish required workers before ending the turn.
 Use the bounded public `hero` command, not manual gameplay to manufacture proof.
 Normal live segments have a 300-second cap, plus separate 60-second setup and
 45-second cleanup allowances. Leave the outer timeout long enough for safe
-cleanup. Reset retries and segment counts are separate explicit budgets.
+cleanup. The only runtime extension is the exact source-verified Ice Hall
+Rescue wait: when the active starter reports that room, the outer monitor may
+follow its hard six-hour recovery deadline plus the normal cleanup grace. No
+generic sleep, prayer, or live policy may request this extension. Reset retries
+and per-invocation segment counts are separate explicit
+budgets. A campaign's lifetime `max_segments` limit is optional; an omitted
+limit must not stop a long-running HERO campaign at an implicit count.
 The Python `run_hero_request` API applies the same cap by default and treats a
 missing runtime value as the default; longer runs must be explicit positive
 bounded overrides. This keeps non-CLI launchers from creating an unbounded
@@ -2737,6 +2841,18 @@ full HP with no XP loss. This is the current verified skill state; keep the
 Cluh'g Mani route closed until its underwater and hazard gates can be met.
 Knight protection-vs-evil/undead remains the next intellectual chain when
 Dorrik earns intellectual practices.
+
+At the November 3 healer checkpoint after run **22559**, Dorrik was level **43**
+at **1,833,171 XP**, **6,329 XP** from level 44. The level-20 Midgaard teacher
+offers no useful lesson for his current priority list, while the source-backed
+level-30 Warrior teacher can advance enhanced damage toward **100%**. Prefer
+that lowest capable teacher when the fresh listing confirms the local teacher
+has no lesson. The route remains optional and unapproved until its independent
+water-breathing, source-hazard, resource, and live safety checks pass; a useful
+lesson plan is not travel permission. Before the next level, the martial stat
+selector should prefer constitution for hitpoint growth unless it is maxed or
+measured carrying pressure makes strength more important. If the trainer route
+is still blocked, preserve the practices and continue current-band XP.
 
 Run **17664** tested Celia at level 38. Dorrik fled at **177/893 HP** after
 his magical armor wore off and Celia was still alive. The flee cost **941 XP**;
@@ -3874,6 +3990,14 @@ stash/carrier selector until the quote is affordable, then allow the one-shot
 shop retry; never retry the purchase blindly or enter a detect-invisibility
 target without the required live affect. This handoff does not weaken the
 separate `spec_cast_psionicist` disintegrate-protection gate.
+After that ordinary funding selector is exhausted, one bank trip may cover a
+source-ranked hunt's combined flight and see-invisible costs only when both
+shop quotes are from the current boot, the visibility potion has live stock,
+and the selected route actually requires both preparations. Borrow only the
+exact carried-coin shortfall, bounded to 100-400 copper; if the teller directs
+withdrawal instead, request that same amount. A stale or missing visibility
+quote cannot authorize borrowing for an invisible target. The standalone
+flight-only loan remains available under its existing current-quote contract.
 Do not shorten specialised transit-recovery plans a second time. An early
 locator changes travel order, not candidate eligibility, movement admission,
 search limits, retries, or loss history.
@@ -4936,6 +5060,32 @@ multiple confirmations, and may not grant the required protection. First
 verify the exact patron's prayer list and character-specific favour from
 source/live evidence. Dorrik's October 9 attempt (run 16571) returned “You have
 no patron,” granted no Sanctuary, and left him safely at healer room 3054.
+
+The same recovery rule applies to an emergency no-recall escape. A generic
+source-ranked candidate is dispatchable only when source data proves either a
+direct return route or a replayed reverse of the audited outbound route; the
+outbound commands themselves are never a return plan. At the Ice Hall, take the
+source-verified open exit to the recallable room only when live flight, water
+travel, or another source-supported movement capability is present; otherwise
+consider prayer.
+Issue `bash west` only when the live skill audit shows a usable `bash door`
+skill. If an already-known Rescue prayer produces only the ordinary prayer
+response, do not select a patron or treat the acknowledgement as movement. Keep
+the character in the exact source-verified room, repair hunger/thirst from
+carried supplies, sleep, and retry Rescue at one-minute intervals while reading
+live output; DD4's source cap makes this a maximum six-hour connected wait. If
+a needed food or water supply is absent, this exact no-combat room may still
+sleep through the wait because the source clamps a starvation or dehydration
+hit that would cross zero, but the damage can still reduce health sharply. If
+health falls below 25%, wake and use a learned cure spell when the normal mana
+reserve allows it, capped at three casts before returning to sleep. Keep the
+live health, room, and no-combat checks active. Stop on a room change,
+combat/death, a broken live health/room boundary, or the bounded deadline.
+If the patron offers Transport but not Rescue, use it only for the
+source-registered Midgaard healer mobile **3012** in room **3054**. A refusal
+or missing target closes that exact fallback and is preserved as live evidence.
+This is a recovery exception for the exact Ice Hall route, not permission for
+generic timer waits or offline retry quotas.
 
 ## Mirror Realm Route Recheck
 

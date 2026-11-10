@@ -38,13 +38,20 @@ def test_recovery_does_not_trade_primary_damage_for_a_combat_tiebreaker():
     assert removals == additions == []
 
 
-@pytest.mark.parametrize("location", [APPLY_HIT, APPLY_MANA, 5])
-def test_real_recovery_or_stat_gain_can_still_replace_primary(location):
+@pytest.mark.parametrize("location", [APPLY_HIT, APPLY_MANA])
+def test_real_recovery_resource_can_replace_primary(location):
     branch, club, _ = equipment_case()
     club = replace(club, affects=((location, 20),))
     removals, additions = plan_stance_swaps([club], [branch], STANCE_RECOVERY)
     assert removals == [branch]
     assert additions == [club]
+
+
+def test_recovery_stat_only_gain_does_not_replace_primary():
+    branch, club, _ = equipment_case()
+    club = replace(club, affects=((5, 20),))
+    removals, additions = plan_stance_swaps([club], [branch], STANCE_RECOVERY)
+    assert removals == additions == []
 
 
 def test_recovery_weapon_set_bonus_is_not_discarded():

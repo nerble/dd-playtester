@@ -22,7 +22,11 @@ from dd4tester.teaching import (
     practice_gain,
     teacher_capacity,
 )
-from dd4tester.training import parse_practice_listing, training_priorities_for
+from dd4tester.training import (
+    parse_practice_listing,
+    plan_training_from_listing,
+    training_priorities_for,
+)
 
 
 STATS = {"str_mod": 30, "dex_mod": 17, "int_mod": 12, "wis_mod": 15}
@@ -88,6 +92,27 @@ def test_dorrik_practice_formula_from_handler_and_do_practice():
     assert practice_gain(66, 70, "physical", STATS) is None
     assert practice_gain(66, 85, "physical", STATS) == 69
     assert practice_gain(20, 70, "intellectual", STATS) == 36
+
+
+def test_bash_door_uses_the_inner_force_teacher_group_after_unlock():
+    listing = parse_practice_listing(
+        "Skills known:\n"
+        "inner force: 28%\n"
+        "Skills which may be learned:\n"
+        "bash door: 0%\n"
+        "You have 1 physical and 0 intellectual practices remaining."
+    )
+    choices = plan_training_from_listing(
+        "warrior",
+        listing,
+        character_level=45,
+        teacher_teachings={"inner force": 70},
+        skill_groups={"bash door": (("inner force", 0),)},
+        stats=STATS,
+    )
+
+    assert [choice.skill for choice in choices] == ["bash door"]
+    assert choices[0].practice_type == "physical"
 
 
 @pytest.mark.parametrize("updates", [{"str_mod": None}, {"int_mod": 50000}, {"dex_mod": True}, {"int_mod": "bad"}])
@@ -311,6 +336,30 @@ def test_distant_deferral_reopens_once_without_touching_combat_loss():
     assert not _training_deficit_repair_pending(state, character_level=25)
     assert state["campaign_training_deficit_repair"]["local_teacher_fallback"]["status"] == "consumed"
     assert state["campaign_protection_recovery_required"] == original_protection
+
+
+def test_policy_reaudit_reopens_local_teacher_fallback_after_priority_change():
+    world, _ = _world()
+    state = _state()
+    state["campaign_training_deficit_repair"]["policy_revision"] = "old-policy"
+    state["campaign_training_deficit_repair"]["attempted"] = False
+
+    _ensure_training_deficit_repair_marker(
+        state,
+        character_class="warrior",
+        subclass=None,
+    )
+    marker = state["campaign_training_deficit_repair"]
+    assert marker["attempted"] is False
+    assert marker["policy_reaudit_opened_revision"] == marker["policy_revision"]
+
+    _reopen_local_teacher_fallback(
+        state,
+        world=world,
+        character_class="warrior",
+        subclass=None,
+    )
+    assert state["campaign_training_deficit_repair"]["local_teacher_fallback"]["status"] == "pending"
 
 
 def test_legacy_local_visit_reopens_once_for_a_new_source_capable_skill():

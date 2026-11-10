@@ -42,7 +42,7 @@ def hunt():
     policy.needs_food = policy.needs_drink = False
     policy.current_room = "202"
     state = CharacterState(
-        level=8, hp=100, max_hp=100, mana=100, max_mana=100,
+        level=8, hp=150, max_hp=150, mana=100, max_mana=100,
         move=100, max_move=100, position=7, room_vnum="202",
     )
     return policy, state, locator, target

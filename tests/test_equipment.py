@@ -421,6 +421,51 @@ def test_rank_executable_ground_gear_sources_keeps_only_safe_current_upgrades() 
     assert placements[0].route == ("south",)
 
 
+def test_rank_executable_ground_gear_sources_rejects_depleted_lights() -> None:
+    torch = ObjectSource(
+        60,
+        "torch",
+        "a torch",
+        1,
+        (0, 0, 24, 0),
+        10,
+        wear_flags=1,
+    )
+    depleted = ObjectSource(
+        61,
+        "mint sprig",
+        "a sprig of mints",
+        1,
+        (0, 0, 0, 0),
+        20,
+        wear_flags=1,
+        affects=((13, 1),),
+        load_level_min=1,
+        load_level_max=5,
+    )
+    world = WorldSource(
+        objects={depleted.vnum: depleted},
+        rooms={
+            3001: RoomSource(
+                3001,
+                "recall",
+                "test.are",
+                exits={"south": ExitSource("south", 200, 0, -1)},
+            ),
+            200: RoomSource(200, "equipment room", "test.are"),
+        },
+        room_object_resets=[RoomObjectReset(depleted.vnum, 200)],
+    )
+
+    assert rank_executable_ground_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(torch,),
+        include_all_areas=True,
+    ) == []
+
+
 def test_rank_executable_ground_gear_sources_requires_full_reset_level_range() -> None:
     current = ObjectSource(
         40,

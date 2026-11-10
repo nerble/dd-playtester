@@ -108,6 +108,27 @@ def test_master_elf_exception_requires_protection_and_live_band(master_elf, sour
     )
 
 
+@pytest.mark.parametrize("character_level", [43, 45])
+def test_master_elf_route_closes_when_source_fuzz_can_reach_xp_floor(
+    master_elf,
+    source_world,
+    character_level,
+):
+    assert not campaign._source_ranked_master_elf_route_risk_allowed(
+        master_elf,
+        source_world,
+        character_level=character_level,
+    )
+    state = {**_prepared_state(), "level": character_level}
+    assert not campaign._source_ranked_candidate_in_current_band(
+        master_elf,
+        state,
+        world=source_world,
+        character_level=character_level,
+        character_max_hp=937,
+    )
+
+
 def test_other_level_40_undead_casters_remain_closed(master_elf, source_world):
     other = replace(
         master_elf,

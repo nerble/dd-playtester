@@ -227,11 +227,15 @@ class GearCatalog:
 
         Bonuses remain source estimates, not an identification of live affects.
         """
-        vnum, level = record.get("vnum"), record.get("level")
+        vnum = record.get("vnum")
         item = self.objects.get(vnum) if type(vnum) is int else None
+        level = record.get("level", item.level if item is not None else None)
         if (
             item is None or type(level) is not int or not 0 <= level <= 100
-            or record.get("item_type") != item.item_type
+            or (
+                record.get("item_type") is not None
+                and record.get("item_type") != item.item_type
+            )
             or normalize_item_name(str(record.get("name") or ""))
             != normalize_item_name(item.short_description)
             or not character_can_use_item(
@@ -675,6 +679,7 @@ def rank_executable_ground_gear_sources(
     character_max_hp: int | None = None,
     recall_origins: Mapping[int, int] | None = None,
     require_no_flight: bool = False,
+    ranked_placements: Sequence[GearSourcePlacement] | None = None,
 ) -> list[GearSourcePlacement]:
     """Return exact ground-reset upgrades that the runner can execute.
 
@@ -684,18 +689,22 @@ def rank_executable_ground_gear_sources(
     resets whose route audit has no autonomy rejection and whose object is
     wearable at the current level.
     """
-    placements = rank_gear_sources(
-        world,
-        character_level=character_level,
-        character_class=character_class,
-        subclass=subclass,
-        character_alignment=character_alignment,
-        stance=stance,
-        level_gain_priorities=level_gain_priorities,
-        current_items=current_items,
-        include_all_areas=include_all_areas,
-        character_max_hp=character_max_hp,
-        recall_origins=recall_origins,
+    placements = (
+        list(ranked_placements)
+        if ranked_placements is not None
+        else rank_gear_sources(
+            world,
+            character_level=character_level,
+            character_class=character_class,
+            subclass=subclass,
+            character_alignment=character_alignment,
+            stance=stance,
+            level_gain_priorities=level_gain_priorities,
+            current_items=current_items,
+            include_all_areas=include_all_areas,
+            character_max_hp=character_max_hp,
+            recall_origins=recall_origins,
+        )
     )
     executable: list[GearSourcePlacement] = []
     for placement in placements:
@@ -708,6 +717,10 @@ def rank_executable_ground_gear_sources(
             or not placement.route_vnums
             or item is None
             or not is_releasable_funding_item(item)
+            or (
+                item_category(item) == "light"
+                and not is_active_light_source(item)
+            )
             # The parser keeps the full reset-derived range.  The lower edge
             # is useful for research, but a live object can arrive at any
             # level in that range and DD4 refuses to wear it above the
@@ -735,24 +748,29 @@ def rank_executable_carrier_gear_sources(
     character_max_hp: int | None = None,
     recall_origins: Mapping[int, int] | None = None,
     require_no_flight: bool = False,
+    ranked_placements: Sequence[GearSourcePlacement] | None = None,
 ) -> list[GearSourcePlacement]:
     """Return safe upgrades that require defeating a source-listed carrier.
 
     The returned placement is still only an equipment plan.  The campaign
     must pair it with the matching source hunt candidate before live combat.
     """
-    placements = rank_gear_sources(
-        world,
-        character_level=character_level,
-        character_class=character_class,
-        subclass=subclass,
-        character_alignment=character_alignment,
-        stance=stance,
-        level_gain_priorities=level_gain_priorities,
-        current_items=current_items,
-        include_all_areas=include_all_areas,
-        character_max_hp=character_max_hp,
-        recall_origins=recall_origins,
+    placements = (
+        list(ranked_placements)
+        if ranked_placements is not None
+        else rank_gear_sources(
+            world,
+            character_level=character_level,
+            character_class=character_class,
+            subclass=subclass,
+            character_alignment=character_alignment,
+            stance=stance,
+            level_gain_priorities=level_gain_priorities,
+            current_items=current_items,
+            include_all_areas=include_all_areas,
+            character_max_hp=character_max_hp,
+            recall_origins=recall_origins,
+        )
     )
     executable: list[GearSourcePlacement] = []
     for placement in placements:
@@ -766,6 +784,10 @@ def rank_executable_carrier_gear_sources(
             or not placement.route
             or item is None
             or not is_releasable_funding_item(item)
+            or (
+                item_category(item) == "light"
+                and not is_active_light_source(item)
+            )
             # A carrier's object can have the same reset-level fuzz as a
             # ground reset. Do not dispatch a required-loot route whose
             # object may load above the character's current level.

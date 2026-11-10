@@ -44,6 +44,29 @@ _SOURCE_HUNT_ID = re.compile(
 # do not add an attack, protection, movement, or crowd hazard to a plain reset.
 _SOURCE_SEQUENTIAL_PASSIVE_AFFECTS = (1 << 2) | (1 << 5) | (1 << 9)
 
+# Population checks are called repeatedly while the source-ranked selector
+# rotates through candidates.  The source world is immutable for a campaign
+# plan, so build the reset index once instead of scanning every reset for each
+# candidate.
+_WORLD_RESET_INDEX_CACHE: dict[
+    int, tuple[WorldSource, dict[int, tuple[Any, ...]]]
+] = {}
+
+
+def _resets_by_mobile_for_world(
+    world: WorldSource,
+) -> dict[int, tuple[Any, ...]]:
+    cache_key = id(world)
+    cached = _WORLD_RESET_INDEX_CACHE.get(cache_key)
+    if cached is not None and cached[0] is world:
+        return cached[1]
+    indexed: dict[int, list[Any]] = {}
+    for reset in world.mob_resets:
+        indexed.setdefault(reset.mobile_vnum, []).append(reset)
+    result = {mobile_vnum: tuple(resets) for mobile_vnum, resets in indexed.items()}
+    _WORLD_RESET_INDEX_CACHE[cache_key] = (world, result)
+    return result
+
 
 def _source_sequential_reset_objects_are_harmless(
     world: WorldSource,
@@ -407,11 +430,12 @@ def plain_bounded_mobile_population(
         or world.mobile_specials.get(mobile.vnum)
     ):
         return False
-    resets = (
-        list(resets_by_mobile.get(mobile.vnum, ()))
+    reset_index = (
+        resets_by_mobile
         if resets_by_mobile is not None
-        else [reset for reset in world.mob_resets if reset.mobile_vnum == mobile.vnum]
+        else _resets_by_mobile_for_world(world)
     )
+    resets = list(reset_index.get(mobile.vnum, ()))
     if (
         not 2 <= len(resets) <= 4
         or len({reset.room_vnum for reset in resets}) != len(resets)
@@ -467,6 +491,15 @@ def plain_bounded_population(
         and candidate.autonomy_rejections
         == ("target reset capacity exceeds one",)
     )
+    reset_index = (
+        resets_by_mobile
+        if resets_by_mobile is not None
+        else _resets_by_mobile_for_world(world)
+    )
+    target_resets = tuple(
+        reset for reset in reset_index.get(mobile.vnum, ())
+        if reset.mobile_vnum == mobile.vnum
+    )
     return bool(
         not candidate.specials and not candidate.equipped_weapons
         and not candidate.is_coin_stash
@@ -478,14 +511,9 @@ def plain_bounded_population(
         and 2 <= candidate.source_spawn_limit <= 4
         and type(candidate.room_spawn_count) is int and candidate.room_spawn_count == 1
         and candidate.level == mobile.level and candidate.area_file == mobile.area_file
-        and any(reset.room_vnum == candidate.room_vnum for reset in (
-            resets_by_mobile.get(mobile.vnum, ())
-            if resets_by_mobile is not None
-            else world.mob_resets
-        ) if reset.mobile_vnum == mobile.vnum)
-        and all(reset.maximum_count == candidate.source_spawn_limit for reset in (
-            resets_by_mobile.get(mobile.vnum, ())
-            if resets_by_mobile is not None
-            else world.mob_resets
-        ) if reset.mobile_vnum == mobile.vnum)
+        and any(reset.room_vnum == candidate.room_vnum for reset in target_resets)
+        and all(
+            reset.maximum_count == candidate.source_spawn_limit
+            for reset in target_resets
+        )
     )

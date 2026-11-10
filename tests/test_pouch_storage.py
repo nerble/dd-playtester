@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from dd4tester.equipment import GearCatalog, ITEM_CURSED, ITEM_NODROP
-from dd4tester.hunt_candidates import ObjectSource
+from dd4tester.hunt_candidates import ITEM_PILL, ObjectSource
 from dd4tester.pouch_storage import HealerPouchStorage, empty_pouch_storage_plan
 
 
@@ -83,6 +83,40 @@ def test_storage_requires_each_acknowledgement_and_fresh_capacity() -> None:
     assert storage.next_command(37, 38, now=4.1) is None
     assert storage.receipt()["status"] == "complete"
     assert storage.receipt()["storage_only"]
+
+
+def test_storage_can_free_capacity_with_duplicate_source_pills() -> None:
+    pouch = ObjectSource(
+        3370, "beltpouch belt pouch", "a small leather pouch", 15,
+        (9, 0, -1, 0), 1, weight=1,
+    )
+    beads = ObjectSource(
+        10721, "enchanted prayer beads", "enchanted prayer beads", ITEM_PILL,
+        (1, 0, 0, 0), 1, weight=1, extra_flags=64,
+    )
+    catalog = GearCatalog({pouch.vnum: pouch, beads.vnum: beads})
+    plan = empty_pouch_storage_plan(
+        ["enchanted prayer beads", "enchanted prayer beads"],
+        [{"slot": "pouch", "vnum": pouch.vnum, "name": pouch.short_description}],
+        catalog,
+    )
+
+    assert plan is not None
+    assert plan.potion_keyword == "enchanted"
+    assert plan.potion_vnums == (beads.vnum,)
+    assert plan.quantity == 2
+
+    storage = HealerPouchStorage()
+    assert storage.begin(plan, 41, now=0) == "look in beltpouch"
+    storage.observe("A small leather pouch contains:\nNothing.\n" + PROMPT, now=1)
+    assert storage.next_command(41, 41, now=1) == "put enchanted beltpouch"
+    storage.observe("You put enchanted prayer beads in a small leather pouch.\n", now=2)
+    assert storage.next_command(40, 41, now=2) == "put enchanted beltpouch"
+    storage.observe("You put enchanted prayer beads in a small leather pouch.\n", now=3)
+    assert storage.next_command(39, 41, now=3) == "inventory"
+    storage.observe("Your backpack contains:\nYou are carrying 39/41 items.\n", now=4)
+    assert storage.next_command(39, 41, now=4.1) is None
+    assert storage.receipt()["status"] == "complete"
 
 
 def test_storage_capacity_failure_and_late_reply_stay_visible() -> None:

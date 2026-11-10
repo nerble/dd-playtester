@@ -1769,12 +1769,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "magic-shop-research":
         try:
+            magic_shop_options = {
+                "buy_fly": args.buy_fly,
+                "buy_see_invisible": args.buy_see_invisible,
+            }
+            if args.buy_water_breathing:
+                magic_shop_options["buy_water_breathing"] = True
             result = asyncio.run(
                 run_magic_shop_research_profile(
                     args.profile,
-                    buy_fly=args.buy_fly,
-                    buy_see_invisible=args.buy_see_invisible,
-                    buy_water_breathing=args.buy_water_breathing,
+                    **magic_shop_options,
                 )
             )
         except Exception as exc:
@@ -3572,27 +3576,31 @@ def _readiness_candidate_record(
     candidate: Any,
     *,
     level: int,
-    output: Any,
-    state: Mapping[str, Any],
-    source_world: Any,
+    output: Any = None,
+    output_ceiling: int | None = None,
+    state: Mapping[str, Any] | None = None,
+    source_world: Any = None,
 ) -> dict[str, Any]:
+    state = state or {}
     source_minimum, source_maximum = candidate.estimated_level_range
     hp_minimum, hp_maximum = candidate.estimated_base_hp_range
     in_band = _readiness_candidate_in_band(candidate, level)
-    mobile = source_world.mobiles.get(candidate.mobile_vnum)
+    mobiles = getattr(source_world, "mobiles", {})
+    mobile = mobiles.get(candidate.mobile_vnum) if hasattr(mobiles, "get") else None
     target_sanctuary = source_mobile_has_sanctuary(mobile)
     adjusted_output = (
         sanctuary_limited_output(output)
         if output is not None and target_sanctuary
         else output
     )
-    output_ceiling = (
-        int(adjusted_output.conservative_damage)
-        * int(adjusted_output.maximum_actions)
-        + int(adjusted_output.opening_conservative_damage or 0)
-        if adjusted_output is not None
-        else 0
-    )
+    if output_ceiling is None:
+        output_ceiling = (
+            int(adjusted_output.conservative_damage)
+            * int(adjusted_output.maximum_actions)
+            + int(adjusted_output.opening_conservative_damage or 0)
+            if adjusted_output is not None
+            else 0
+        )
     fame_window = _readiness_fame_window(
         candidate,
         level=level,

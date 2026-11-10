@@ -252,7 +252,7 @@ def test_pending_same_boot_visibility_retry_overrides_one_old_failure():
     assert _magic_shop_see_invisible_failure_active(state)
 
 
-def test_unaffordable_visibility_preparation_switches_to_bounded_funding():
+def test_failed_visibility_purchase_does_not_start_a_funding_loop():
     selected = ProgressionPolicy(
         policy_id="source-ranked-hunt-test-903-947-39",
         minimum_level=39,
@@ -288,9 +288,8 @@ def test_unaffordable_visibility_preparation_switches_to_bounded_funding():
         can_prepare=True,
     )
 
-    assert policy is not None
-    assert policy.execution == "provision-funding"
-    assert state[_SEE_INVISIBLE_FUNDING_REQUIRED_KEY] is True
+    assert policy is None
+    assert _SEE_INVISIBLE_FUNDING_REQUIRED_KEY not in state
 
 
 def test_rejected_visibility_research_does_not_trigger_funding():

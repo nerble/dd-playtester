@@ -347,9 +347,9 @@ def test_run_12745_fragile_target_queues_withdrawal_ahead_of_first_spell(monkeyp
     clock[0] = .2
     policy.observe_text("Your pierce misses Katrina the Shepherd.\n")
     decision = policy._between_round_combat_decision(state)
-    assert decision.command == "order #23679 flee"
-    assert "short finishing reserve" in decision.reason
-    assert policy.combat_command_window.evidence()["early_withdrawals"] == 1
+    assert decision.command == "order #23679 flee Fear"
+    assert "withdraw the summoned familiar" in decision.reason
+    assert policy.combat_command_window.evidence()["early_withdrawals"] == 0
     assert policy._between_round_combat_decision(state) is None
 
 
@@ -361,7 +361,7 @@ def test_standard_withdrawal_preempts_pending_spell_and_cooldown(monkeypatch):
     policy.between_round_action_issued = True
     policy.between_round_action_ready_at = 100
     policy.combat_command_window.issue("cast 'chill touch' #22916", target=policy.active_target, now=0)
-    assert policy._between_round_combat_decision(state).command == "order #23679 flee"
+    assert policy._between_round_combat_decision(state).command == "order #23679 flee Fear"
 
 
 def test_missing_acknowledgement_suspends_injection_without_fleeing_a_healthy_fight(monkeypatch):
@@ -431,7 +431,7 @@ def test_real_source_katrina_stop_preserves_entry_gate_and_enables_short_finish(
              if s.source_mobile_vnum == 2405]
     assert stops and all(s.require_familiar for s in stops)
     for stop in stops:
-        assert stop.source_peak_round_damage is None
+        assert stop.source_peak_round_damage == target.estimated_peak_round_damage
         assert stop.source_familiar_finish_peak_round_damage == target.estimated_peak_round_damage
     policy, live, clock = policy_fixture(monkeypatch)
     policy.source_world = world
@@ -440,4 +440,4 @@ def test_real_source_katrina_stop_preserves_entry_gate_and_enables_short_finish(
     policy.familiar_preparation.selector = "#23679"
     decision = policy._between_round_combat_decision(live)
     assert decision.command == "order #23679 flee Fear"
-    assert "short finishing reserve" in decision.reason
+    assert "withdraw the summoned familiar" in decision.reason

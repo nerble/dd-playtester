@@ -2307,6 +2307,27 @@ _CONSUMABLE_TRAINING_TRAVEL_POLICY = ProgressionPolicy(
     practice_skill=None,
 )
 
+_SOURCE_INVISIBILITY_SUPPLY_POLICY = ProgressionPolicy(
+    policy_id="source-invisibility-supply-2-100",
+    minimum_level=2,
+    maximum_level=100,
+    status="research",
+    execution="source-invisibility-supply",
+    summary=(
+        "Acquire one source-audited invisibility potion before reopening "
+        "a current-band route whose aggression is blocked by invisibility."
+    ),
+    evidence=(
+        "The source mirror resets object VNUM 19021 on shopkeeper VNUM 19024 "
+        "in room 19070.",
+        "The purchase uses a fresh live shop quote and inventory confirmation, "
+        "then confirms the potion's active invisibility affect before return.",
+        "This is a capability-maintenance segment; it earns no XP credit and "
+        "does not waive the later route, identity, consider, or health gates.",
+    ),
+    practice_skill=None,
+)
+
 _AUDIT_COMBAT_POUCH_POLICY = ProgressionPolicy(
     policy_id="audit-combat-pouch",
     minimum_level=2,
@@ -2973,6 +2994,33 @@ _VAMPIRE_CATACOMBS_LEVEL_38_40_POLICY = ProgressionPolicy(
     ),
 )
 
+_VAMPIRE_CATACOMBS_LEVEL_41_44_POLICY = ProgressionPolicy(
+    policy_id="vampire-catacombs-hunt-41-44",
+    minimum_level=41,
+    maximum_level=45,
+    status="research",
+    execution="vampire-catacombs-hunt",
+    summary=(
+        "Use the verified Kerofk bouncer route for exact level-40-to-42 "
+        "Catacombs targets while Dorrik is level 41-45."
+    ),
+    evidence=(
+        "The fixed recall route ends at the bouncer in room 9571, whose "
+        "source program transfers characters above level 14 to room 9500.",
+        "Current-band targets are Grok (9510), the wandering art critic "
+        "(9545), Mavralyn (9523), Augus (9541), and Grieb (9542). Each "
+        "reset/loadout and route is re-audited from current DD4 source; the "
+        "three level-41/42 targets require the verified spiked key.",
+        "Grok's source-confirmed warrior special requires a verified "
+        "Sanctuary reserve. Every target still requires fresh live identity, "
+        "isolation, useful `consider`, output, and the character's own "
+        "withdrawal checks; target hitpoints do not determine admission.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=3,
+    source_mobile_vnums=(9510, 9545, 9523, 9541, 9542),
+)
+
 _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
     policy_id="vampire-catacombs-key-unlock-38-39",
     minimum_level=38,
@@ -3006,18 +3054,18 @@ _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
 _VAMPIRE_CATACOMBS_KEY_RECOVERY_38_40_POLICY = ProgressionPolicy(
     policy_id="vampire-catacombs-key-recovery-38-40",
     minimum_level=38,
-    maximum_level=40,
+    maximum_level=44,
     status="research",
     execution="vampire-catacombs-key-recovery",
     summary=(
-        "Recover a previously verified spiked-key stash in the Vampire "
-        "Catacombs before its reboot-scoped floor object disappears."
+        "Recover the Catacombs spiked key after a fresh world-cache miss, "
+        "or reclaim a verified floor key."
     ),
     evidence=(
-        "The key-drop policy verifies the exact key is absent from inventory "
-        "in room 9517 after Joan is defeated.",
-        "Recovery is same-boot and source-audited; it does not authorize a "
-        "second Joan fight or infer that an unverified old key still exists.",
+        "After the exact room-3007 cache miss, Joan's source reset in room "
+        "9517 remains an alternate key source at levels 41-44.",
+        "The existing route still requires fresh live identity, consider, "
+        "crowd, required-loot confirmation, and own-health checks.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -5723,6 +5771,70 @@ _MIRROR_REALM_TEECE_HUNT_POLICY = replace(
     source_mobile_vnums=(19069,),
 )
 
+_MIRROR_REALM_PROPRIETOR_HUNT_POLICY = replace(
+    _MIRROR_REALM_PLAIN_HUNT_POLICY,
+    policy_id="mirror-realm-proprietor-hunt-41-45",
+    minimum_level=41,
+    maximum_level=45,
+    summary=(
+        "Hunt up to three separately checked Mirror Realm opponents "
+        "in one visit after the ordinary current-band frontier is exhausted."
+    ),
+    evidence=(
+        "The proprietor (mobile 19029) is a level-45 solitary sentinel at "
+        "room 19075, with no aggressive flag, special, or mobile program.",
+        "Its only weapon-like reset object is pocketknife 19078 in inventory, "
+        "not equipped. Mrs Truxton (mobile 19030) is a level-45 solitary "
+        "sentinel at room 19076, with ordinary armor only and no special or "
+        "mobile program. Mr. Teece (mobile 19069) is a level-40 solitary "
+        "sentinel at room 19166, with no combat weapon, special, or mobile "
+        "program; he is within five levels below this character band. All "
+        "isolated routes from Mirror Suite room 19170 are source-checked.",
+        "This policy grants no automatic kills: each stop requires fresh live "
+        "identity, consider, isolation, output, health, and return checks.",
+    ),
+    segment_kill_limit=3,
+    source_mobile_vnums=(19029, 19030, 19069),
+)
+
+_MIRROR_REALM_TEECE_HUNT_41_45_POLICY = replace(
+    _MIRROR_REALM_PROPRIETOR_HUNT_POLICY,
+    policy_id="mirror-realm-teece-hunt-41-45",
+    summary=(
+        "Check the exact level-40 Mr. Teece as an independent Mirror Realm "
+        "target after the ordinary current-band frontier is exhausted."
+    ),
+    evidence=(
+        "Mr. Teece (mobile 19069) is a solitary level-40 sentinel at room "
+        "19166, with no combat weapon, special, or mobile program. The "
+        "source-registered route from Mirror Suite room 19170 is isolated.",
+        "He is within five levels below a level-41 to 45 character; fresh "
+        "live identity, consider, isolation, output, health, and return "
+        "checks decide whether this target is fought.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(19069,),
+)
+
+_MIRROR_REALM_LIBRARIAN_HUNT_POLICY = replace(
+    _MIRROR_REALM_PROPRIETOR_HUNT_POLICY,
+    policy_id="mirror-realm-librarian-hunt-41-45",
+    summary=(
+        "Check the exact level-45 Mirror Realm librarian as a separate "
+        "target after the ordinary current-band frontier is exhausted."
+    ),
+    evidence=(
+        "Mrs Truxton (mobile 19030) is a level-45 solitary sentinel at room "
+        "19076, with no aggressive flag, special, or mobile program.",
+        "The source reset equips only ordinary armor. The isolated room and "
+        "registered route from Mirror Suite room 19170 are source-checked.",
+        "Fresh live identity, consider, isolation, output, health, and return "
+        "checks decide whether this target is fought.",
+    ),
+    segment_kill_limit=1,
+    source_mobile_vnums=(19030,),
+)
+
 
 _PIT_OFFICIAL_RESEARCH_POLICY = ProgressionPolicy(
     "pit-official-probe-41-45", 41, 45, "research", "pit-official-research",
@@ -6667,11 +6779,39 @@ def policy_for(
             )
         )
         if sanctuary_recovery_blocked and not source_ranked_fallback:
+            if context.level >= 21:
+                # Once the level-21 frontier is active, a crowd or cooldown
+                # on the generic carrier closes that maintenance route only;
+                # independent current-band targets must remain available to
+                # the standalone selector as well as CampaignRunner.
+                return _source_ranked_sanctuary_recovery_wait_policy(context)
             # A failed or absent Sanctuary carrier closes that exact
-            # maintenance route, not the whole current-band frontier. Keep
-            # independent plain targets eligible; their live consider,
-            # identity, output, health, and return gates still decide combat.
-            return _source_ranked_sanctuary_recovery_wait_policy(context)
+            # maintenance route. The standalone policy API reports the
+            # unresolved protection gate; CampaignRunner passes the explicit
+            # source-ranked fallback flag when it has an independent live
+            # candidate to evaluate.
+            terminal = _research_fatal_failure_active(
+                context,
+                sanctuary_recovery_policy_id,
+            )
+            return replace(
+                _UNAVAILABLE_POLICY,
+                minimum_level=context.level,
+                maximum_level=context.level,
+                summary=(
+                    "Protection recovery remains required, but the source-"
+                    "ranked Sanctuary route has a terminal failure for this "
+                    "reboot; continue only after an independent source-safe "
+                    "fallback is explicitly supplied."
+                    if terminal
+                    else "Protection recovery remains required, but the "
+                    "source-ranked Sanctuary route is on a current-reboot "
+                    "cooldown; continue only after an independent source-safe "
+                    "fallback is explicitly supplied."
+                ),
+                evidence=_SOURCE_RANKED_SANCTUARY_RECOVERY_POLICY.evidence,
+                practice_skill=context.practice_skill,
+            )
         if sanctuary_recovery_blocked and selected.execution == "recover-daycare-ring":
             # The ring is optional maintenance. Once protection recovery has
             # been exhausted for this reboot, keep the current-band fallback

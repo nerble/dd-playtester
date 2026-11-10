@@ -42,6 +42,74 @@ def test_append_entry_rejects_nested_streamer_header(tmp_path: Path) -> None:
     assert not path.exists()
 
 
+def test_append_entry_rejects_nested_timestamped_assistant_line(tmp_path: Path) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+
+    with pytest.raises(ValueError, match="nested timestamped line"):
+        append_entry(
+            path,
+            "CODEX COMMENTARY",
+            "The update starts here.\n"
+            "[2026-08-13 8:34:40 PM NZST] The update repeats here.",
+        )
+
+    assert not path.exists()
+
+
+def test_append_entry_rejects_lowercase_nested_timestamped_assistant_line(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+
+    with pytest.raises(ValueError, match="nested timestamped line"):
+        append_entry(
+            path,
+            "CODEX COMMENTARY",
+            "The update starts here.\n"
+            "[2026-08-13 8:34:40 pm NZST] The update repeats here.",
+        )
+
+    assert not path.exists()
+
+
+def test_append_entry_rejects_consecutive_duplicate_assistant_body(tmp_path: Path) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    append_entry(path, "CODEX COMMENTARY", "Record this once.")
+
+    with pytest.raises(ValueError, match="consecutive duplicate"):
+        append_entry(path, "CODEX COMMENTARY", "Record this once.")
+
+
+def test_append_entry_rejects_recent_duplicate_after_intervening_record(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    append_entry(path, "CODEX COMMENTARY", "Record this once.")
+    append_entry(path, "USER", "A separate steering message.")
+
+    with pytest.raises(ValueError, match="recent conversation"):
+        append_entry(path, "CODEX COMMENTARY", "Record this once.")
+
+
+def test_append_entry_rejects_prose_variant_of_recent_duplicate(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    append_entry(
+        path,
+        "CODEX COMMENTARY",
+        "The bot recalled without starting combat. I am checking the next route.",
+    )
+    append_entry(path, "USER", "Keep going.")
+
+    with pytest.raises(ValueError, match="recent conversation"):
+        append_entry(
+            path,
+            "CODEX COMMENTARY",
+            "The bot recalled without starting combat. I’m checking the next route.",
+        )
+
+
 def test_append_command_reads_unicode_body_from_stdin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -55,7 +123,29 @@ def test_append_command_reads_unicode_body_from_stdin(
     output = capsys.readouterr().out
     assert " CODEX COMMENTARY\n" in path.read_text(encoding="utf-8")
     assert "Don't lose the user's exact words: café." in path.read_text(encoding="utf-8")
-    assert " NZST\n" in output
+    assert "] CODEX COMMENTARY\n" in output
+
+
+def test_append_command_can_suppress_header_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "DEVELOPMENT_CONVERSATION.txt"
+    monkeypatch.setattr(sys, "stdin", io.StringIO("Only record this once.\n"))
+
+    assert main(
+        [
+            "--path",
+            str(path),
+            "append",
+            "--speaker",
+            "CODEX COMMENTARY",
+            "--body-stdin",
+            "--quiet",
+        ]
+    ) == 0
+
+    assert capsys.readouterr().out == ""
+    assert "Only record this once." in path.read_text(encoding="utf-8")
 
 
 def test_append_command_decodes_utf8_pipe_bytes_on_windows(

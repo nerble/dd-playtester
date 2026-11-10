@@ -419,7 +419,7 @@ def test_three_trap_charges_fit_the_bounded_completion_budget():
         now += 2
 
     assert digging.commands == small_budget.maximum_dig_commands
-    digging.observe(_SUCCESS + PROMPT)
+    digging.observe("With a final effortful thrust, you unearth something!" + PROMPT)
     assert digging.poll(
         observed(sequence=sequence, current_budget=small_budget), now=now,
     ).status == "unearthed"
@@ -549,6 +549,8 @@ def test_hoard_object_checkpoint_round_trips_and_reads_v1():
     legacy.pop("unearthed_sequence")
     legacy.pop("quest_object_selector")
     legacy.pop("quest_object_acquired_sequence")
+    legacy.pop("quest_object_baseline_count")
+    legacy.pop("quest_object_pickup_sequence")
     restored_legacy = HoardDigSession.from_checkpoint(legacy)
     assert restored_legacy.stage == "unearthed"
     assert restored_legacy._unearthed_sequence == 2

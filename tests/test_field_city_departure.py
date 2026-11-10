@@ -382,7 +382,7 @@ def test_bounded_city_transit_carries_one_live_drunk_on_the_audited_route(
     assert bot.city_shop_transit.status == "idle"
 
 
-def test_trainer_route_locates_under_band_drunk_before_entering_city(
+def test_trainer_route_ignores_under_band_drunk_before_entering_city(
     world, monkeypatch,
 ):
     bot, state, _ = setup(world, monkeypatch, "warrior")
@@ -400,20 +400,7 @@ def test_trainer_route_locates_under_band_drunk_before_entering_city(
     )
 
     locate = bot._fastwalk_training_decision(recall)
-    assert locate is not None and locate.command == "where drunk"
-    bot.after_command(locate)
-    bot.observe_text(
-        "You detect the presence of:\n"
-        "The drunk                    The Temple Square\n"
-        "<594/594 hits 324/324 mana 220/220 move [Midgaard]>"
-    )
-    bot.prompt_ready = True
-
-    withdraw = bot._fastwalk_training_decision(recall)
-
-    assert withdraw is not None and withdraw.command == "north"
-    assert bot.fastwalk_training_complete
-    assert bot.fastwalk_training_deferred_after_route_hazard
+    assert locate is not None and locate.command == "south"
 
 
 @pytest.mark.parametrize(
@@ -643,7 +630,7 @@ def test_blocked_source_greet_route_rechecks_after_one_movement_gated_detour(
     assert not bot.magic_shop_route_blocked_by_drunk
 
 
-def test_changed_healer_locator_allows_one_bounded_route_correction(
+def test_changed_healer_locator_does_not_reopen_below_band_drunk_transit(
     world, monkeypatch,
 ):
     bot, state, _ = setup(world, monkeypatch)
@@ -654,64 +641,9 @@ def test_changed_healer_locator_allows_one_bounded_route_correction(
         "source-ranked hunt dad 4415", 1, 100,
         "s;s;e;e;e;s;s;s;s;s;s;s;s",
     )
-    locate(
-        bot,
-        state,
-        "You detect the presence of:\n"
-        "The drunk                    Practice Yard\n"
-        "The drunk                    Main Street",
-    )
-
-    handled, first_detour_check = bot._field_city_departure_decision(state)
-    assert handled and first_detour_check.command == "where drunk"
-    bot.after_command(first_detour_check)
-    bot.observe_text(
-        "You detect the presence of:\n"
-        "The drunk                    Practice Yard\n"
-        "The drunk                    Market Square\n"
-        "<142/142 hits 324/324 mana 230/230 move [Midgaard]>"
-    )
-    bot.prompt_ready = True
-
-    handled, correction_check = bot._field_city_departure_decision(state)
-
-    assert handled and correction_check.command == "where drunk"
-    assert bot.field_city_route_correction_attempted
-    assert bot.field_city_detour_evidence["blocked_locations"] == [
-        "practice yard", "main street",
-    ]
-    assert bot.field_city_route_correction_evidence["blocked_locations"] == [
-        "practice yard", "market square",
-    ]
-    assert bot.fastwalk_required_move == 144
-    route_rooms = field_city_route_rooms(
-        world,
-        bot.fastwalk_route.commands,
-        origin=3001,
-        alignment=50000,
-        level=9,
-    )
-    normalize = lambda room: " ".join(room.casefold().split()).removeprefix("the ")
-    assert not {"practice yard", "market square"}.intersection(
-        normalize(room) for room in route_rooms
-    )
-
-    bot.after_command(correction_check)
-    bot.observe_text(
-        "You detect the presence of:\n"
-        "The drunk                    Practice Yard\n"
-        "The drunk                    Market Square\n"
-        "<142/142 hits 324/324 mana 230/230 move [Midgaard]>"
-    )
-    bot.prompt_ready = True
-    assert bot._field_city_departure_decision(state) == (False, None)
-    assert bot.field_city_route_correction_attempted
-
-    bot.magic_shop_route_blocked_by_drunk = True
-    bot.magic_shop_drunk_preflight_locations = ("Temple Square",)
-    handled, wait = bot._field_city_departure_decision(state)
-    assert handled and wait.command == "sleep"
-    assert bot.field_city_route_correction_attempted
+    handled, decision = bot._field_city_departure_decision(state)
+    assert not handled and decision is None
+    assert not bot.field_city_route_correction_attempted
 
 
 def test_source_city_detour_waits_for_enough_movement(world, monkeypatch):

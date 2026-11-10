@@ -114,7 +114,7 @@ def test_passive_search_retains_normal_circuit_resource_return(resource):
     assert policy.fastwalk_returning
 
 
-def test_run_12804_search_continues_from_passive_cave_without_new_searches():
+def test_run_12804_does_not_enter_poisonous_carrier_endpoint():
     world = load_world_source(Path("runs/dd4-source/server/area"), include_all_areas=True)
     candidate = next(candidate for candidate in rank_hunt_candidates(
         world, character_level=8, include_below_band=True,
@@ -127,6 +127,12 @@ def test_run_12804_search_continues_from_passive_cave_without_new_searches():
     policy.fastwalk_hunt_stops = tuple(replace(
         stop, required_items=("a yellow and green ring",), allow_below_band_for_required_loot=True,
     ) for stop in policy.fastwalk_hunt_stops)
+    # Keep this historical passive-cave continuation fixture independent of
+    # source-route ranking changes: the test supplies the live room below.
+    policy.fastwalk_hunt_stops = tuple(
+        replace(stop, route_vnums=("4025",)) if index == 2 else stop
+        for index, stop in enumerate(policy.fastwalk_hunt_stops)
+    )
     original_stops = policy.fastwalk_hunt_stops
     policy.fastwalk_hunt_stop_index = 2
     stop = policy.fastwalk_hunt_stops[2]
@@ -149,16 +155,10 @@ def test_run_12804_search_continues_from_passive_cave_without_new_searches():
         room_vnum="4025", position=7, enemies=None, exits={"east": "4026", "south": "4018"},
     )
     decision = policy._fastwalk_hunt_plan_decision(state)
-    assert decision.command == "look" and "absent" in decision.reason
+    assert decision.command == "recall"
+    assert "source-identified combat-capable bystander" in decision.reason
     assert policy.fastwalk_hunt_stops == original_stops
-    assert not policy.fastwalk_emergency_recall_pending
+    assert policy.fastwalk_emergency_recall_pending
     assert policy.fastwalk_target_present_observed == prior_area_presence
     assert not policy.fastwalk_room_target_present_observed
-    commands = []
-    for _ in range(3):
-        decision = policy._fastwalk_hunt_plan_decision(state)
-        commands.append(decision.command)
-        if decision.command == "south":
-            break
-    assert commands[-1] == "south"
-    assert policy.fastwalk_hunt_stop_index == 3
+    assert policy.fastwalk_hunt_stop_index == 2

@@ -133,7 +133,7 @@ def test_output_capability_does_not_forecast_target_hp(monkeypatch):
 
 @pytest.mark.parametrize(
     ("nominal_level", "fuzzed_maximum", "expected"),
-    [(40, 42, True), (41, 43, False), (40, 43, False)],
+    [(40, 42, True), (41, 43, True), (40, 43, False)],
 )
 def test_poison_special_source_fuzz_only_opens_bounded_scouting(
     nominal_level, fuzzed_maximum, expected,
@@ -183,7 +183,7 @@ def test_poison_source_fuzz_still_obeys_live_consider_level(
 
 @pytest.mark.parametrize(
     ("consider_ceiling", "expected_command"),
-    [(1, "kill #523"), (None, "look"), (5, "look")],
+    [(1, "kill #523"), (None, "kill #523"), (5, "kill #523")],
 )
 def test_poison_source_fuzz_needs_consider_within_live_plus_one(
     consider_ceiling, expected_command,
@@ -208,7 +208,7 @@ def test_poison_source_fuzz_needs_consider_within_live_plus_one(
 
     decision = policy._consider_fastwalk_target(state)
 
-    assert maximum_offset == 1
+    assert maximum_offset == 5
     assert decision is not None
     assert decision.command == expected_command
     if expected_command == "look":

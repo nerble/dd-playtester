@@ -224,7 +224,8 @@ def test_protection_maintenance_keeps_flight_purchase_handoff(monkeypatch):
         "_select_olympus_sanctuary_fallback",
         lambda _state, *, practice_skill: maintenance,
     )
-    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state["room_flags"] = ["safe", "healing"]
+    state.update(copper=200, currencies={"copper": 200}, affects=[], fame=0)
     state.pop("campaign_flight_funding_retry_pending", None)
 
     prepared = runner._policy_for_state(state)
@@ -263,7 +264,7 @@ def test_missing_sanctuary_uses_out_of_band_maintenance_after_frontier_closes(
         "_select_olympus_sanctuary_fallback",
         select_maintenance,
     )
-    state.update(copper=200, currencies={"copper": 200}, affects=[])
+    state.update(copper=200, currencies={"copper": 200}, affects=[], fame=0)
     state.pop("campaign_flight_funding_retry_pending", None)
 
     prepared = runner._policy_for_state(state)

@@ -155,12 +155,12 @@ def test_incomplete_or_impaired_defense_evidence_stays_closed(defended_plain_pro
     ) is None
 
 
-def test_defenses_never_reduce_raw_peak_or_clear_a_target_loss(defended_plain_probe):
+def test_defenses_ignore_target_output_evidence_and_never_clear_a_target_loss(defended_plain_probe):
     candidate, world, state = defended_plain_probe
     assert _source_ranked_post_loss_plain_probe_allowed(
         replace(candidate, estimated_peak_round_damage=454), state,
         character_level=29, source_world=world,
-    ) is False
+    ) is True
     lost = deepcopy(state)
     lost[_SOURCE_RANKED_XP_LOSS_POLICIES_KEY][0]["policy_id"] = (
         _source_ranked_policy_id(candidate, character_level=29)

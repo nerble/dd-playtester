@@ -55,17 +55,17 @@ def _listed_inventory(response: str) -> Counter[str]:
     if prompt is None:
         return Counter()
     names: Counter[str] = Counter()
-    lines = [normalize_item_name(raw) for raw in listing[:prompt.start()].splitlines()]
-    lines = [line for line in lines if line]
+    lines = [raw.strip() for raw in listing[:prompt.start()].splitlines()]
+    lines = [line for line in lines if normalize_item_name(line)]
     # do_inventory ends with a carried-total footer, which includes worn gear.
-    if lines and _INVENTORY_FOOTER.fullmatch(lines[-1]):
+    if lines and _INVENTORY_FOOTER.fullmatch(normalize_item_name(lines[-1])):
         lines.pop()
-    for name in lines:
-        quantity = re.fullmatch(r"\(\s*(\d+)\)\s*(.+)", name)
+    for line in lines:
+        quantity = re.fullmatch(r"\(\s*(\d+)\)\s*(.+)", line)
         if quantity:
             names[normalize_item_name(quantity[2])] += int(quantity[1])
         else:
-            names[name] += 1
+            names[normalize_item_name(line)] += 1
     return names
 
 
@@ -75,10 +75,10 @@ def inventory_footer_mismatch(response: str, descriptions: Sequence[str]) -> boo
     prompt = _DD4_PROMPT.search(listing)
     if prompt is None:
         return False
-    lines = [normalize_item_name(line) for line in listing[:prompt.start()].splitlines()]
-    lines = [line for line in lines if line]
+    lines = [line.strip() for line in listing[:prompt.start()].splitlines()]
+    lines = [line for line in lines if normalize_item_name(line)]
     return bool(
-        lines and _INVENTORY_FOOTER.fullmatch(lines[-1]) and descriptions
+        lines and _INVENTORY_FOOTER.fullmatch(normalize_item_name(lines[-1])) and descriptions
         and _listed_inventory(response) == Counter(normalize_item_name(n) for n in descriptions)
     )
 

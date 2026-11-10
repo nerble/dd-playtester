@@ -1,11 +1,13 @@
 from dataclasses import replace
 from pathlib import Path
+from dataclasses import replace
 
 import pytest
+import dd4tester.economic_hunts as economic_module
 
 from dd4tester.economic_hunts import (
     economic_hunt_candidate, economic_hunt_runtime_issue,
-    known_purse, plain_bounded_economic_resets,
+    known_purse, passive_economic_hunt_mobile, plain_bounded_economic_resets,
 )
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import (
@@ -53,6 +55,50 @@ def test_economic_only_travel_preserves_source_risk_and_quest_separation() -> No
     assert economic_hunt_runtime_issue(route, world, level=30, currencies=state["currencies"]) is None
 
 
+def test_ordinary_candidates_skip_economic_wanderer_locator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate, world, state = economic_fixture()
+    ordinary = replace(candidate, autonomy_rejections=())
+
+    def fail_locator(*_args: object, **_kwargs: object) -> tuple[int, ...]:
+        raise AssertionError("ordinary candidates must not run the economic locator")
+
+    monkeypatch.setattr(
+        "dd4tester.economic_hunts.source_mobile_search_rooms",
+        fail_locator,
+    )
+
+    assert economic_hunt_candidate(ordinary, state, world) is ordinary
+
+
+def test_passive_economic_audit_rechecks_mutable_source_world(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _candidate, world, _state = economic_fixture()
+    calls = 0
+    uncached = economic_module._passive_economic_hunt_mobile_uncached
+
+    def counted(*args: object, **kwargs: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return uncached(*args, **kwargs)
+
+    monkeypatch.setattr(
+        economic_module,
+        "_passive_economic_hunt_mobile_uncached",
+        counted,
+    )
+
+    first = passive_economic_hunt_mobile(world, 102, level=30)
+    world.mobile_specials[102] = ("spec_cast_mage",)
+    second = passive_economic_hunt_mobile(world, 102, level=30)
+
+    assert first is True
+    assert second is False
+    assert calls == 2
+
+
 def test_source_bounded_singleton_thief_population_opens_plain_galaxy_targets() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -88,12 +134,11 @@ def test_source_bounded_singleton_thief_population_opens_plain_galaxy_targets() 
         "an economic special mobile can reach the route",
     )
 
-    # Hercules shares the transit route and carries a positive hitpoint item.
-    # Target hitpoints are evidence only; they must not close a plain target.
+    # Hercules shares the transit route and carries hitroll/damroll gear.
+    # Those affects are an incoming-output hazard, not passive evidence.
     hercules = next(item for item in candidates if item.target == "the mighty Hercules")
     hercules_admitted = economic_hunt_candidate(hercules, state, world)
-    assert hercules_admitted.autonomous_safe
-    assert hercules_admitted.route_economic_hunt_mobile_vnums == (9301,)
+    assert not hercules_admitted.autonomous_safe
 
 
 def test_bounded_economic_transit_does_not_waive_target_capacity() -> None:

@@ -65,7 +65,7 @@ def test_run_12756_departure_and_malformed_gmcp_preserve_player_finisher(monkeyp
     policy.familiar_preparation.selector = "#23706"
     policy.enemy_snapshot_room = "2415"
     policy.enemy_snapshot_stale = False
-    assert policy._between_round_combat_decision(state).command == "order #23706 flee"
+    assert policy._between_round_combat_decision(state).command == "order #23706 flee Fear"
     clock[0] = 4
     policy.observe_text("The pony leaves west.\nThe pony has fled!\nOk.\n<113/113 hits 169/324 mana 202/220 move [Ultima]> ")
     events = ObservationParser().feed_gmcp("Char.Enemies [  ] ]")

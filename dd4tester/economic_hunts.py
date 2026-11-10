@@ -27,6 +27,13 @@ _ECONOMIC_TARGET_PASSIVE_AFFECTS = (
 # source-defined search boundary before that runtime budget is used.
 _ECONOMIC_TARGET_LOCATOR_ROOM_LIMIT = 512
 
+# Hitroll and damroll are wear-location affects 18 and 19 in DD4. They can
+# materially improve a route actor's damage, so they are not passive economic
+# loadout evidence. Keep this allow-list explicit as the affect table grows.
+_ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS = frozenset({
+    0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 20, 21, 22, 23, 24,
+})
+
 
 def known_purse(currencies: object) -> int | None:
     if not isinstance(currencies, Mapping):
@@ -47,6 +54,24 @@ def known_purse(currencies: object) -> int | None:
 
 
 def passive_economic_hunt_mobile(
+    world: WorldSource,
+    vnum: int,
+    *,
+    level: int,
+    allow_bounded_population: bool = False,
+) -> bool:
+    # WorldSource is intentionally mutable while source audits are refreshed
+    # and runtime gates are rechecked. Do not cache by object identity: a
+    # changed special or loadout must be observed immediately.
+    return _passive_economic_hunt_mobile_uncached(
+        world,
+        vnum,
+        level=level,
+        allow_bounded_population=allow_bounded_population,
+    )
+
+
+def _passive_economic_hunt_mobile_uncached(
     world: WorldSource,
     vnum: int,
     *,
@@ -94,7 +119,7 @@ def passive_economic_hunt_mobile(
                 or mobile.level - 2 >= 40 and not item.extra_flags & (1 << 38)
             ):
                 return False
-            if any(location not in {0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23, 24}
+            if any(location not in _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS
                    for location, _amount in item.affects):
                 return False
             # Positive hitpoint affects on the target are observation/report
@@ -166,6 +191,16 @@ def economic_hunt_candidate(
     """Remove economic travel risk, retaining independent population limits."""
     level = state.get("level")
     purse = known_purse(state.get("currencies"))
+    # Most source candidates are ordinary targets. Do not run the expensive
+    # wanderer locator or reset-population audits until the candidate has the
+    # specific economic-route rejection this adapter is meant to repair.
+    if (
+        type(level) is not int
+        or purse is None
+        or purse > ECONOMIC_HUNT_MAX_COPPER
+        or _ECONOMIC_ROUTE_REJECTION not in candidate.autonomy_rejections
+    ):
+        return candidate
     mobile = world.mobiles.get(candidate.mobile_vnum)
     remaining_rejections = set(candidate.autonomy_rejections) - {_ECONOMIC_ROUTE_REJECTION}
     candidate_specials = set(candidate.specials)
@@ -237,7 +272,7 @@ def economic_hunt_candidate(
         item = world.objects.get(vnum)
         if (
             item is None or item.item_type in _SPELL_ITEMS | {ITEM_WEAPON}
-            or any(location not in {0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23, 24}
+            or any(location not in _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS
                    for location, _amount in item.affects)
             # DD4's strong randomiser can add damage, hit, crit, or
             # swiftness affects to an equipped item. Keep that uncertainty

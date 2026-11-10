@@ -9,7 +9,9 @@ from typing import Any
 
 
 SOURCE_COMBAT_LOSSES_KEY = "campaign_source_combat_losses"
-_POLICY_ID = re.compile(r"^source-ranked-hunt-.+-(\d+)-(\d+)-(\d+)$")
+_POLICY_ID = re.compile(
+    r"^source-ranked-hunt-.+-(\d+)-(\d+)-(\d+)(?:-recall-\d+)?$"
+)
 
 
 def source_stop_identity(policy_id: str) -> tuple[int, int, int] | None:

@@ -1031,6 +1031,7 @@ def test_sanctuary_reserve_marker_must_match_fresh_frontier_diagnosis(
     state[campaign._SOURCE_RANKED_FRONTIER_DIAGNOSIS_KEY] = {
         "boot_id": "boot-1",
         "level": 39,
+        "diagnosis_revision": campaign._SOURCE_RANKED_FRONTIER_DIAGNOSIS_REVISION,
         "source_revision": "current-source-revision",
         "sanctuary_required_candidates": [],
     }
@@ -1056,6 +1057,7 @@ def test_sanctuary_reserve_marker_accepts_only_its_fresh_candidate(
     state[campaign._SOURCE_RANKED_FRONTIER_DIAGNOSIS_KEY] = {
         "boot_id": "boot-1",
         "level": 39,
+        "diagnosis_revision": campaign._SOURCE_RANKED_FRONTIER_DIAGNOSIS_REVISION,
         "source_revision": "current-source-revision",
         "sanctuary_required_candidates": [
             {

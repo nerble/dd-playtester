@@ -10,7 +10,7 @@ from typing import Iterable, Mapping
 from .equipment import (
     GearCatalog, ITEM_BODY_PART, ITEM_CURSED, ITEM_POISONED, normalize_item_name,
 )
-from .hunt_candidates import ITEM_CONTAINER, ITEM_POTION
+from .hunt_candidates import ITEM_CONTAINER, ITEM_PILL, ITEM_POTION
 from .observations import _DD4_PROMPT
 
 
@@ -28,7 +28,14 @@ class PouchStoragePlan:
 def empty_pouch_storage_plan(
     descriptions: Iterable[str], equipment: Iterable[Mapping], catalog: GearCatalog,
 ) -> PouchStoragePlan | None:
-    """Use exact worn-container identity and keywords safe for every candidate."""
+    """Use exact worn-container identity and keywords safe for every candidate.
+
+    DD4's ordinary pouch accepts potions and pills.  The storage ledger keeps
+    the historical ``potion_*`` field names because it is also used by the
+    combat-potion audit, but the stored object may be either supported
+    consumable type.  This path only frees an item-count slot; it does not
+    infer or approve the object's effect.
+    """
     descriptions = tuple(descriptions)
     records = tuple(equipment)
     pouches = [record for record in records if record.get("slot") == "pouch"]
@@ -59,7 +66,7 @@ def empty_pouch_storage_plan(
         return None
     counts = Counter(normalize_item_name(description) for description in descriptions)
     for description, group in zip(descriptions, candidates):
-        if any(item.item_type != ITEM_POTION
+        if any(item.item_type not in {ITEM_POTION, ITEM_PILL}
                or item.extra_flags & (ITEM_BODY_PART | ITEM_CURSED | ITEM_POISONED)
                for item in group):
             continue
@@ -119,14 +126,30 @@ class HealerPouchStorage:
         plan = self.plan
         if plan is None or not self.pending:
             return None
-        response = _DD4_PROMPT.sub("\n", self.buffer).replace("\r", "")
+        raw_response = self.buffer.replace("\r", "")
+        response = _DD4_PROMPT.sub("\n", raw_response)
         if self.phase == "audit":
-            header = re.search(r"^\s*" + re.escape(plan.pouch_name) + r" contains:\s*\n",
-                               self.buffer, re.MULTILINE | re.IGNORECASE)
-            prompt = _DD4_PROMPT.search(self.buffer, header.end()) if header else None
+            header = re.search(
+                r"^\s*" + re.escape(plan.pouch_name) + r" contains:\s*\n",
+                response,
+                re.MULTILINE | re.IGNORECASE,
+            )
+            raw_header_start = (
+                raw_response.casefold().rfind(plan.pouch_name.casefold())
+                if header is not None
+                else -1
+            )
+            prompt = (
+                _DD4_PROMPT.search(raw_response, raw_header_start)
+                if raw_header_start >= 0
+                else None
+            )
             if prompt is None:
                 return None
-            contents = self.buffer[header.end():prompt.start()].strip()
+            # ``header`` is indexed in the prompt-normalized response.  Use
+            # that same response for the listing slice; the raw prompt above
+            # is only the completion proof.
+            contents = response[header.end():].strip()
             if contents.casefold() != "nothing.":
                 self.phase = "unavailable"
                 self.deadline = None

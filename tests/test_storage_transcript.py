@@ -413,6 +413,73 @@ def test_storage_indexes_campaign_phase_history_for_bounded_repair(tmp_path) -> 
     assert "idx_campaign_segments_campaign_phase" in indexes
 
 
+def test_storage_indexes_campaign_run_id_for_interrupted_recovery(tmp_path) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        indexes = {
+            row["name"]
+            for row in storage.connection.execute(
+                "PRAGMA index_list(campaign_segments)"
+            )
+        }
+
+    assert "idx_campaign_segments_run_id" in indexes
+
+
+def test_unbound_run_recovery_uses_character_scope_without_closing_linked_runs(
+    tmp_path,
+) -> None:
+    with RunStorage(tmp_path / "runs.sqlite3") as storage:
+        campaign_id = storage.create_campaign(
+            name="campaign",
+            config_path=tmp_path / "campaign.yaml",
+            character_profile_path=tmp_path / "Dorrik.yaml",
+            target_level=100,
+        )
+        linked_run = storage.create_run(
+            scenario_name="hunt:Dorrik",
+            scenario_path=tmp_path / "Dorrik.yaml",
+        )
+        unbound_run = storage.create_run(
+            scenario_name="hunt:dorrik",
+            scenario_path=tmp_path / "Dorrik.yaml",
+        )
+        other_run = storage.create_run(
+            scenario_name="hunt:Other",
+            scenario_path=tmp_path / "Other.yaml",
+        )
+        segment_id = storage.start_campaign_segment(
+            campaign_id,
+            phase="hunt",
+            start_state={"level": 45},
+        )
+        storage.connection.execute(
+            "UPDATE campaign_segments SET run_id = ? WHERE id = ?",
+            (linked_run, segment_id),
+        )
+        storage.connection.commit()
+
+        assert (
+            storage.fail_unbound_character_runs(
+                character_name="Dorrik",
+                reason="interrupted",
+            )
+            == 1
+        )
+        statuses = {
+            row["id"]: row["status"]
+            for row in storage.connection.execute(
+                "SELECT id, status FROM runs WHERE id IN (?, ?, ?)",
+                (linked_run, unbound_run, other_run),
+            )
+        }
+
+    assert statuses == {
+        linked_run: "running",
+        unbound_run: "failed",
+        other_run: "running",
+    }
+
+
 def test_state_snapshots_commit_their_recovery_boundary(tmp_path) -> None:
     database = tmp_path / "runs.sqlite3"
     storage = RunStorage(database, event_commit_interval=100)

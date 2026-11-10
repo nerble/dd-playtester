@@ -223,7 +223,8 @@ def productive_city_clearance_proof(
         outcomes, progress = summary.get("outcomes"), summary.get("progress")
         confirmed = progress.get("confirmed_kills") if isinstance(progress, Mapping) else None
         if (
-            summary.get("summary_version") != RUN_REPORT_SUMMARY_VERSION
+            summary.get("summary_version")
+            not in {RUN_REPORT_SUMMARY_VERSION, RUN_REPORT_SUMMARY_VERSION - 1}
             or (summary.get("run") or {}).get("id") != run_id
             or not isinstance(outcomes, Mapping) or outcomes.get("execution") != "success"
             or outcomes.get("safety") != "safe" or not isinstance(confirmed, list)

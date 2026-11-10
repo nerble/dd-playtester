@@ -24,6 +24,7 @@ from .specials import (
     source_special_profile,
 )
 from .source_paths import (
+    LIVE_MOBILE_SOURCE_OVERRIDES,
     LIVE_UNDEPLOYED_TEMPLATE_NAMES,
     current_live_deployment,
     resolve_source_area_directory,
@@ -1609,6 +1610,11 @@ class MobileSource:
     damage_modifier: int | None = 0
     damage_modifier_known: bool = True
     description: str = ""
+    live_compatibility_source_revision: str | None = None
+    # Some live GMCP/source integrations expose a singular command keyword
+    # alongside the space-separated keyword list. Keep it optional so older
+    # source fixtures and structured test snapshots remain compatible.
+    key: str = ""
 
     @property
     def aggressive(self) -> bool:
@@ -1851,7 +1857,7 @@ class MobReset:
     mobile_vnum: int
     room_vnum: int
     maximum_count: int
-    object_vnums: tuple[int, ...]
+    object_vnums: tuple[int, ...] = ()
     equipment: tuple[tuple[int, int], ...] = ()
 
 
@@ -3690,6 +3696,8 @@ def _load_world_source_cached(
             include_objects=path.name in object_files,
             mobile_templates=mobile_templates,
         )
+        if live_deployment:
+            _apply_live_mobile_source_overrides(parsed)
         world.mobiles.update(parsed.mobiles)
         world.objects.update(parsed.objects)
         world.rooms.update(parsed.rooms)
@@ -3702,6 +3710,50 @@ def _load_world_source_cached(
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
     return world
+
+
+def _apply_live_mobile_source_overrides(area: AreaSource) -> None:
+    """Restore exact legacy prototype fields for audited template migrations."""
+    for (area_file, mobile_vnum), override in LIVE_MOBILE_SOURCE_OVERRIDES.items():
+        if area.path.name.casefold() != area_file.casefold():
+            continue
+        mobile = area.mobiles.get(mobile_vnum)
+        if (
+            mobile is None
+            or mobile.template_name is None
+            or mobile.template_name.casefold() != override.template_name.casefold()
+            or mobile.keywords.casefold() != override.keywords.casefold()
+            or mobile.short_description.casefold()
+            != override.short_description.casefold()
+            or mobile.level != override.level
+        ):
+            continue
+        area.mobiles[mobile_vnum] = replace(
+            mobile,
+            level=override.level,
+            alignment=override.alignment,
+            act_flags=override.act_flags,
+            affected_flags=override.affected_flags,
+            body_form_flags=None,
+            template_name=None,
+            template_species=None,
+            template_act_flags=0,
+            template_affected_flags=0,
+            template_body_form_flags=0,
+            xp_modifier=0,
+            area_act_flags=override.act_flags,
+            area_affected_flags=override.affected_flags,
+            area_body_form_flags=None,
+            template_hp_modifier=0,
+            area_hp_modifier=None,
+            hp_modifier=0,
+            hp_modifier_known=True,
+            template_damage_modifier=0,
+            area_damage_modifier=None,
+            damage_modifier=0,
+            damage_modifier_known=True,
+            live_compatibility_source_revision=override.source_revision,
+        )
 
 
 def load_object_sources(area_directory: Path) -> dict[int, ObjectSource]:
@@ -4186,7 +4238,9 @@ def source_mobile_route_aggressor_level_only_is_bounded(
     This is a route classification, not a damage exemption for combat. It is
     intentionally limited to a clean, one- or two-mobile source population
     with one known weapon and known armor per reset, no programs or specials,
-    and a fuzzed maximum level at least four below the pilot. If that mobile
+    and a fuzzed maximum level at least four below the pilot. The source may
+    not have deployed damage-template metadata for that mobile; the known
+    weapon/armor loadout is the relevant route proof here. If the mobile
     actually attacks, the live identity, consider, crowd, health-floor, and
     return gates still decide the encounter.
     """
@@ -4198,7 +4252,6 @@ def source_mobile_route_aggressor_level_only_is_bounded(
         or mobile.confused
         or mobile.non_corporeal
         or mobile.costs_fame
-        or not mobile.damage_modifier_known
         or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
     ):
         return False
@@ -4208,11 +4261,19 @@ def source_mobile_route_aggressor_level_only_is_bounded(
     }
     if specials:
         return False
-    maximum_level = _mobile_level_range(mobile.level)[1]
+    minimum_level, maximum_level = _mobile_level_range(mobile.level)
+    nominal_level = int(mobile.level)
     if not (
-        character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
-        < maximum_level
-        <= character_level - 4
+        (
+            character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+            < maximum_level
+            <= character_level - 4
+        )
+        or (
+            character_level - _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP
+            <= nominal_level
+            <= character_level - 4
+        )
     ):
         return False
     resets = tuple(
@@ -4249,6 +4310,127 @@ def source_mobile_route_aggressor_level_only_is_bounded(
         if weapon_count != 1:
             return False
     return True
+
+
+def source_mobile_deep_transit_route_is_bounded(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+    resets_by_mobile: Mapping[int, Collection[MobReset]] | None = None,
+) -> bool:
+    """Classify a deeply below-level armed mobile as route-only noise.
+
+    This proof is deliberately limited to the same source-visible loadout
+    contract as the ordinary below-band transit exception: at most two total
+    reset copies, exactly one known weapon, and armor-only companion objects.
+    Missing template damage metadata does not block the route, but an
+    unarmed or ambiguous aggressor still does. It never authorizes combat.
+    """
+    if (
+        not mobile.aggressive
+        or mobile.programs
+        or mobile.fear_aura
+        or mobile.confused
+        or mobile.non_corporeal
+        or mobile.costs_fame
+        or mobile.vnum in world.shopkeepers
+        or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+        or world.mobile_specials.get(mobile.vnum)
+    ):
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if character_level <= maximum_level + _SOURCE_TRANSIT_AGGRESSOR_RISK_GAP:
+        return False
+    resets = tuple(
+        resets_by_mobile.get(mobile.vnum, ())
+        if resets_by_mobile is not None
+        else (
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+    )
+    if not resets:
+        return False
+    total_capacity = 0
+    for reset in resets:
+        if not 0 < reset.maximum_count <= 2:
+            return False
+        total_capacity += reset.maximum_count
+        if total_capacity > 2:
+            return False
+        weapon_count = 0
+        for object_vnum in _reset_object_vnums(reset):
+            item = world.objects.get(object_vnum)
+            if item is None or item.item_type not in {ITEM_ARMOR, ITEM_WEAPON}:
+                return False
+            if item.item_type == ITEM_WEAPON:
+                weapon_count += 1
+            if item.item_type == ITEM_WEAPON and any(
+                wear_location == WEAR_DUAL
+                for wear_location, _object_vnum in reset.equipment
+            ):
+                return False
+        if weapon_count != 1:
+            return False
+    return True
+
+
+_SOURCE_UNRESOLVED_DEEP_TRANSIT_LEVEL_GAP = 20
+
+
+def source_mobile_unresolved_deep_plain_wanderer_is_preflight_safe(
+    world: WorldSource,
+    mobile: MobileSource,
+    *,
+    character_level: int,
+    resets_by_mobile: Mapping[int, Collection[MobReset]] | None = None,
+) -> bool:
+    """Classify one unresolved legacy wanderer as route-only noise.
+
+    Live deployment intentionally leaves newer archetype/species templates
+    unresolved.  This narrow exception is only for a deeply below-level,
+    unarmed, unscripted, special-free wanderer whose resets load no objects.
+    It permits a route ``where`` audit without inventing combat damage data;
+    it never participates in target admission or combat-output proofs.
+    """
+    if (
+        not mobile.aggressive
+        or not mobile.wanders
+        or mobile.programs
+        or mobile.attack_programs
+        or mobile.non_corporeal
+        or mobile.fear_aura
+        or mobile.costs_fame
+        or mobile.undead
+        or mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+        or mobile.vnum in world.shopkeepers
+        or mobile.template_name not in LIVE_UNDEPLOYED_TEMPLATE_NAMES
+        or (mobile.hp_modifier_known and mobile.damage_modifier_known)
+    ):
+        return False
+    specials = {
+        str(special).strip().casefold()
+        for special in world.mobile_specials.get(mobile.vnum, ())
+    }
+    if specials:
+        return False
+    maximum_level = _mobile_level_range(mobile.level)[1]
+    if maximum_level > character_level - _SOURCE_UNRESOLVED_DEEP_TRANSIT_LEVEL_GAP:
+        return False
+    resets = tuple(
+        resets_by_mobile.get(mobile.vnum, ())
+        if resets_by_mobile is not None
+        else (
+            reset
+            for reset in world.mob_resets
+            if reset.mobile_vnum == mobile.vnum
+        )
+    )
+    if not resets:
+        return False
+    return all(not _reset_object_vnums(reset) for reset in resets)
 
 
 def source_mobile_is_ordinary_below_level_aggressor(
@@ -4867,18 +5049,20 @@ def rank_hunt_candidates(
         route_attack_program_mobile_vnums: set[int] = set()
         route_special_mobile_vnums: set[int] = set()
         dangerous = False
+        unresolved_source_modifiers: list[str] = []
+        # Template-derived combat scalars are part of the source damage
+        # proof.  An unresolved value is not a target-HP admission rule, but
+        # it does prevent an autonomous source estimate from being trusted.
         if not mobile.hp_modifier_known:
             hazards.append("source mobile HP modifier is unavailable")
-            autonomy_rejections.append(
+            unresolved_source_modifiers.append(
                 "source mobile HP modifier is unavailable"
             )
-            dangerous = True
         if not mobile.damage_modifier_known:
             hazards.append("source mobile damage modifier is unavailable")
-            autonomy_rejections.append(
+            unresolved_source_modifiers.append(
                 "source mobile damage modifier is unavailable"
             )
-            dangerous = True
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = (
             mobile_kill_counts.get(mobile.vnum, 0)
@@ -4918,11 +5102,22 @@ def rank_hunt_candidates(
                 "target reset permits up to "
                 f"{same_room_target_capacity} matching mobiles in the room"
             )
-            # Same-prototype mobiles in the room can assist one another before
-            # the live room can be inspected. Do not confuse DD4's global
-            # prototype population cap with that room-local crowd.
-            dangerous = True
-            autonomy_rejections.append("target reset capacity exceeds one")
+            # A passive, unarmed fixed sentinel remains a source candidate;
+            # the live room population, not a reset cap by itself, decides
+            # whether it is executable. Wandering, armed, scripted,
+            # aggressive, or special prototypes retain the hard crowd gate.
+            bounded_plain_sentinel = bool(
+                mobile.sentinel
+                and not mobile.wanders
+                and not mobile.aggressive
+                and not equipped_weapons
+                and not mobile.attack_programs
+                and not mobile.player_relocation_programs
+                and not world.mobile_specials.get(mobile.vnum)
+            )
+            if not bounded_plain_sentinel:
+                dangerous = True
+                autonomy_rejections.append("target reset capacity exceeds one")
         for room_reset in resets_by_room.get(room.vnum, ()):
             if room_reset.mobile_vnum == mobile.vnum:
                 continue
@@ -5203,10 +5398,29 @@ def rank_hunt_candidates(
                     hazard,
                     character_level=character_level,
                 ):
-                    hazards.append(
-                        "source-level-below route aggressor remains a live "
-                        "combat possibility"
-                    )
+                    if (
+                        character_max_hp is not None
+                        and _bounded_borderline_route_aggressor(
+                            world,
+                            path_reset,
+                            character_level=character_level,
+                            character_max_hp=character_max_hp,
+                        )
+                    ):
+                        hazards.append(
+                            "bounded borderline route aggressor may be defeated "
+                            "only on a below-band live roll"
+                        )
+                    else:
+                        hazards.append(
+                            "source-level-below route aggressor remains a live "
+                            "combat possibility"
+                        )
+                        if character_max_hp is None:
+                            autonomy_rejections.append(
+                                "route crosses an aggressive reset inside the "
+                                "useful XP band"
+                            )
                 elif source_mobile_route_aggressor_level_only_is_bounded(
                     world,
                     hazard,
@@ -5706,6 +5920,8 @@ def rank_hunt_candidates(
             + combat_readiness_bonus
         )
         status = "reject" if dangerous else "caution" if hazards else "promising"
+        if dangerous:
+            autonomy_rejections.extend(unresolved_source_modifiers)
         if mobile.alignment > 0 and status == "promising":
             status = "caution"
 
@@ -8054,15 +8270,18 @@ def source_class_teacher_route_for_level(
 ) -> SourceTeacherRoute | None:
     """Find a stationary, source-reset class teacher for an exact level band."""
     normalized = " ".join(str(character_class).casefold().split())
-    source_skill = source_class_teacher_skill(normalized)
-    if source_skill is None or teacher_base_level < 1:
+    if source_class_teacher_skill(normalized) is None or teacher_base_level < 1:
         return None
+    # The distant fallback is identified by the source class-base lesson
+    # (for example ``warrior base``), not by the level-10 guild skill such as
+    # ``inner force``.  The latter is still the right filter for the local
+    # class-teacher resolver above.
+    source_skill = f"{normalized} base"
     return _source_teacher_route(
         world,
         source_skill,
         character_class=normalized,
         origin=origin,
-        preferred_keywords=(_CLASS_SOURCE_TEACHER_KEYWORDS[normalized],),
         teacher_base_level=teacher_base_level,
         stationary_only=True,
     )
@@ -8238,10 +8457,10 @@ def source_mobile_can_join_player_fight(
 ) -> bool:
     """Mirror ``aggr_update`` for an ordinary mobile joining a player fight.
 
-    The loop considers every visible NPC in the room, but only reaches its
-    attack path for ``ACT_AGGRESSIVE`` mobiles or the detect-curse exception.
-    Guard specials have a separate fight-joining path; other specials and
-    mobile programs need their own source audit.
+    The loop considers every visible NPC in the room.  An ordinary mobile can
+    still join an existing player fight; ``ACT_AGGRESSIVE`` controls initiating
+    a fight, not this assistance path.  Guard specials, programs, and other
+    special behaviour therefore remain material until their own source audit.
     The source level window is player level minus three through plus six; a
     fuzzy source range is eligible when any load can fall inside it.
     ``ACT_NO_FIGHT`` is not excluded because DD4 still puts that mobile into
@@ -8254,14 +8473,9 @@ def source_mobile_can_join_player_fight(
         return False
     if not mobile.keywords.strip():
         return False
-    joining_specials = set(world.mobile_specials.get(mobile.vnum, ()))
-    if not (
-        mobile.aggressive
-        or joining_specials & COMBAT_JOINING_SPECIALS
-        or mobile.programs
-        or mobile.affected_flags & AFF_DETECT_CURSE
-    ):
-        return False
+    # ``violence_update`` lets an ordinary NPC join an existing player fight;
+    # it is not limited to aggressive mobiles.  Keep that distinct from the
+    # separate question of whether the NPC can initiate combat.
     if mobile.act_flags & ACT_WIZINVIS_MOB:
         return False
     if mobile.affected_flags & (AFF_BLIND | AFF_NON_CORPOREAL):
@@ -8642,6 +8856,33 @@ def _rank_direct_ground_stashes(
     )
     paths = _shortest_paths_from(world.rooms, RECALL_VNUM)
     resets_by_room = _resets_by_room(world)
+    # Gear stashes are often numerous. These source predicates are immutable
+    # for one parsed world, but the old loop recomputed them once per stash
+    # route and once per reset. Cache them before the route audit so a full
+    # equipment scan does not repeatedly inspect the same wandering mobiles.
+    route_hazard_by_vnum = {
+        mobile.vnum: _source_mobile_is_route_hazard(world, mobile)
+        for mobile in world.mobiles.values()
+    }
+    wandering_hazard_mobiles = tuple(
+        (mobile, source_mobile_search_rooms(world, mobile.vnum))
+        for mobile in world.mobiles.values()
+        if mobile.wanders and route_hazard_by_vnum.get(mobile.vnum, False)
+    )
+    suppressed_specials: dict[tuple[int, int], bool] = {}
+
+    def suppresses_hazard(mobile: MobileSource) -> bool:
+        key = (mobile.vnum, character_level)
+        if key not in suppressed_specials:
+            suppressed_specials[key] = (
+                _source_mobile_safe_special_suppresses_route_hazard(
+                    world,
+                    mobile,
+                    character_level=character_level,
+                )
+            )
+        return suppressed_specials[key]
+
     grouped: dict[int, list[RoomObjectReset]] = {}
     for reset in world.room_object_resets:
         room = world.rooms.get(reset.room_vnum)
@@ -8658,7 +8899,6 @@ def _rank_direct_ground_stashes(
     # A wandering mobile's source-reachable rooms do not depend on the
     # destination stash. Cache them across stash routes; otherwise a full
     # world gear scan repeats the same graph search once per stash.
-    mobile_search_rooms_cache: dict[int, tuple[int, ...]] = {}
     for room_vnum, resets in grouped.items():
         path = paths.get(room_vnum)
         room = world.rooms.get(room_vnum)
@@ -8692,16 +8932,12 @@ def _rank_direct_ground_stashes(
         for path_room_vnum in path_rooms:
             for reset in resets_by_room.get(path_room_vnum, ()):
                 mobile = world.mobiles.get(reset.mobile_vnum)
-                if mobile is None or not _source_mobile_is_route_hazard(
-                    world,
-                    mobile,
+                if mobile is None or not route_hazard_by_vnum.get(
+                    mobile.vnum,
+                    False,
                 ):
                     continue
-                if _source_mobile_safe_special_suppresses_route_hazard(
-                    world,
-                    mobile,
-                    character_level=character_level,
-                ):
+                if suppresses_hazard(mobile):
                     hazards.append(
                         "source-backed noncombat route special: "
                         f"{mobile.short_description}"
@@ -8802,9 +9038,7 @@ def _rank_direct_ground_stashes(
         # room is elsewhere. Keep below-band transit hazards as cautionary
         # evidence: the runner can finish an unavoidable source-proven trivial
         # interruption without treating it as an XP target.
-        for mobile_vnum, mobile in world.mobiles.items():
-            if not _source_mobile_is_route_hazard(world, mobile) or not mobile.wanders:
-                continue
+        for mobile, reachable in wandering_hazard_mobiles:
             hazard_rooms = (
                 path_room_set
                 if (
@@ -8814,17 +9048,9 @@ def _rank_direct_ground_stashes(
                 )
                 else {room_vnum}
             )
-            reachable = mobile_search_rooms_cache.get(mobile_vnum)
-            if reachable is None:
-                reachable = source_mobile_search_rooms(world, mobile_vnum)
-                mobile_search_rooms_cache[mobile_vnum] = reachable
             if hazard_rooms.isdisjoint(reachable):
                 continue
-            if _source_mobile_safe_special_suppresses_route_hazard(
-                world,
-                mobile,
-                character_level=character_level,
-            ):
+            if suppresses_hazard(mobile):
                 hazards.append(
                     "source-backed noncombat route special: "
                     f"{mobile.short_description}"
@@ -8878,7 +9104,7 @@ def _rank_direct_ground_stashes(
                         "can reach the route"
                     )
                 else:
-                    probabilistic_route_program_vnums.append(mobile_vnum)
+                    probabilistic_route_program_vnums.append(mobile.vnum)
             elif hazard_level_max > character_level:
                 rejections.append(
                     f"a higher-level {hazard_noun} can reach the route"
@@ -8890,16 +9116,12 @@ def _rank_direct_ground_stashes(
                 )
         for reset in resets_by_room.get(room_vnum, ()):
             mobile = world.mobiles.get(reset.mobile_vnum)
-            if mobile is None or not _source_mobile_is_route_hazard(
-                world,
-                mobile,
+            if mobile is None or not route_hazard_by_vnum.get(
+                mobile.vnum,
+                False,
             ):
                 continue
-            if _source_mobile_safe_special_suppresses_route_hazard(
-                world,
-                mobile,
-                character_level=character_level,
-            ):
+            if suppresses_hazard(mobile):
                 hazards.append(
                     "source-backed noncombat stash special: "
                     f"{mobile.short_description}"

@@ -913,6 +913,8 @@ def _arena_revalidation_state(policy_id: str) -> dict:
             "copper": 0,
         },
         "affects": [{"name": "fly"}],
+        "combat_pouch_potions": {"purple": 1},
+        "verified_combat_pouch_potions": {"purple": 1},
         # Other same-boot hunts have losses.  The arena repair is still
         # eligible because its own exact policy has no loss record.
         "xp_loss_observed": True,

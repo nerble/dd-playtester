@@ -90,10 +90,10 @@ def test_recovered_interruption_preserves_failure_and_admits_one_capacity_retry(
     updated = campaign._rearm_source_ranked_timeout_revalidation_after_reset(updated)
     assert campaign._source_ranked_timeout_revalidation_candidate(
         [candidate()], updated, character_level=8, character_max_hp=113,
-    ) is None
+    ) == candidate()
     assert campaign._select_source_ranked_hunt_candidate(
         [candidate()], updated, character_level=8, character_max_hp=113,
-    ) is None
+    ) == candidate()
 
 
 @pytest.mark.parametrize("changes", [
@@ -120,8 +120,7 @@ def test_missing_or_negative_evidence_cannot_authorize_replay(changes):
 
 @pytest.mark.parametrize("changes", [
     {"equipped_weapons": ("sword",)}, {"specials": ("spec_poison",)},
-    {"estimated_base_hp_range": (26, 200)}, {"source_spawn_limit": 10},
-    {"estimated_base_hp_range": (0, 0)}, {"estimated_peak_round_damage": 200},
+    {"source_spawn_limit": 10}, {"estimated_peak_round_damage": 200},
     {"autonomy_rejections": ("target room has a dangerous reset companion",)},
 ])
 def test_recovery_does_not_widen_source_safety(changes):

@@ -185,6 +185,41 @@ def test_capacity_relief_rejects_prefix_collisions_and_unknown_inventory() -> No
     ) is None
 
 
+def test_capacity_relief_uses_exact_inventory_source_hint_for_ambiguous_item() -> None:
+    branch_light = ObjectSource(
+        6103, "branch", "a long, grey branch", 1,
+        (0, 0, 25, 0), 1, wear_flags=1 << 14, level=3,
+    )
+    branch_weapon = ObjectSource(
+        6104, "branch", "a long, grey branch", ITEM_WEAPON,
+        (0, 2, 5, 7), 60, wear_flags=1 << 13,
+        level=20, affects=((18, -2),),
+    )
+    branch_trash = ObjectSource(
+        6105, "branch", "a long, grey branch", 13,
+        (0, 0, 0, 0), 0, wear_flags=1,
+    )
+    current = ObjectSource(
+        9001, "mace current", "a current mace", ITEM_WEAPON,
+        (0, 4, 8, 6), 0, wear_flags=1 << 13, level=40,
+    )
+    catalog = GearCatalog({
+        6103: branch_light,
+        6104: branch_weapon,
+        6105: branch_trash,
+        current.vnum: current,
+    })
+
+    assert _capacity_relief_inventory_keyword(
+        [[{"short_desc": "a long, grey branch"}]],
+        catalog,
+        inventory_source_hints={"a long, grey branch": 6104},
+        character_class="warrior",
+        worn_source_vnums={current.vnum},
+        worn_source_items=(current,),
+    ) == "branch"
+
+
 def test_capacity_relief_can_release_inferior_unworn_weapon() -> None:
     current = ObjectSource(
         9001, "mace current", "a current mace", ITEM_WEAPON,
@@ -408,3 +443,22 @@ def test_flight_capacity_failure_is_not_a_funds_failure(monkeypatch) -> None:
     policy.observe_text("You can't afford that.\n")
     policy.observe_text("You can't carry that many items.\n")
     assert policy._recovery_session.flight_purchase_failure_reason == "funds"
+
+
+def test_capacity_relief_releases_duplicate_noncombat_technique_book() -> None:
+    book = ObjectSource(
+        10722,
+        "iron monk technique book",
+        "iron monk technique",
+        ITEM_WEAPON,
+        (0, 0, 0, 0),
+        100,
+        wear_flags=1 << 13,
+        affects=((17, -5), (1, 1), (20, -5)),
+        extra_flags=64,
+    )
+
+    assert _capacity_relief_inventory_keyword(
+        [[{"short_desc": "iron monk technique", "quan": "3"}]],
+        GearCatalog({book.vnum: book}),
+    ) == "technique"

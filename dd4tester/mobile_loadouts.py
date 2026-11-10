@@ -35,7 +35,10 @@ def sanctuary_limited_output(output: SourceCombatOutput) -> SourceCombatOutput:
 
 def source_mobile_has_sanctuary(mobile: MobileSource | None) -> bool:
     """Return whether source flags show DD4's victim-side sanctuary effect."""
-    return bool(mobile is not None and mobile.affected_flags & AFF_SANCTUARY)
+    return bool(
+        mobile is not None
+        and int(getattr(mobile, "affected_flags", 0) or 0) & AFF_SANCTUARY
+    )
 
 
 def unarmed_inert_instrument_reset(

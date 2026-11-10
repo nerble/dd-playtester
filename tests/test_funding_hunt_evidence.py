@@ -201,7 +201,7 @@ def test_low_yield_funding_uses_existing_ground_fallback(tmp_path, monkeypatch, 
         "restock"
         if boundary == "no_food"
         else "source-ranked-hunt"
-        if boundary == "none"
+        if boundary in {"none", "good_yield"}
         else "provision-funding"
     )
     assert selected.execution == expected_execution

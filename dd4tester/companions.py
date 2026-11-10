@@ -35,6 +35,7 @@ def familiar_withdrawal_rooms_safe(
     character_level: int | None = None,
     character_alignment: int | None = None,
     additional_mobile_vnums: Collection[int] = (),
+    ignore_mobile_vnums: Collection[int] = (),
 ) -> bool:
     """Audit every random flee destination before planning or ordering a pet."""
     familiar = world.mobiles.get(19900)
@@ -61,8 +62,12 @@ def familiar_withdrawal_rooms_safe(
         reset.mobile_vnum for reset in world.mob_resets
         if reset.room_vnum in destinations
     } | set(additional_mobile_vnums)
+    ignored = {int(vnum) for vnum in ignore_mobile_vnums}
+    direct.difference_update(ignored)
     possible = direct | {reset.mobile_vnum for reset in world.mob_resets}
     for mobile_vnum in sorted(possible):
+        if mobile_vnum in ignored:
+            continue
         mobile = world.mobiles.get(mobile_vnum)
         if mobile is None:
             if mobile_vnum in direct:
@@ -497,11 +502,12 @@ class FamiliarPreparation:
         *,
         room_text: str = "",
         room_vnum: str | None = None,
+        fresh: bool = False,
     ) -> bool:
         if self.stage != "ready" or not self.grouped or not self.selector:
             return False
         room_key = str(room_vnum) if room_vnum is not None else None
-        if room_key is not None and room_key == self.last_present_room:
+        if room_key is not None and room_key == self.last_present_room and not fresh:
             return True
         indexed = [
             selector for selector, observed in selectors.items()
@@ -512,7 +518,7 @@ class FamiliarPreparation:
             matches = tuple(indexed)
         else:
             matches = visible
-        if room_key is not None and room_key == self.group_room:
+        if room_key is not None and room_key == self.group_room and not fresh:
             self.last_present_room = room_key
             return True
         if matches == (self.selector,):

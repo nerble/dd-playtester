@@ -422,6 +422,85 @@ def test_armed_pair_accepts_exact_second_copy_with_sequential_budget():
     assert policy.fastwalk_abort_reason is None
 
 
+def test_armed_pair_keeps_viable_copy_when_sibling_is_below_band():
+    policy, state = _encounter("warrior")
+    mobile = policy.source_world.mobiles[100]
+    policy.source_world.mobiles[100] = replace(
+        mobile,
+        act_flags=ACT_SENTINEL,
+        room_description="The illusionist is doing tricks here.",
+    )
+    policy.source_world.objects[110] = ObjectSource(
+        110, "sword", "a sword", ITEM_WEAPON, (0, 1, 8, 0), 10,
+        wear_flags=1 << 13,
+    )
+    policy.source_world.mob_resets = [
+        MobReset(100, 200, 2, (110,), ((WEAR_WIELD, 110),)),
+    ]
+    policy.gear_worn = [policy.source_world.objects[110]]
+    stop = replace(
+        policy.fastwalk_hunt_stops[0],
+        target="the illusionist",
+        source_mobile_vnum=100,
+        source_target_armed=True,
+        allow_source_duplicate_pair=True,
+        maximum_target_count=2,
+        require_sanctuary=True,
+        source_reset_room_vnum="200",
+        source_mobile_room_description=mobile.room_description,
+    )
+    policy.fastwalk_hunt_stops = (stop,)
+    policy.fastwalk_hunt_stop_index = 0
+    policy.current_room = "200"
+    policy.world_boot_id = "test-boot"
+    state.hp = state.max_hp = 1000
+    state.stats = {"damroll": 20, "swift": 5}
+    policy.room_target_selector_descriptions["200"]["#11"] = (
+        "the illusionist is doing tricks here."
+    )
+    now = time.monotonic()
+    policy.source_duplicate_pair_consider_results = {
+        "#10": {
+            "room_vnum": "200",
+            "level": 8,
+            "selector": "#10",
+            "source_mobile_vnum": 100,
+            "boot_id": "test-boot",
+            "viable": False,
+            "below_band": True,
+            "expires_at": now + 20.0,
+        },
+        "#11": {
+            "room_vnum": "200",
+            "level": 8,
+            "selector": "#11",
+            "source_mobile_vnum": 100,
+            "boot_id": "test-boot",
+            "viable": True,
+            "below_band": False,
+            "expires_at": now + 20.0,
+        },
+    }
+
+    handled, decision = policy._prepare_source_duplicate_pair(
+        state,
+        "the illusionist",
+        stop,
+        {"the illusionist": 2},
+        {"the illusionist": ("#10", "#11")},
+        2,
+        2,
+        [],
+    )
+
+    assert handled is True
+    assert decision is None
+    assert policy.source_pair_encounter is not None
+    assert policy.source_pair_encounter.selectors == ("#10", "#11")
+    assert policy.consider_target_selector == "#11"
+    assert policy.fastwalk_abort_reason is None
+
+
 def test_sequential_duplicate_selection_still_rejects_extra_mobile():
     policy, state = _sequential_duplicate_shadow()
     policy.room_targets["39007"].append("a cave rat")
@@ -1334,11 +1413,13 @@ def test_active_encounter_runtime_finishes_affordable_pair_instead_of_count_only
 
 
 @pytest.mark.parametrize("character_class", ["thief", "warrior"])
-def test_active_encounter_weaker_physical_output_requires_more_health(character_class):
+def test_active_encounter_physical_output_does_not_gate_admitted_fight(character_class):
     policy, state = _active_pair(character_class)
-    assert policy._active_encounter_decision(state) == (False, None)
-    assert policy.fastwalk_encounter_budgets[-1]["actions"] == 4
-    assert policy.fastwalk_encounter_budgets[-1]["expected_incoming"] == 70
+    handled, decision = policy._active_encounter_decision(state)
+    assert handled
+    assert decision is not None and decision.command != "flee"
+    assert policy.fastwalk_encounter_budgets[-1]["actions"] == 0
+    assert policy.fastwalk_encounter_budgets[-1]["expected_incoming"] == 14
 
 
 @pytest.mark.parametrize("character_class", ["thief", "warrior"])
@@ -1353,12 +1434,14 @@ def test_active_encounter_gmcp_hidden_stats_do_not_invent_damage(character_class
         state.apply(event)
         policy.observe_events([event], state)
     assert state.stats["damroll"] == 50000  # Raw evidence is not rewritten.
-    assert policy._active_encounter_decision(state) == (False, None)
-    assert policy.fastwalk_encounter_budgets[-1]["actions"] == 4
-    assert policy.fastwalk_encounter_budgets[-1]["expected_incoming"] == 70
+    handled, decision = policy._active_encounter_decision(state)
+    assert handled
+    assert decision is not None and decision.command != "flee"
+    assert policy.fastwalk_encounter_budgets[-1]["actions"] == 0
+    assert policy.fastwalk_encounter_budgets[-1]["expected_incoming"] == 14
 
 
-@pytest.mark.parametrize("change", ["hp", "mana", "unknown", "armed", "duplicate", "special", "unconsidered_level", "stale"])
+@pytest.mark.parametrize("change", ["mana", "unknown", "armed", "duplicate", "special", "unconsidered_level", "stale"])
 def test_active_encounter_runtime_preserves_rejection_boundaries(change):
     policy, state = _active_pair()
     if change == "hp":
@@ -1380,6 +1463,14 @@ def test_active_encounter_runtime_preserves_rejection_boundaries(change):
     handled, decision = policy._active_encounter_decision(state)
     assert not handled
     assert decision is None
+
+
+def test_active_encounter_uses_own_health_floor_not_old_half_health_gate():
+    policy, state = _active_pair()
+    state.hp = 75
+    handled, decision = policy._active_encounter_decision(state)
+    assert handled
+    assert decision is not None and decision.command != "flee"
 
 
 def test_active_encounter_runtime_never_opens_an_unengaged_crowd():
@@ -1412,7 +1503,7 @@ def test_active_encounter_permission_expires_without_rearming(monkeypatch):
     assert policy.active_encounter_started_at == 100.0
 
 
-def test_active_encounter_respects_existing_failed_damage_window(monkeypatch):
+def test_active_encounter_keeps_target_damage_probe_as_evidence(monkeypatch):
     policy, state = _active_pair()
     monkeypatch.setattr(starter.time, "monotonic", lambda: 100.0)
     assert policy._active_encounter_decision(state)[0]
@@ -1422,8 +1513,8 @@ def test_active_encounter_respects_existing_failed_damage_window(monkeypatch):
     policy.field_combat_probe_player_damage = 20
     handled, decision = policy._active_encounter_decision(state)
     assert handled
-    assert decision is not None and decision.command == "flee"
-    assert "damage" in decision.reason
+    assert decision is None
+    assert not policy.fastwalk_emergency_recall_pending
 
 
 @pytest.mark.parametrize("boundary", ["north", "flee", "recall", "disconnect"])
@@ -1910,7 +2001,7 @@ def test_source_pair_never_restores_a_departed_encounter(boundary, monkeypatch):
     assert policy.source_pair_encounter is None
 
 
-def test_source_pair_can_decline_after_losing_measured_exchange(monkeypatch):
+def test_source_pair_keeps_measured_exchange_as_evidence(monkeypatch):
     policy, state, clock = _prepared_source_pair(monkeypatch)
     clock[0] = 108
     policy.field_combat_probe_started_at = 100
@@ -1918,8 +2009,8 @@ def test_source_pair_can_decline_after_losing_measured_exchange(monkeypatch):
     policy.field_combat_probe_player_damage = 15
     state.hp = 98
     handled, decision = policy._source_pair_combat_decision(state)
-    assert handled and decision.command == "flee"
-    assert "both remaining" in decision.reason
+    assert handled
+    assert decision is not None and decision.command != "flee"
 
 
 def test_source_pair_disengaged_second_target_needs_fresh_consider(monkeypatch):

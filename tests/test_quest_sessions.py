@@ -41,6 +41,8 @@ def healer(**changes):
         move=100, max_move=100, room_vnum="3054", room_name="The Healer",
         position=7, enemies=[],
         hunger=40, thirst=40,
+        stats={"fame": 0},
+        inventory=[{"short_desc": "a buffalo water skin"}],
     ), **changes)
 
 
@@ -436,6 +438,7 @@ class QuestConnection:
         self.omit_quest = omit_quest
         self.drop_after_request = drop_after_request
         self.dropped = False
+        self.farewell_pending = False
         self.quest = {"active": 0, "nextquest": 0, "total_points": 0}
 
     async def connect(self):
@@ -462,6 +465,8 @@ class QuestConnection:
             self.quest = dict(active=0, nextquest=15, total_points=0)
         elif command == "quest time":
             self.quest["nextquest"] = max(0, self.quest.get("nextquest", 0) - 1)
+        elif command == "quit":
+            self.farewell_pending = True
 
     async def read_available(self, timeout=0.25):
         if not self.pending:
@@ -472,6 +477,9 @@ class QuestConnection:
             self.closed = True
             self.quest = dict(active=0, nextquest=15, total_points=0)
             return ReadResult()
+        if self.farewell_pending:
+            self.farewell_pending = False
+            return ReadResult(text="You bid farewell to the Dragons Domain.\n")
         return ReadResult(
             text="<100/100 hits 100/100 mana 100/100 move [Midgaard]>",
             gmcp_messages=[] if self.omit_quest else ["Char.Quest " + json.dumps(self.quest)],
@@ -687,7 +695,7 @@ def quest_world(population=1):
 
 
 def active_quest(**changes):
-    return dict(active=1, complete=0, type="kill", mob_vnum=9900,
+    return dict(active=1, complete=0, nextquest=0, type="kill", mob_vnum=9900,
                 room_vnum=9901, countdown=10, giver_vnum=25305, **changes)
 
 
@@ -1137,7 +1145,9 @@ def test_cleared_cooldown_requests_immediately_with_bounded_time_remaining(tmp_p
     connection.quest["nextquest"] = 1
     immediate_timer_queries(monkeypatch)
     result, connection = run_session(tmp_path, monkeypatch, connection=connection, initial="quest-cooldown")
-    assert result.final_state["quest_status"]["nextquest"] == 0
+    # The fixture completes the requested quest on the same connection, so
+    # DD4 immediately replaces the cleared timer with the post-reward cooldown.
+    assert result.final_state["quest_status"]["nextquest"] == 15
     assert "quest request" in connection.sent
     assert "quest abort" not in connection.sent
     assert connection.sent.index("quest time") < connection.sent.index("quest request")

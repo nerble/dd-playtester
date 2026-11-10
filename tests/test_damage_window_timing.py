@@ -78,32 +78,32 @@ def test_run_12767_probe_allows_first_registered_between_round_attack(willow_pro
     assert policy.fastwalk_abort_reason is None
 
 
-@pytest.mark.parametrize("elapsed,complete", [(6.499, False), (6.5, True), (12, True)])
-def test_probe_still_rejects_the_same_poor_exchange_after_a_real_window(
-    willow_probe, elapsed, complete,
+@pytest.mark.parametrize("elapsed", [6.499, 6.5, 12])
+def test_damage_observations_never_trigger_automatic_withdrawal(
+    willow_probe, elapsed,
 ):
     policy, state, clock = willow_probe
     replay_12767(policy, state, clock)
     clock[0] = elapsed
 
     decision = policy._damage_window_probe_decision(state)
-    assert (decision is not None) is complete
-    if complete:
-        assert decision.command == "flee"
-        assert "protected health budget" in policy.fastwalk_abort_reason
+    assert decision is None
+    assert policy.fastwalk_abort_reason is None
+    assert policy.field_combat_damage_probe_required
 
 
 @pytest.mark.parametrize("elapsed", [6.5, 11.999, 12])
-def test_probe_deadline_does_not_require_successful_hits(willow_probe, elapsed):
+def test_probe_deadline_only_preserves_evidence_without_withdrawing(
+    willow_probe, elapsed,
+):
     policy, state, clock = willow_probe
     observe_round(policy, state, clock, .5, 569, 740)
     clock[0] = elapsed
 
     decision = policy._damage_window_probe_decision(state)
-    assert (decision is not None) is (elapsed >= 12)
-    if decision:
-        assert decision.command == "flee"
-        assert "0 damage" in policy.fastwalk_abort_reason
+    assert decision is None
+    assert policy.fastwalk_abort_reason is None
+    assert policy.field_combat_damage_probe_required
 
 
 def test_fresh_followup_damage_can_change_the_verdict(willow_probe):
@@ -113,12 +113,13 @@ def test_fresh_followup_damage_can_change_the_verdict(willow_probe):
     observe_round(policy, state, clock, 7, 500, 560)
 
     assert policy._damage_window_probe_decision(state) is None
-    assert not policy.field_combat_damage_probe_required
+    assert policy.field_combat_damage_probe_required
+    assert policy.field_combat_probe_total_damage == 180
 
 
-@pytest.mark.parametrize("healing,expected_command", [(5, None), (0, "flee")])
+@pytest.mark.parametrize("healing", [5, 0])
 def test_damage_trade_counts_observed_player_recovery_but_keeps_gross_risk(
-    willow_probe, healing, expected_command,
+    willow_probe, healing,
 ):
     policy, state, clock = willow_probe
     state.max_hp = 131
@@ -148,11 +149,8 @@ def test_damage_trade_counts_observed_player_recovery_but_keeps_gross_risk(
 
     decision = policy._damage_window_probe_decision(state)
 
-    assert (decision.command if decision is not None else None) == expected_command
-    if expected_command is None:
-        assert not policy.field_combat_damage_probe_required
-    else:
-        assert "damage-output probe" in decision.reason
+    assert decision is None
+    assert policy.field_combat_damage_probe_required
 
 
 def test_short_sampling_window_never_delays_emergency_withdrawal(willow_probe):
@@ -174,8 +172,8 @@ def test_short_sampling_window_preserves_source_hp_fuzz_ceiling(willow_probe):
     ),)
 
     decision = policy.next_decision(state)
-    assert decision is not None and decision.command == "flee"
-    assert "HP ceiling" in policy.fastwalk_abort_reason
+    assert decision is not None and decision.command == "kick"
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_protected_hp_fuzz_probe_rejects_live_target_above_source_budget(
@@ -194,9 +192,8 @@ def test_protected_hp_fuzz_probe_rejects_live_target_above_source_budget(
 
     decision = policy._damage_window_probe_decision(state)
 
-    assert decision is not None and decision.command == "flee"
-    assert "protected source-backed kick" in policy.fastwalk_abort_reason
-    assert "live target HP ceiling is 740" in policy.fastwalk_abort_reason
+    assert decision is None
+    assert policy.fastwalk_abort_reason is None
 
 
 def test_rearming_probe_resets_elapsed_budget(willow_probe):

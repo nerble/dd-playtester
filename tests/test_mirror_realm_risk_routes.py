@@ -3,7 +3,10 @@ from pathlib import Path
 
 import dd4tester.campaign as campaign_module
 from dd4tester.hunt_candidates import load_world_source, rank_hunt_candidates
-from dd4tester.campaign import _source_ranked_hunt_stops
+from dd4tester.campaign import (
+    _source_ranked_area_circuit_route_admission_allowed,
+    _source_ranked_hunt_stops,
+)
 
 
 SOURCE = Path("runs/dd4-source/server/area")
@@ -55,6 +58,12 @@ def test_mirror_realm_plain_target_uses_exact_economic_transit_exception():
         character_max_hp=937,
         source_world=world,
     )
+    assert _source_ranked_area_circuit_route_admission_allowed(
+        candidate,
+        world,
+        {**_state(), "max_hp": 937},
+        character_level=39,
+    )
     assert campaign_module._select_source_ranked_hunt_candidate(
         (candidate,),
         _state(),
@@ -62,6 +71,45 @@ def test_mirror_realm_plain_target_uses_exact_economic_transit_exception():
         character_level=39,
         character_max_hp=937,
     ) == candidate
+
+
+def test_mirror_realm_grey_mare_closes_corridor_for_hitroll_thief_loadout():
+    world = load_world_source(
+        SOURCE,
+        include_all_areas=True,
+        live_deployment=True,
+    )
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=45,
+            character_class="warrior",
+            character_subclass="knight",
+            character_alignment=-229,
+            character_max_hp=1098,
+            include_xp_only=True,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=5,
+            include_all_areas=True,
+            recall_origins={0: 3001},
+        )
+        if candidate.mobile_vnum == 19013 and candidate.room_vnum == 19119
+    )
+
+    assert set(candidate.route_special_mobile_vnums) == {
+        19036, 19044, 19045, 19046, 19052, 19053,
+    }
+    # Economic transit does not waive a possible combat-output hazard.  The
+    # lady of ill repute carries hitroll gear, so this corridor must stay closed.
+    assert not campaign_module._source_ranked_mirror_realm_gardener_transit_allowed(
+        candidate,
+        {**_state(), "level": 45},
+        character_level=45,
+        character_max_hp=1098,
+        source_world=world,
+        allow_audited_special_target=True,
+    )
 
 
 def test_mirror_realm_black_lord_per_room_singleton_can_run_without_sanctuary():
@@ -184,6 +232,12 @@ def test_gardener_route_shape_must_remain_source_exact():
         character_max_hp=937,
         source_world=world,
     )
+    assert not _source_ranked_area_circuit_route_admission_allowed(
+        altered,
+        world,
+        {**_state(), "max_hp": 937},
+        character_level=39,
+    )
 
 
 def test_orange_lord_locator_follows_audited_openable_mirror_door():
@@ -254,8 +308,12 @@ def test_lotus_sentinel_circuit_drops_secondary_room_with_buddha_companion():
         if candidate.mobile_vnum == 10730 and candidate.room_vnum == 10820
     )
 
-    assert "target room has a dangerous reset companion" in (
+    assert "target room has a dangerous reset companion" not in (
         rejected_secondary.autonomy_rejections
+    )
+    assert any(
+        "source-backed noncombat special" in hazard
+        for hazard in rejected_secondary.hazards
     )
 
     stops = _source_ranked_hunt_stops(
@@ -278,3 +336,62 @@ def test_lotus_sentinel_circuit_drops_secondary_room_with_buddha_companion():
         for stop in stops
         if stop.target is not None and stop.route_vnums
     }
+
+
+def test_live_safe_adept_route_does_not_require_missing_target_warning():
+    world = load_world_source(
+        SOURCE,
+        include_all_areas=True,
+        live_deployment=True,
+    )
+    state = {
+        "level": 45,
+        "max_hp": 1090,
+        "hp": 1090,
+        "world_boot_id": "mirror-route-safe-adept-boot",
+        "currencies": {"platinum": 0, "gold": 1, "silver": 2, "copper": 2},
+        "affects": [],
+    }
+    candidate = next(
+        item
+        for item in rank_hunt_candidates(
+            world,
+            character_level=45,
+            character_class="Warrior",
+            character_subclass="Knight",
+            character_max_hp=1090,
+            include_xp_only=True,
+            include_level_ceiling_candidates=True,
+            level_ceiling_offset=5,
+            include_all_areas=True,
+            recall_origins={0: 3001},
+        )
+        if item.mobile_vnum == 19031 and item.room_vnum == 19077
+    )
+
+    assert candidate.specials == ("spec_cast_adept",)
+    assert candidate.autonomy_rejections == (
+        "an economic special mobile can reach the route",
+    )
+    assert campaign_module._source_ranked_mirror_realm_gardener_transit_allowed(
+        candidate,
+        state,
+        character_level=45,
+        character_max_hp=1090,
+        source_world=world,
+        allow_audited_special_target=True,
+    )
+    assert campaign_module._audited_source_special_candidate_allowed(
+        candidate,
+        state=state,
+        character_max_hp=1090,
+        source_world=world,
+        route_preflight_admitted=True,
+    )
+    assert campaign_module._source_ranked_candidate_in_current_band(
+        candidate,
+        state,
+        world=world,
+        character_level=45,
+        character_max_hp=1090,
+    )

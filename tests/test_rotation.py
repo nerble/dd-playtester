@@ -23,6 +23,7 @@ def test_active_character_rotation_loads_repository_campaigns() -> None:
         "kestrel",
         "praelarran",
         "serevian",
+        "velnor",
     ]
     assert all(entry.campaign_path.is_file() for entry in spec.entries)
     corararfen = next(entry for entry in spec.entries if entry.entry_id == "corararfen")

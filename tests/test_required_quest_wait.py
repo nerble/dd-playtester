@@ -19,6 +19,7 @@ def checkpoint():
         "hp": 666, "max_hp": 666, "move": 482, "max_move": 482,
         "mana": 261, "max_mana": 261, "stats": {"fame": 0},
         "quest_status": {"active": 0, "nextquest": 1, "total_points": 0},
+        "inventory": [{"short_desc": "a buffalo water skin"}],
         "campaign_quest_cooldown_wait": {"boot_id": "boot", "level": 29, "remaining": 15},
         "campaign_quest_frontier_request": {
             "boot_id": "boot", "level": 29, "session_revision": 235,

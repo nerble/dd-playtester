@@ -72,7 +72,7 @@ def test_bundled_snapshot_tracks_current_knight_protection_gates() -> None:
         skill="protect vs undead",
     )
 
-    assert source["revision"] == "7953a0067e2dd96d34890661577f7852807734b1"
+    assert source["revision"] == "2533108641f46f7a6998d3ac4ec54c0f47194e8d"
     assert {
         (entry.prerequisite, entry.minimum_percent) for entry in protection
     } == {("knight base", 60), ("protect vs evil", 60)}

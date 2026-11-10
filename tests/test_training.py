@@ -513,7 +513,7 @@ def test_warrior_builds_grip_chain_and_then_disarm() -> None:
     )
 
     assert [choice.skill for choice in choices] == ["disarm"]
-    assert choices[0].target_percent == 60
+    assert choices[0].target_percent == 100
 
 
 def test_ranger_builds_grip_chain_and_then_disarm() -> None:
@@ -948,6 +948,56 @@ def test_kick_priority_records_source_verified_between_round_timing() -> None:
 
     assert "8-pulse wait" in kick.reason
     assert "without replacing 12-pulse automatic weapon rounds" in kick.reason
+
+
+def test_warrior_route_safety_prioritizes_bash_door_at_the_source_gate() -> None:
+    priorities = training_priorities()["warrior"]
+    bash = next(item for item in priorities if item.skill == "bash door")
+
+    assert bash.source_skill == "bash"
+    assert bash.minimum_level == 44
+    assert bash.target_percent == 60
+    assert bash.utility == "route-safety"
+    assert "do_bash" in " ".join(bash.source_refs)
+
+
+def test_warrior_route_safety_trains_inner_force_before_bash() -> None:
+    priorities = training_priorities()["warrior"]
+    inner = next(item for item in priorities if item.skill == "inner force")
+    bash = next(item for item in priorities if item.skill == "bash door")
+
+    assert priorities.index(inner) < priorities.index(bash)
+    assert inner.minimum_level == 44
+    assert inner.practice_type == "intellectual"
+    assert inner.utility == "route-safety-gateway"
+
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "",
+            "inner force: 0%    bash door: 0%",
+            physical=1,
+            intellectual=1,
+        ),
+        character_level=44,
+    )
+    assert choices[0].skill == "inner force"
+
+
+def test_warrior_planner_selects_bash_door_when_the_level_gate_is_open() -> None:
+    choices = plan_training(
+        "warrior",
+        _listing(
+            "",
+            "bash door: 0%",
+            physical=1,
+            intellectual=0,
+        ),
+        character_level=44,
+    )
+
+    assert [choice.skill for choice in choices] == ["bash door"]
+    assert choices[0].utility == "route-safety"
 
 
 def test_warrior_mastery_targets_keep_combat_skills_trainable() -> None:

@@ -81,7 +81,7 @@ def test_runner_records_commands_responses_gmcp_and_state(tmp_path) -> None:
     assert "response" in kinds
     assert "gmcp" in kinds
     assert "game_event" in kinds
-    assert "state_snapshot" in kinds
+    assert "state_snapshot" not in kinds
     assert any(
         event["kind"] == "game_event"
         and event["payload"]["type"] == "room_entered"
@@ -102,8 +102,16 @@ def test_runner_records_commands_responses_gmcp_and_state(tmp_path) -> None:
         ).fetchall()
 
     assert any(json.loads(row[0])["type"] == "room_entered" for row in stored)
-    assert snapshots[0][0] == "room_entered"
+    current_state = database.execute(
+        "SELECT state_json FROM run_current_states WHERE run_id = ?",
+        (result.run_id,),
+    ).fetchone()
+
+    assert len(snapshots) == 1
+    assert snapshots[0][0] == "run_finished"
     assert json.loads(snapshots[0][1])["room_name"] == "The Entrance"
+    assert current_state is not None
+    assert json.loads(current_state[0])["room_name"] == "The Entrance"
 
 
 def test_runner_redacts_environment_backed_commands(tmp_path, monkeypatch) -> None:

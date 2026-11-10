@@ -57,7 +57,9 @@ def source_weapon_damage(weapon: ObjectSource, record: Mapping[str, Any] | None)
         return None
     level = weapon.effective_level
     if record is not None and record.get("vnum") == weapon.vnum:
-        level = record.get("level")
+        observed_level = record.get("level")
+        if type(observed_level) is int and 0 <= observed_level <= 100:
+            level = observed_level
     return generated_weapon_damage_floor(level)
 
 
