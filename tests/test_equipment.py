@@ -4,10 +4,12 @@ from pathlib import Path
 import pytest
 
 from dd4tester.equipment import (
+    _gear_upgrade_rank,
     GearCatalog,
     ITEM_ANTI_EVIL,
     ITEM_ANTI_GOOD,
     ITEM_ANTI_NEUTRAL,
+    ITEM_BODY_PART,
     ITEM_INSTRUMENT,
     ITEM_KEY,
     STANCE_COMBAT,
@@ -75,6 +77,60 @@ def _item(
         wear_flags=1 << wear_bit,
         affects=affects,
     )
+
+
+def test_gear_upgrade_rank_compares_damage_added_across_slots() -> None:
+    primary = ObjectSource(
+        1, "blade", "a blade", 5, (0, 0, 0, 1), 100,
+        level=40, wear_flags=1 << 13, affects=((19, 10), (18, 10)),
+    )
+    weapon = replace(primary, vnum=2, level=44)
+    gloves = _item(3, "gloves", (19, 4), wear_bit=7)
+    weapon_gain = _gear_upgrade_rank(weapon, primary, STANCE_COMBAT)
+    glove_gain = _gear_upgrade_rank(gloves, None, STANCE_COMBAT)
+    assert weapon_gain[0] == 4
+    assert glove_gain[0] == 8
+    assert glove_gain > weapon_gain
+    inaccurate = replace(weapon, affects=((19, 10), (18, -3)))
+    assert _gear_upgrade_rank(inaccurate, primary, STANCE_COMBAT)[1] == -13
+
+
+@pytest.mark.parametrize("owned_bonuses,expected_gain", [((4, 1), 2), ((1,), 4)])
+def test_gear_upgrade_rank_uses_replaceable_or_empty_paired_slot(
+    owned_bonuses, expected_gain,
+) -> None:
+    owned = tuple(_item(40 + n, f"owned {n}", (19, n), wear_bit=1)
+                  for n in owned_bonuses)
+    upgrade = _item(50, "upgrade ring", (19, 2), wear_bit=1)
+    world = WorldSource(
+        objects={upgrade.vnum: upgrade},
+        rooms={3001: RoomSource(3001, "recall", "test.are")},
+        room_object_resets=[RoomObjectReset(upgrade.vnum, 3001)],
+    )
+    placements = rank_gear_sources(
+        world, character_level=46, character_class="warrior",
+        current_items=owned, include_all_areas=True,
+    )
+    assert placements[0].upgrade_rank[0] == expected_gain
+
+
+def test_recovery_acquisition_ranks_added_health_not_total_item_health() -> None:
+    current = _item(1, "old vest", (13, 100), wear_bit=3)
+    vest = _item(2, "new vest", (13, 101), wear_bit=3)
+    sleeves = _item(3, "new sleeves", (13, 25), wear_bit=8)
+    world = WorldSource(
+        objects={2: vest, 3: sleeves},
+        rooms={3001: RoomSource(3001, "recall", "test.are")},
+        room_object_resets=[RoomObjectReset(2, 3001), RoomObjectReset(3, 3001)],
+    )
+    placements = rank_gear_sources(
+        world, character_level=46, character_class="warrior",
+        current_items=(current,), include_all_areas=True, stance=STANCE_RECOVERY,
+        level_gain_priorities=("hitpoints",),
+    )
+    assert [p.object_vnum for p in placements] == [3, 2]
+    assert placements[0].upgrade_rank[:2] == (25, 25)
+    assert placements[1].upgrade_rank[:2] == (1, 1)
 
 
 def test_poisoned_source_loot_is_not_treated_as_sale_funding() -> None:
@@ -601,6 +657,33 @@ def test_rank_executable_carrier_gear_sources_keeps_exact_safe_carriers() -> Non
     assert placements[0].source_mobile_vnum == 100
     assert placements[0].route == ("south",)
 
+    assert rank_executable_carrier_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+        ranked_placements=(
+            replace(
+                placements[0],
+                hazards=("reachable combat-joining special: the cityguard",),
+            ),
+        ),
+    ) == []
+    assert rank_executable_carrier_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+        ranked_placements=(
+            replace(
+                placements[0],
+                hazards=("room companion: the cityguard L15 (up to 4)",),
+            ),
+        ),
+    ) == []
+
 
 def test_rank_gear_sources_rejects_hazardous_direct_ground_route() -> None:
     current = _item(40, "small dagger", wear_bit=13)
@@ -977,13 +1060,13 @@ def test_crystalmir_silver_longsword_is_not_recommended_to_dorrik() -> None:
     )
 
 
-def test_source_bear_claws_are_not_a_body_part() -> None:
+def test_source_bear_claws_are_rejected_as_a_body_part() -> None:
     catalog = GearCatalog.from_area_directory(Path("runs/dd4-source/server/area"))
     claws = catalog.match("pair of bears claws")
 
     assert claws is not None
-    assert claws.extra_flags & (1 << 26) == 0
-    assert character_can_use_item(
+    assert claws.extra_flags & ITEM_BODY_PART
+    assert not character_can_use_item(
         claws,
         character_class="thief",
         subclass="ninja",

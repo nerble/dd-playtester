@@ -110,6 +110,15 @@ class Fastwalk:
     return_commands_allow_open: bool = False
     # Exact source identity for visibility-aware program preflight only.
     route_preflight_source_mobile_vnum: int | None = None
+    # Exact, source-proven deep-below-band unarmed wanderers that a route
+    # pre-entry scan may observe as transit noise.  This never authorizes
+    # combat; the live scanner rechecks each identity and source contract.
+    route_preflight_below_band_transit_mobile_vnums: tuple[int, ...] = ()
+    # A small number of source-ranked routes have a separate, fully audited
+    # set of scripted or special low-level mobiles on the approach.  These are
+    # still route hazards, never targets; StarterPolicy keeps the live scan and
+    # combat checks in force before allowing movement past them.
+    route_preflight_deep_below_band_mobile_vnums: tuple[int, ...] = ()
     # Exact source aggressive mobiles audited as possible transit fighters.
     # Runtime still requires a singleton live identity and bounded output;
     # these VNUMs never turn a transit interruption into an XP target.
@@ -153,7 +162,17 @@ class Fastwalk:
     route_economic_hunt_mobile_vnums: tuple[int, ...] = ()
     # Population-only source proof for the ordinary XP economic gate.
     route_economic_hunt_allow_bounded_population: bool = False
+    # A source-audited Sanctuary-backed endpoint may need a fresh staff
+    # activation between separate, admitted plain transit fights.
+    refresh_sanctuary_between_plain_transit_fights: bool = False
+    # Do not enter that armed endpoint after the route has spent its
+    # protection reserve on the transit fights.
+    require_sanctuary_at_endpoint: bool = False
     post_command_actions: tuple[FastwalkPostCommandAction, ...] = ()
+    # Source-ranked visibility routes may need a fresh affect for more than
+    # the first room. The starter waits at the healer when an older affect is
+    # shorter than this reserve, then activates the carried potion at recall.
+    minimum_invisibility_duration: int | None = None
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -578,22 +597,26 @@ MAP_ROUTES = (
         "mirror realm jerry garcia",
         36,
         40,
-        "3s3w2nw3n2e3ne3n2e2n;open north;3nw2d;open west;5wswu2e",
+        # Use the source-shortest east-gate approach.  The older west-side
+        # prefix crossed Common Square, where the low-level Drunk can greet
+        # the character and draw a cityguard into an otherwise harmless trip.
+        "2s4e3n2w3ne3n2e5nw2d5wswu2e",
         recall_after_loot=True,
     ),
     Fastwalk(
         "mirror realm caerlin",
         35,
         40,
-        "3s3w2nw3n2e3ne3n2e2n;open north;3nw2d;open west;5w",
+        "2s4e3n2w3ne3n2e5nw2d5w",
         recall_after_loot=True,
         research_endpoint_room_vnum=19068,
+        return_commands_allow_open=True,
     ),
     Fastwalk(
         "mirror realm caerlin watchtowers",
         35,
         40,
-        "3s3w2nw3n2e3ne3n2e2n;open north;3n",
+        "2s4e3n2w3ne3n2e5n",
         recall_after_loot=True,
         research_endpoint_room_vnum=19008,
         route_economic_hunt_mobile_vnums=(19036,),
@@ -602,7 +625,7 @@ MAP_ROUTES = (
         "mirror realm caerlin face",
         35,
         40,
-        "3s3w2nw3n2e3ne3n2e2n",
+        "2s4e3n2w3ne3n2e2n",
         recall_after_loot=True,
         research_endpoint_room_vnum=19005,
         route_economic_hunt_mobile_vnums=(19036,),
@@ -610,17 +633,27 @@ MAP_ROUTES = (
     Fastwalk("pit official", 41, 45, "nund", recall_after_loot=True),
     Fastwalk(
         "dwarven home chess dwarf",
-        46,
+        45,
         50,
-        "6swswsw2s;open south;7s2w3s2ws4en;open east;e3n5e2s2es",
+        "6sw2swsw2sw2s;open south;6s2w3s2w2s4en;open east;e3n5e2s2es",
         recall_after_loot=True,
+        research_endpoint_room_vnum=20530,
     ),
     Fastwalk(
         "mirror realm storn",
-        46,
+        45,
         50,
-        "2s4w3n2e3ne3n2e2n;open north;4ne2d;open east;6e2s",
+        "2s;4w;3n;2e;3n;e;3n;2e;2n;open north;3n;e;2d;open east;5e;2s",
         recall_after_loot=True,
+        research_endpoint_room_vnum=19114,
+    ),
+    Fastwalk(
+        "mirror realm master dunn",
+        45,
+        50,
+        "2s4e3n2w3ne3n2e5nw2d5wswu2e;2wdes",
+        recall_after_loot=True,
+        research_endpoint_room_vnum=19073,
     ),
     Fastwalk(
         "darkwood strange mist",
@@ -633,15 +666,17 @@ MAP_ROUTES = (
         "dwarven home gambler",
         51,
         55,
-        "6swswsw2s;open south;7s2w3s2ws4en;open east;e3n5e2s3e",
+        "6sw2swsw2sw2s;open south;6s2w3s2w2s4en;open east;e3n5e2s3e",
         recall_after_loot=True,
+        research_endpoint_room_vnum=20531,
     ),
     Fastwalk(
         "dwarven home master",
         56,
         60,
-        "6swswsw2s;open south;7s2w3s2ws2s4en;open east;e3n5e3n",
+        "6sw2swsw2sw2s;open south;6s2w3s2w2s4en;open east;e3n5e3n",
         recall_after_loot=True,
+        research_endpoint_room_vnum=20537,
     ),
     Fastwalk(
         "vampire hive wounded vampire",

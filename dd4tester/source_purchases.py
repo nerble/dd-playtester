@@ -21,9 +21,14 @@ from .training import training_priorities_for
 
 TRAINING_TRAVEL_SUPPLY_KEY = "campaign_training_travel_supply"
 ROUTE_INVISIBILITY_SUPPLY_KEY = "campaign_route_invisibility_supply"
+ROUTE_INVISIBILITY_FUNDING_RETRY_STATUS = "funding-required"
+SOURCE_PURCHASE_BALANCE_FAILURE = (
+    "quoted price exceeds the reserved purchase balance"
+)
 ROUTE_INVISIBILITY_OBJECT_VNUM = 19021
 ROUTE_INVISIBILITY_SHOPKEEPER_VNUM = 19024
 ROUTE_INVISIBILITY_SHOP_ROOM_VNUM = 19070
+ROUTE_INVISIBILITY_PURCHASE_QUANTITY = 1
 _MIRROR_GARDENER_VNUM = 19036
 _MIRROR_GARDENER_MAX_PURSE = 6250
 SHOP_LIST_ITEM = re.compile(
@@ -40,6 +45,40 @@ SHOP_SALE_COMPLETED = re.compile(
 )
 
 
+@dataclass
+class ShopCommandReply:
+    """Keep one shop reply together across Telnet chunks, with a fixed deadline."""
+
+    command: str | None = None
+    response: str = ""
+    deadline: float | None = None
+    complete: bool = False
+    failure: str | None = None
+
+    def begin(self, command: str, *, now: float) -> None:
+        self.command = command
+        self.response = ""
+        self.deadline = now + 5
+        self.complete = False
+        self.failure = None
+
+    def observe(self, text: str, *, now: float) -> None:
+        if self.command is None or self.complete or self.failure:
+            return
+        if self.expired(now):
+            return
+        if len(self.response) + len(text) > 8000:
+            self.failure = "shop reply exceeded the 8000-character limit"
+            return
+        self.response += text
+        self.complete = _DD4_PROMPT.search(self.response) is not None
+
+    def expired(self, now: float) -> bool:
+        if not self.complete and self.deadline is not None and now >= self.deadline:
+            self.failure = "shop reply did not complete within five seconds"
+        return self.failure is not None
+
+
 @dataclass(frozen=True)
 class SourcePurchase:
     object_vnum: int
@@ -49,6 +88,7 @@ class SourcePurchase:
     keyword: str
     maximum_price: int
     coin_reserve: int = 100
+    quantity: int = 1
 
 
 @dataclass(frozen=True)
@@ -86,7 +126,7 @@ class TrainingTravelSupply:
 
 @dataclass(frozen=True)
 class RouteInvisibilitySupply:
-    """Source-audited pure invisibility purchase for a blocked field route."""
+    """Source-audited invisibility reserve for a blocked field route."""
 
     purchase: SourcePurchase
     commands: tuple[str, ...]
@@ -102,7 +142,8 @@ class RouteInvisibilitySupply:
             "route_rooms": list(self.room_vnums),
             "required_move": self.required_move,
             "maximum_price": self.purchase.maximum_price,
-            "policy_revision": 1,
+            "quantity": max(1, int(self.purchase.quantity)),
+            "policy_revision": 2,
         }
 
 
@@ -130,6 +171,35 @@ def _known_coin_value(state: Mapping[str, Any]) -> int | None:
             return None
         total += value * multiplier
     return total
+
+
+def _state_has_active_invisibility(state: Mapping[str, Any]) -> bool:
+    """Recognize a live invisibility affect without trusting stale route data."""
+    affects = state.get("affects")
+    if not isinstance(affects, (list, tuple, set, frozenset)):
+        return False
+    for raw_entry in affects:
+        entries = (
+            raw_entry
+            if isinstance(raw_entry, (list, tuple, set, frozenset))
+            else (raw_entry,)
+        )
+        for affect in entries:
+            if not isinstance(affect, Mapping):
+                continue
+            if str(affect.get("name") or "").casefold() not in {
+                "invis",
+                "invisibility",
+            }:
+                continue
+            duration = affect.get("duration")
+            if duration is None:
+                return True
+            try:
+                return int(duration) > 0
+            except (TypeError, ValueError):
+                return True
+    return False
 
 
 def route_invisibility_supply(
@@ -169,11 +239,23 @@ def route_invisibility_supply(
     ):
         return None
     prior = state.get(ROUTE_INVISIBILITY_SUPPLY_KEY)
+    retry_after_funding = bool(
+        isinstance(prior, Mapping)
+        and prior.get("status") == ROUTE_INVISIBILITY_FUNDING_RETRY_STATUS
+        and prior.get("funding_failure") == SOURCE_PURCHASE_BALANCE_FAILURE
+    )
+    retry_after_expired_acquisition = bool(
+        isinstance(prior, Mapping)
+        and prior.get("status") == "acquired"
+        and not _state_has_active_invisibility(state)
+    )
     if (
         not ignore_attempt
         and isinstance(prior, Mapping)
         and prior.get("boot_id") == boot
         and prior.get("level") == level
+        and not retry_after_funding
+        and not retry_after_expired_acquisition
     ):
         return None
     purse = _known_coin_value(state)
@@ -273,6 +355,7 @@ def route_invisibility_supply(
             keyword,
             maximum_price=10000,
             coin_reserve=0,
+            quantity=ROUTE_INVISIBILITY_PURCHASE_QUANTITY,
         ),
         commands=tuple(commands),
         room_vnums=rooms,
@@ -446,6 +529,7 @@ class SourcePurchaseSession:
     funding_item_description: str | None = None
     funding_item_selector: str | None = None
     funding_item_initial_count: int = 0
+    purchased_count: int = 0
 
     def observe(self, text: str) -> None:
         if self.stage in {
@@ -544,12 +628,14 @@ class SourcePurchaseSession:
                 return None
             offer = offers[0]
             self.price, self.selector = int(offer.group("price")), offer.group("target")[1:-1]
+            quantity = max(1, int(self.plan.quantity))
             if not 0 < self.price <= self.plan.maximum_price:
                 self.failure, self.stage = "quoted price exceeds the purchase maximum", "failed"
                 return None
-            if self.price > coins - self.plan.coin_reserve:
+            available_coins = coins - self.plan.coin_reserve
+            if self.price * quantity > available_coins:
                 if funding_item is None or self.funding_attempts >= 4:
-                    self.failure, self.stage = "quoted price exceeds the reserved purchase balance", "failed"
+                    self.failure, self.stage = SOURCE_PURCHASE_BALANCE_FAILURE, "failed"
                     return None
                 description, selector, vnum = funding_item
                 if (
@@ -570,9 +656,10 @@ class SourcePurchaseSession:
                 self.stage = "funding-value"
                 self.response, self.deadline = "", now + 5.0
                 return f"value {selector}"
-            if not 0 < self.price <= min(self.plan.maximum_price, coins - self.plan.coin_reserve):
-                self.failure, self.stage = "quoted price exceeds the reserved purchase balance", "failed"
+            if not 0 < self.price * quantity <= available_coins:
+                self.failure, self.stage = SOURCE_PURCHASE_BALANCE_FAILURE, "failed"
                 return None
+            self.purchased_count = 0
             self.stage, command = "buying", f"buy {self.selector}"
         elif self.stage == "buying":
             if not re.search(r"\bYou buy\b", self.response):
@@ -588,9 +675,16 @@ class SourcePurchaseSession:
                     self.failure = "shop did not acknowledge the purchase"
                 self.stage = "failed"
                 return None
-            self.stage, command = "inventory", "inventory"
+            self.purchased_count += 1
+            quantity = max(1, int(self.plan.quantity))
+            if self.purchased_count < quantity:
+                self.response, self.deadline = "", now + 5.0
+                command = f"buy {self.selector}"
+            else:
+                self.stage, command = "inventory", "inventory"
         elif self.stage == "inventory":
-            if count <= self.initial_count:
+            quantity = max(1, int(self.plan.quantity))
+            if count < self.initial_count + quantity:
                 self.failure, self.stage = "purchased object was not confirmed in inventory", "failed"
             else:
                 self.stage = "complete"
@@ -605,6 +699,8 @@ class SourcePurchaseSession:
                 "shopkeeper_vnum": self.plan.shopkeeper_vnum, "stage": self.stage,
                 "price": self.price, "selector": self.selector, "failure": self.failure,
                 "funding_attempts": self.funding_attempts,
+                "quantity": max(1, int(self.plan.quantity)),
+                "purchased_count": self.purchased_count,
                 "funding_item_vnums": list(self.funding_item_vnums),
                 "funding_item_description": self.funding_item_description,
                 "funding_item_selector": self.funding_item_selector}

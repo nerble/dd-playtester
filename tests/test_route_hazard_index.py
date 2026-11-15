@@ -78,6 +78,19 @@ def test_noncombat_joiner_has_no_destination_range_to_search(monkeypatch):
     assert not index.reachable
 
 
+def test_faerie_dragon_is_transit_safe_until_combat_has_started():
+    world = source_case()
+    world.mobiles[100] = replace(world.mobiles[100], act_flags=0)
+    world.mobile_specials[100] = ("spec_faerie_dragon",)
+
+    assert not source_route_hazard_rejections(
+        world,
+        (2, 3),
+        character_level=30,
+        combat_at_destination=False,
+    )
+
+
 @pytest.mark.parametrize("special", ["spec_guard", "spec_thief", "spec_mage"])
 def test_cached_source_classification_does_not_cache_route_permissions(special):
     world = source_case()

@@ -66,6 +66,31 @@ def test_completed_hunt_retains_own_success_after_unrelated_losses(transition: b
 
 
 @pytest.mark.parametrize("transition", [False, True])
+@pytest.mark.parametrize("loss,decline,valid", [(712, 712, True), (1480, 712, True), (711, 712, False), (0, 1, False)])
+def test_recorded_later_losses_may_account_for_xp_below_a_safe_hunt(transition, loss, decline, valid):
+    state, segment, summary = _evidence(transition=transition)
+    end = json.loads(segment["end_state_json"])
+    state["xp"] = end["xp"] - decline
+    state["campaign_xp_loss_total"] = end["campaign_xp_loss_total"] + loss
+    original = deepcopy((state, segment, summary))
+    assert completed_single_target_hunt(
+        state, segment, summary, policy_id=POLICY, source_policy_id=SOURCE,
+        mobile_vnum=9500, prior_level_source_policy_id=PRIOR_SOURCE,
+    ) is valid
+    assert (state, segment, summary) == original
+
+
+def test_xp_loss_accounting_never_reopens_the_failed_target():
+    state, segment, summary = _evidence(transition=False)
+    end = json.loads(segment["end_state_json"])
+    state.update(xp=end["xp"] - 712, campaign_xp_loss_total=end["campaign_xp_loss_total"] + 1480)
+    state["campaign_source_ranked_xp_loss_policies"] = [{"boot_id": "boot", "policy_id": SOURCE}]
+    assert not completed_single_target_hunt(
+        state, segment, summary, policy_id=POLICY, source_policy_id=SOURCE, mobile_vnum=9500,
+    )
+
+
+@pytest.mark.parametrize("transition", [False, True])
 def test_prior_level_target_loss_stays_closed_after_a_successful_visit(transition: bool) -> None:
     state, segment, summary = _evidence(transition=transition)
     state["campaign_source_ranked_xp_loss_policies"] = [{

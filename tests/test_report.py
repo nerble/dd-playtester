@@ -8,6 +8,9 @@ from dd4tester.cli import main
 from dd4tester.report import (
     _commentary,
     _balance_signals,
+    _change_row,
+    _format_training,
+    _format_sales,
     _item_acquisition_count,
     _objective_outcome,
     _progress_summary,
@@ -19,6 +22,18 @@ from dd4tester.report import (
     write_campaign_report,
 )
 from dd4tester.storage import RunStorage
+
+
+def test_format_training_accepts_compact_summary_without_training_details() -> None:
+    assert _format_training({}) == "none"
+
+
+def test_format_sales_accepts_compact_summary_without_sales() -> None:
+    assert _format_sales({}) == "none"
+
+
+def test_change_row_accepts_compact_summary_without_measure_values() -> None:
+    assert _change_row("Level", {}) == "| Level | - | - | - |"
 
 
 def test_report_summarizes_progress_failures_signals_and_commentary(tmp_path) -> None:

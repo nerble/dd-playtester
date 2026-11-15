@@ -4,6 +4,7 @@ import pytest
 
 from dd4tester.hunt_candidates import MobileProgram
 from dd4tester.mobile_programs import (
+    greeting_display_programs_only,
     greeting_echo_programs_only,
     idle_echo_programs_only,
     noncombat_echo_programs_only,
@@ -14,6 +15,39 @@ IDLE_ECHO = MobileProgram(
     "rand_prog", "10",
     ("if isfight($i)", "break", "else", "mpecho $I asks for aspirin.", "endif"),
 )
+
+
+DISPLAY_GREETING = MobileProgram(
+    "all_greet_prog", "100",
+    ("say Squeak. Time to die you fool. Squeak.", "emote draws its sword."),
+)
+
+
+def test_display_greeting_requires_explicit_bounded_output_commands() -> None:
+    assert greeting_display_programs_only((DISPLAY_GREETING,))
+    assert greeting_display_programs_only((replace(DISPLAY_GREETING, trigger="greet_prog"),))
+    assert not greeting_display_programs_only(())
+    assert not greeting_display_programs_only((DISPLAY_GREETING,) * 5)
+    assert not greeting_echo_programs_only((DISPLAY_GREETING,))
+
+
+@pytest.mark.parametrize("program", [
+    replace(DISPLAY_GREETING, trigger="fight_prog"),
+    replace(DISPLAY_GREETING, trigger="speech_prog"),
+    replace(DISPLAY_GREETING, condition="101"),
+    replace(DISPLAY_GREETING, condition="unknown"),
+    replace(DISPLAY_GREETING, commands=("say",)),
+    replace(DISPLAY_GREETING, commands=("mpkill $n",)),
+    replace(DISPLAY_GREETING, commands=("mptransfer $n 3001",)),
+    replace(DISPLAY_GREETING, commands=("cast poison $n",)),
+    replace(DISPLAY_GREETING, commands=("if ispc($n)", "say Hello.", "endif")),
+    replace(DISPLAY_GREETING, commands=("say hello\nmpkill $n",)),
+    replace(DISPLAY_GREETING, commands=("say hello\rmpkill $n",)),
+    replace(DISPLAY_GREETING, commands=("emote waves.",) * 9),
+])
+def test_display_greeting_rejects_other_actions_or_control_flow(program) -> None:
+    assert not greeting_display_programs_only((program,))
+    assert not greeting_display_programs_only((DISPLAY_GREETING, program))
 
 
 def test_idle_echo_proof_accepts_empty_and_exact_noncombat_scripts() -> None:

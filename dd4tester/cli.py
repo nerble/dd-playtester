@@ -640,6 +640,8 @@ def build_parser() -> argparse.ArgumentParser:
             "energy containment",
             "disintegrate protection",
             "disint protection",
+            "detect-hidden",
+            "detect hidden",
             "healing",
             "recovery",
             "flight",
@@ -2743,6 +2745,7 @@ def recover_runs(
                         campaign_id,
                         reason=reason,
                         character_name=character,
+                        classify_zero_command_as_failed=True,
                     )
                 )
                 reconciled_segments = 0
@@ -3407,7 +3410,7 @@ def show_gear_sources(
         "object_vnum\tkeywords\tobject\tcategory\tbetter_than_current\tstatus\t"
         "source_kind\tsource_mobile\treset_room\tarea\tcount\t"
         "source_levels\troute_origin\troute\tstance_rank\thazards\t"
-        "autonomy_rejections\tweapon_role"
+        "autonomy_rejections\tweapon_role\tupgrade_rank"
     )
     for placement in placements[:limit]:
         source_mobile = (
@@ -3445,6 +3448,7 @@ def show_gear_sources(
                     )
                     or "-",
                     placement.weapon_role,
+                    ",".join(str(value) for value in placement.upgrade_rank),
                 )
             )
         )
@@ -3866,6 +3870,7 @@ def _readiness_gear_record(placement: Any) -> dict[str, Any]:
         "category": placement.category,
         "weapon_role": placement.weapon_role,
         "stance_rank": list(placement.stance_rank),
+        "upgrade_rank": list(getattr(placement, "upgrade_rank", ())),
         "better_than_current": placement.better_than_current,
         "status": placement.status,
         "source_kind": placement.source_kind,
@@ -4670,7 +4675,11 @@ def show_campaign(campaign_id: int, *, database: Path, limit: int = 20) -> int:
                 f"psionic-protection-gated={diagnosis.get('psionic_protection_gated_count', 0)} "
                 f"below-band={diagnosis.get('same_boot_below_band_count', 0)} "
                 f"transit-hazard={diagnosis.get('same_boot_transit_hazard_count', 0)} "
-                f"cooldown={diagnosis.get('same_boot_cooldown_count', 0)}"
+                f"result-states={diagnosis.get('same_boot_cooldown_count', 0)} "
+                f"loss-closed={diagnosis.get('same_boot_loss_closed_count', 0)} "
+                f"negative-consider={diagnosis.get('same_boot_negative_consider_count', 0)} "
+                f"absence-evidence={diagnosis.get('same_boot_absence_count', 0)} "
+                f"soft-research={diagnosis.get('same_boot_soft_cooldown_count', 0)}"
             )
             blockers = diagnosis.get("top_blockers")
             if isinstance(blockers, list):

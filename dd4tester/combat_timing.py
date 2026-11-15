@@ -12,6 +12,9 @@ from .hunt_candidates import mobile_expected_round_damage
 COMBAT_WAIT_SECONDS = 3.25  # Twelve wait pulses, then the next 4-Hz input pulse.
 TIMED_SKILL_WAITS = {"kick": 2.25, "headbutt": 6.25}
 ACK_TIMEOUT_SECONDS = 10.0
+SELF_HEAL_COMMANDS = frozenset(
+    f"cast '{spell}'" for spell in ("heal", "cure critical", "cure serious", "cure light")
+)
 
 # const.c damage nouns for the registered direct spells. Authorization stays
 # in combat_capabilities; these names only recognize commands already issued.
@@ -52,12 +55,18 @@ class CombatCommandWindow:
     timeouts: int = 0
     early_withdrawals: int = 0
     suspended: bool = False
+    scope: tuple[object, ...] | None = None
+    wakeup_used: bool = True
+    timer_wakeups: int = 0
 
-    def issue(self, command: str, *, target: str, now: float) -> None:
+    def issue(self, command: str, *, target: str, now: float,
+              scope: tuple[object, ...] | None = None) -> None:
         if not target.strip():
             return
         match = re.fullmatch(r"cast '([^']+)' .+", command)
         noun = SPELL_NOUNS.get(match.group(1)) if match else None
+        if command in SELF_HEAL_COMMANDS:
+            noun = "self-heal"
         if command in TIMED_SKILL_WAITS:
             noun = command
         if noun is None and not command.startswith("kill "):
@@ -69,6 +78,8 @@ class CombatCommandWindow:
         self.acknowledged_at = None
         self.ready_at = now + TIMED_SKILL_WAITS.get(command, COMBAT_WAIT_SECONDS)
         self.buffer = ""
+        self.scope = scope
+        self.wakeup_used = False
         self.sent += 1
 
     @property
@@ -117,6 +128,10 @@ class CombatCommandWindow:
             "you can't attack them in their current form.",
         }
         refused = bool(set(lines) & refusals)
+        healing_reply = bool(self.noun == "self-heal" and set(lines) & {
+            "you feel better!", "a warm feeling fills your body.",
+            "you fail to correctly recite the spell!",
+        })
         prefix = f"your {self.noun} " if self.noun else "your "
         damage = any(
             line.startswith(prefix)
@@ -142,7 +157,7 @@ class CombatCommandWindow:
                 for line in lines
             )
         )
-        if not refused and not damage and not attack_resolved:
+        if not refused and not damage and not attack_resolved and not healing_reply:
             return
         self.acknowledged_at = now
         self.suspended = False
@@ -178,6 +193,18 @@ class CombatCommandWindow:
         return bool(not self.suspended and self.pending and self.issued_at is not None
                     and now - self.issued_at >= ACK_TIMEOUT_SECONDS)
 
+    def take_ready_wakeup(self, *, scope: tuple[object, ...] | None, now: float,
+                          prompt_ready: bool = False) -> bool:
+        """Release one acknowledged action without waiting for another NPC round."""
+        if self.scope is None or scope != self.scope:
+            self.wakeup_used = True
+            return False
+        if prompt_ready or self.wakeup_used or self.command is None or self.blocked(now):
+            return False
+        self.wakeup_used = True
+        self.timer_wakeups += 1
+        return True
+
     def suspend(self) -> None:
         if not self.suspended:
             self.timeouts += 1
@@ -191,11 +218,14 @@ class CombatCommandWindow:
         self.ready_at = 0.0
         self.buffer = ""
         self.suspended = False
+        self.scope = None
+        self.wakeup_used = True
 
     def evidence(self) -> dict[str, int]:
         return {
             "sent": self.sent, "acknowledged": self.acknowledged,
             "timeouts": self.timeouts, "early_withdrawals": self.early_withdrawals,
+            "timer_wakeups": self.timer_wakeups,
         }
 
 

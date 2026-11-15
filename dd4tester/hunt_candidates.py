@@ -57,6 +57,8 @@ _SOURCE_OUTPUT_EVIDENCE_REJECTIONS = frozenset(
         _TARGET_OUTPUT_EVIDENCE_REJECTION,
         "source mobile HP modifier is unavailable",
         "source mobile damage modifier is unavailable",
+        "source mobile critical modifier is unavailable",
+        "source mobile swiftness modifier is unavailable",
     }
 )
 
@@ -78,6 +80,8 @@ MOBILE_RANK_HP_MULTIPLIERS = {
 # the source constants in ``merc.h``.
 MOBILE_HP_MOD_MIN = -99
 MOBILE_DAMAGE_MOD_MIN = -99
+MOBILE_COMBAT_MOD_MIN = -100
+MOBILE_COMBAT_MOD_MAX = 100
 MOBILE_SPAWN_HP_LIMIT = ((1 << 31) - 1) // 100
 MOBILE_ATTACK_DAMAGE_LIMIT = ((1 << 31) - 1) // 1000
 MOBILE_TEMPLATE_UNSET = -(1 << 31)
@@ -150,6 +154,7 @@ def body_form_has_head(flags: int | None) -> bool | None:
 
 AFF_BLIND = 1 << 0
 AFF_INVISIBLE = 1 << 1
+AFF_HIDE = 1 << 16
 AFF_DETECT_INVIS = 1 << 3
 AFF_DETECT_MAGIC = 1 << 4
 AFF_SANCTUARY = 1 << 7
@@ -218,6 +223,13 @@ RECALL_VNUM = 3001
 WEAR_WIELD = 16
 WEAR_HOLD = 17
 WEAR_DUAL = 18
+MIRROR_REALM_FIXED_ECONOMIC_TRANSIT_MOBILE_VNUMS = (
+    19044,
+    19045,
+    19046,
+    19052,
+    19053,
+)
 LOW_LEVEL_AREA_FILES = (
     "air.are",
     "ambush.are",
@@ -1549,6 +1561,8 @@ class MobileTemplateSource:
     xp_modifier: int = 0
     hp_modifier: int = 0
     damage_modifier: int = 0
+    crit_modifier: int = 0
+    haste_modifier: int = 0
     # Resolved DD4 template special slots and their source probability policy.
     # A slot name is empty when the template explicitly clears it.
     special_names: tuple[str | None, ...] = (None, None, None)
@@ -1609,6 +1623,10 @@ class MobileSource:
     area_damage_modifier: int | None = None
     damage_modifier: int | None = 0
     damage_modifier_known: bool = True
+    crit_modifier: int | None = 0
+    crit_modifier_known: bool = True
+    haste_modifier: int | None = 0
+    haste_modifier_known: bool = True
     description: str = ""
     live_compatibility_source_revision: str | None = None
     # Some live GMCP/source integrations expose a singular command keyword
@@ -2275,6 +2293,7 @@ def _source_container_access_notes(
 
 
 _RESOURCE_EFFECT_SPELLS = {
+    "detect-hidden": frozenset({"detect hidden"}),
     "sanctuary": frozenset({"sanctuary"}),
     "protection": frozenset({"protection"}),
     # DD4's source spell that improves the saving throw used by
@@ -2297,6 +2316,7 @@ _RESOURCE_EFFECT_SPELLS = {
     "water-breathing": frozenset({"breathe water"}),
 }
 _RESOURCE_EFFECT_ALIASES = {
+    "detect hidden": "detect-hidden",
     "cure": "healing",
     "recovery": "healing",
     "fly": "flight",
@@ -2318,6 +2338,7 @@ def normalize_resource_effect(effect: str) -> str:
 
 
 _RESOURCE_EFFECT_ORDER = (
+    "detect-hidden",
     "sanctuary",
     "protection",
     "energy-containment",
@@ -2327,6 +2348,7 @@ _RESOURCE_EFFECT_ORDER = (
     "food",
 )
 _RESOURCE_EFFECT_SPELL_ORDER = {
+    "detect-hidden": ("detect hidden",),
     "sanctuary": ("sanctuary",),
     "protection": ("protection",),
     "energy-containment": ("energy containment",),
@@ -3506,6 +3528,8 @@ def load_mobile_template_catalog(
             int,
             int,
             int,
+            int,
+            int,
             tuple[str | None, ...],
             tuple[int, ...],
         ],
@@ -3538,6 +3562,16 @@ def load_mobile_template_catalog(
                 if len(fields) > 9
                 else MOBILE_TEMPLATE_UNSET
             ),
+            (
+                _parse_c_integer_expression(fields[10], macros)
+                if len(fields) > 10
+                else MOBILE_TEMPLATE_UNSET
+            ),
+            (
+                _parse_c_integer_expression(fields[11], macros)
+                if len(fields) > 11
+                else MOBILE_TEMPLATE_UNSET
+            ),
             species_special_names,
             species_special_chances,
         )
@@ -3568,6 +3602,16 @@ def load_mobile_template_catalog(
             if len(fields) > 12
             else MOBILE_TEMPLATE_UNSET
         )
+        archetype_crit_modifier = (
+            _parse_c_integer_expression(fields[13], macros)
+            if len(fields) > 13
+            else MOBILE_TEMPLATE_UNSET
+        )
+        archetype_haste_modifier = (
+            _parse_c_integer_expression(fields[14], macros)
+            if len(fields) > 14
+            else MOBILE_TEMPLATE_UNSET
+        )
         archetype_special_names = _parse_c_special_names(fields, 19)
         archetype_special_chances = _parse_c_special_chances(
             fields[23] if len(fields) > 23 else None,
@@ -3575,11 +3619,11 @@ def load_mobile_template_catalog(
             default=(MOBILE_TEMPLATE_UNSET,) * MOBILE_SPECIAL_SLOTS,
         )
         special_names = _resolve_template_special_names(
-            species[6],
+            species[8],
             archetype_special_names,
         )
         special_chances = _resolve_template_special_chances(
-            species[7],
+            species[9],
             archetype_special_chances,
         )
         template_key = name.casefold()
@@ -3611,6 +3655,14 @@ def load_mobile_template_catalog(
             damage_modifier=_resolve_template_scalar(
                 species[5],
                 archetype_damage_modifier,
+            ),
+            crit_modifier=_resolve_template_scalar(
+                species[6],
+                archetype_crit_modifier,
+            ),
+            haste_modifier=_resolve_template_scalar(
+                species[7],
+                archetype_haste_modifier,
             ),
             special_names=special_names,
             special_chances=special_chances,
@@ -3752,6 +3804,12 @@ def _apply_live_mobile_source_overrides(area: AreaSource) -> None:
             area_damage_modifier=None,
             damage_modifier=0,
             damage_modifier_known=True,
+            crit_modifier=(override.crit_modifier if override.crit_modifier is not None
+                           else mobile.crit_modifier),
+            crit_modifier_known=(override.crit_modifier is not None or mobile.crit_modifier_known),
+            haste_modifier=(override.haste_modifier if override.haste_modifier is not None
+                            else mobile.haste_modifier),
+            haste_modifier_known=(override.haste_modifier is not None or mobile.haste_modifier_known),
             live_compatibility_source_revision=override.source_revision,
         )
 
@@ -4659,6 +4717,7 @@ def rank_hunt_candidates(
     route_key_object_vnums: Collection[int] = (),
     recall_origins: Mapping[int, int] | None = None,
     character_alignment: int | None = None,
+    route_economic_transit_allow_equipped_mobile_vnums: Collection[int] = (),
     route_blocked_room_vnums: Collection[int] = (),
     route_blocked_room_max_extra_steps: int = _MAX_SOURCE_ROUTE_DETOUR_STEPS,
     preparation_check: Callable[[], None] | None = None,
@@ -4693,7 +4752,17 @@ def rank_hunt_candidates(
         int(vnum): int(count)
         for vnum, count in (boot_kill_counts_by_mobile_vnum or {}).items()
     }
-    resets_by_room = _resets_by_room(world)
+    # ``reset_area`` walks each area's reset list in order and compares the
+    # prototype-global mobile count with every M reset's maximum.  A source
+    # file can therefore list the same singleton mobile in several rooms
+    # while only the first reset can actually load it.  Build route and hunt
+    # evidence from the reset placements the server can create, rather than
+    # presenting later skipped alternatives as live endpoints.
+    effective_mob_resets = _effective_mob_resets(
+        world.mob_resets,
+        rooms=world.rooms,
+    )
+    resets_by_room = _resets_by_room(world, effective_mob_resets)
     prototype_population_limits: dict[int, int] = {}
     reset_rooms_by_mobile: dict[int, set[int]] = {}
     for reset in world.mob_resets:
@@ -4707,7 +4776,14 @@ def rank_hunt_candidates(
             reset.room_vnum
         )
     candidate_area_files = None if include_all_areas else set(LOW_LEVEL_AREA_FILES)
-    wandering_aggressors = _wandering_aggressors(world)
+    equipped_economic_transit_vnums = {
+        int(vnum)
+        for vnum in route_economic_transit_allow_equipped_mobile_vnums
+    }
+    wandering_aggressors = _wandering_aggressors(
+        world,
+        effective_mob_resets,
+    )
     recall_origin_rooms: dict[int, int] = {0: RECALL_VNUM}
     for raw_index, raw_room_vnum in (recall_origins or {}).items():
         try:
@@ -4881,7 +4957,7 @@ def rank_hunt_candidates(
         return (*selected, index, recall_origin_rooms[index])
     ranked: list[HuntCandidate] = []
 
-    for reset, room_spawn_count in _aggregate_mob_resets(world.mob_resets):
+    for reset, room_spawn_count in _aggregate_mob_resets(effective_mob_resets):
         if preparation_check is not None:
             preparation_check()
         mobile = world.mobiles.get(reset.mobile_vnum)
@@ -5049,6 +5125,25 @@ def rank_hunt_candidates(
         route_attack_program_mobile_vnums: set[int] = set()
         route_special_mobile_vnums: set[int] = set()
         dangerous = False
+        plain_mirror_realm_endpoint = bool(
+            mobile.area_file.casefold() == "mirror_realm.are"
+            and not world.mobile_specials.get(mobile.vnum)
+        )
+
+        def fixed_economic_transit_allowed(hazard_vnum: int) -> bool:
+            """Admit only the audited Mirror Realm route thieves in transit."""
+            return bool(
+                plain_mirror_realm_endpoint
+                and hazard_vnum in equipped_economic_transit_vnums
+                and hazard_vnum
+                in MIRROR_REALM_FIXED_ECONOMIC_TRANSIT_MOBILE_VNUMS
+                and source_mobile_has_only_economic_transit_risk(
+                    world,
+                    hazard_vnum,
+                    allow_equipped=True,
+                )
+            )
+
         unresolved_source_modifiers: list[str] = []
         # Template-derived combat scalars are part of the source damage
         # proof.  An unresolved value is not a target-HP admission rule, but
@@ -5062,6 +5157,16 @@ def rank_hunt_candidates(
             hazards.append("source mobile damage modifier is unavailable")
             unresolved_source_modifiers.append(
                 "source mobile damage modifier is unavailable"
+            )
+        if not mobile.crit_modifier_known or mobile.crit_modifier is None:
+            hazards.append("source mobile critical modifier is unavailable")
+            unresolved_source_modifiers.append(
+                "source mobile critical modifier is unavailable"
+            )
+        if not mobile.haste_modifier_known or mobile.haste_modifier is None:
+            hazards.append("source mobile swiftness modifier is unavailable")
+            unresolved_source_modifiers.append(
+                "source mobile swiftness modifier is unavailable"
             )
         normalized_target = _normalize_name(mobile.short_description)
         boot_kills = (
@@ -5132,6 +5237,9 @@ def rank_hunt_candidates(
             companion_specials = world.mobile_specials.get(
                 companion.vnum,
                 (),
+            )
+            companion_is_fixed_economic_transit = (
+                fixed_economic_transit_allowed(companion.vnum)
             )
             hazards.append(
                 "room companion: "
@@ -5204,6 +5312,12 @@ def rank_hunt_candidates(
                 hazards.append(
                     "source-backed good-alignment companion cannot join "
                     "positive-alignment player: "
+                    f"{companion.short_description}"
+                )
+                continue
+            if companion_is_fixed_economic_transit:
+                hazards.append(
+                    "source-bounded economic route companion: "
                     f"{companion.short_description}"
                 )
                 continue
@@ -5305,6 +5419,14 @@ def rank_hunt_candidates(
                     hazard,
                     character_level=character_level,
                 )
+                if fixed_economic_transit_allowed(hazard.vnum):
+                    route_hazard_mobile_vnums.add(hazard.vnum)
+                    route_special_mobile_vnums.add(hazard.vnum)
+                    hazards.append(
+                        "source-bounded economic route special: "
+                        f"{hazard.short_description}"
+                    )
+                    continue
                 if not (
                     _source_mobile_is_route_hazard(world, hazard)
                     or unsafe_special
@@ -5555,6 +5677,14 @@ def rank_hunt_candidates(
                 hazard,
                 character_level=character_level,
             )
+            if fixed_economic_transit_allowed(hazard.vnum):
+                route_hazard_mobile_vnums.add(hazard.vnum)
+                route_special_mobile_vnums.add(hazard.vnum)
+                hazards.append(
+                    "source-bounded economic route wanderer: "
+                    f"{hazard.short_description}"
+                )
+                continue
             hazard_rooms = (
                 path_room_set
                 if (
@@ -6189,6 +6319,35 @@ def _parse_mobile_damage_modifier(
     return modifier if found else None
 
 
+def _parse_mobile_combat_modifier(
+    lines: list[str],
+    start: int,
+    end: int,
+    field_name: str,
+) -> int | None:
+    """Parse DD4's optional per-mobile crit or swiftness scalar."""
+    modifier: int | None = None
+    found = False
+    field_key = field_name.casefold()
+    for line in lines[start:end]:
+        parts = line.split()
+        if not parts or parts[0].casefold() != field_key:
+            continue
+        found = True
+        if len(parts) != 2:
+            raise ValueError(f"{field_name} requires one signed modifier")
+        value = parts[1]
+        if value.casefold() == "inherit":
+            modifier = None
+            continue
+        if not re.fullmatch(r"[+-]?\d+", value):
+            raise ValueError(f"invalid {field_name} value: {value}")
+        modifier = int(value)
+        if not MOBILE_COMBAT_MOD_MIN <= modifier <= MOBILE_COMBAT_MOD_MAX:
+            raise ValueError(f"{field_name} is outside the source range: {value}")
+    return modifier if found else None
+
+
 def _resolve_template_scalar(
     species_value: int | None,
     archetype_value: int | None,
@@ -6288,10 +6447,26 @@ def _parse_mobiles(
             index,
             record_end,
         )
+        area_crit_modifier = _parse_mobile_combat_modifier(
+            lines, index, record_end, "MobCritMod"
+        )
+        area_haste_modifier = _parse_mobile_combat_modifier(
+            lines, index, record_end, "MobSwiftMod"
+        )
         damage_modifier_known = (
             template_name is None
             or template is not None
             or area_damage_modifier is not None
+        )
+        crit_modifier_known = (
+            template_name is None
+            or template is not None
+            or area_crit_modifier is not None
+        )
+        haste_modifier_known = (
+            template_name is None
+            or template is not None
+            or area_haste_modifier is not None
         )
         effective_body_form_flags = (
             None
@@ -6346,6 +6521,26 @@ def _parse_mobiles(
                 else None
             ),
             damage_modifier_known=damage_modifier_known,
+            crit_modifier=(
+                area_crit_modifier
+                if area_crit_modifier is not None
+                else (
+                    template.crit_modifier
+                    if template is not None
+                    else 0 if template_name is None else None
+                )
+            ),
+            crit_modifier_known=crit_modifier_known,
+            haste_modifier=(
+                area_haste_modifier
+                if area_haste_modifier is not None
+                else (
+                    template.haste_modifier
+                    if template is not None
+                    else 0 if template_name is None else None
+                )
+            ),
+            haste_modifier_known=haste_modifier_known,
         )
         index = record_end
     return mobiles
@@ -7746,9 +7941,35 @@ def _source_mobile_is_route_hazard(
     A player-relocation program is not itself an attack, so keep it separate
     from combat admission while still treating it as a hard route hazard.
     """
+    if source_mobile_has_password_only_transfer(world, mobile):
+        return False
     return _source_mobile_is_combat_hazard(world, mobile) or bool(
         mobile.player_relocation_programs
     )
+
+
+def source_mobile_has_password_only_transfer(
+    world: WorldSource, mobile: MobileSource,
+) -> bool:
+    """Permit silent transit past an inert, fixed password teleporter only."""
+    from .mobile_programs import explicit_speech_transfer_programs_only
+
+    if (
+        mobile.aggressive or not mobile.sentinel or mobile.confused
+        or mobile.fear_aura or world.mobile_specials.get(mobile.vnum)
+        or mobile.vnum in world.shopkeepers
+        or not explicit_speech_transfer_programs_only(mobile.programs)
+    ):
+        return False
+    resets = [reset for reset in world.mob_resets if reset.mobile_vnum == mobile.vnum]
+    if (len(resets) != 1 or resets[0].maximum_count != 1
+            or resets[0].object_vnums or resets[0].equipment):
+        return False
+    for program in mobile.programs:
+        destination = int(program.commands[0].split()[2])
+        if destination not in world.rooms:
+            return False
+    return True
 
 
 def _source_aggressive_reset_can_reach_character(
@@ -7787,6 +8008,8 @@ def _source_mobile_safe_special_suppresses_route_hazard(
     character_level: int,
 ) -> bool:
     """Only let a harmless source special mask a route hazard."""
+    if source_mobile_has_password_only_transfer(world, mobile):
+        return True
     if (
         not _source_mobile_has_safe_noncombat_special(world, mobile.vnum)
         or mobile.attack_programs
@@ -8394,9 +8617,39 @@ def _loot_objects(
     return found
 
 
-def _resets_by_room(world: WorldSource) -> dict[int, list[MobReset]]:
+def _effective_mob_resets(
+    resets: Iterable[MobReset],
+    *,
+    rooms: Mapping[int, RoomSource] | None = None,
+) -> tuple[MobReset, ...]:
+    """Mirror DD4's ordered ``M`` reset population check.
+
+    ``reset_area`` keeps a prototype-global count and skips an M reset once
+    that count reaches the reset's ``maximum_count``.  The area files often
+    list fallback rooms for one singleton mobile, but those later entries are
+    not simultaneously populated.  Preserve source order and emit only the
+    reset entries that can create an instance during an empty area reset.
+    """
+    loaded_by_area_and_mobile: dict[tuple[str, int], int] = {}
+    effective: list[MobReset] = []
+    for reset in resets:
+        room = rooms.get(reset.room_vnum) if rooms is not None else None
+        area_key = room.area_file if room is not None else ""
+        key = (area_key, int(reset.mobile_vnum))
+        loaded = loaded_by_area_and_mobile.get(key, 0)
+        if loaded >= int(reset.maximum_count):
+            continue
+        effective.append(reset)
+        loaded_by_area_and_mobile[key] = loaded + 1
+    return tuple(effective)
+
+
+def _resets_by_room(
+    world: WorldSource,
+    resets: Iterable[MobReset] | None = None,
+) -> dict[int, list[MobReset]]:
     result: dict[int, list[MobReset]] = {}
-    for reset in world.mob_resets:
+    for reset in (world.mob_resets if resets is None else resets):
         result.setdefault(reset.room_vnum, []).append(reset)
     return result
 
@@ -8784,11 +9037,12 @@ def mobile_sanctuary_critical_hit_damage(
 
 def _wandering_aggressors(
     world: WorldSource,
+    resets: Iterable[MobReset] | None = None,
 ) -> tuple[tuple[MobileSource, MobReset], ...]:
     """Return wandering mobiles that can add combat to a route or endpoint."""
     return tuple(
         (mobile, reset)
-        for reset in world.mob_resets
+        for reset in (world.mob_resets if resets is None else resets)
         if (mobile := world.mobiles.get(reset.mobile_vnum)) is not None
         and (
             _source_mobile_is_route_hazard(world, mobile)

@@ -197,6 +197,45 @@ def test_single_target_rate_does_not_replace_a_selected_multi_kill_circuit(
     assert state == original
 
 
+@pytest.mark.parametrize("generic_duration,measured_wins", [(240, True), (60, False)])
+def test_source_rate_comparison_commits_only_the_winning_candidate_state(tmp_path, monkeypatch, generic_duration, measured_wins):
+    from dataclasses import replace
+
+    runner, state, candidate, _, summaries = _setup(tmp_path, monkeypatch, generic_duration=generic_duration)
+    measured = replace(candidate, mobile_vnum=101, room_vnum=201)
+    measured_id = campaign._source_ranked_policy_id(measured, character_level=31)
+    segment, summary = _receipt(measured_id, measured_id, 101, 3, 180, 2700)
+    runner._campaign_policy_segments.append(segment)
+    summaries[3] = summary
+    state[campaign._PRODUCTIVE_POLICY_HISTORY_KEY] = {"boot_id": "boot", "policy_ids": [measured_id]}
+    state["campaign_research_results"] = {measured_id: {
+        "boot_id": "boot", "observed": True, "viable": True, "completed_kill": True,
+    }}
+    original = deepcopy(state)
+    previous_candidate = runner._selected_source_ranked_candidate
+
+    def select(projection, **kwargs):
+        assert projection is not state
+        assert kwargs["required_policy_id"] == measured_id
+        projection["winner_only"] = True
+        runner._selected_source_ranked_candidate = measured
+        runner._source_ranked_protection_retry_selected_policy_id = measured_id
+        return measured
+
+    monkeypatch.setattr(runner, "_select_source_ranked_candidate", select)
+    result = runner._productive_registered_hunt_policy(state, candidate)
+    if measured_wins:
+        assert result.policy_id == measured_id
+        assert state["winner_only"] is True
+        assert state[campaign._SOURCE_RANKED_CANDIDATE_KEY]["mobile_vnum"] == 101
+        assert runner._selected_source_ranked_candidate is measured
+    else:
+        assert result is None
+        assert state == original
+        assert runner._selected_source_ranked_candidate is previous_candidate
+        assert runner._source_ranked_protection_retry_selected_policy_id is None
+
+
 def test_productive_mirror_waiter_competes_at_its_current_level(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

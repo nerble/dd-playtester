@@ -42,8 +42,8 @@ def test_active_encounter_accepts_two_source_level_enemies_without_target_hp():
     budget = _budget()
     assert budget.allowed
     assert budget.actions == 0
-    assert budget.expected_incoming == 14
-    assert budget.peak_round == 80
+    assert budget.expected_incoming == 16
+    assert budget.peak_round == 160
     assert budget.health_reserve == 23
     assert budget.mana_cost == 20
 
@@ -51,12 +51,12 @@ def test_active_encounter_accepts_two_source_level_enemies_without_target_hp():
 def test_active_encounter_accounts_for_every_enemy_and_worst_defeat_order():
     first = _enemies(10, 30)
     budget = _budget(enemies=first)
-    assert budget.expected_incoming == 14
+    assert budget.expected_incoming == 16
     assert _budget(enemies=list(reversed(first))) == replace(budget, mobile_vnums=(2, 1))
     three = _budget(enemies=_enemies(10, 10, 10), hp=240, max_hp=240)
     assert three.allowed
     assert three.actions == 0
-    assert three.expected_incoming == 21
+    assert three.expected_incoming == 24
 
 
 @pytest.mark.parametrize("changes,reason", [
@@ -81,7 +81,7 @@ def test_active_encounter_rejects_missing_or_inconsistent_enemy_state(field, val
     assert not _budget(enemies=enemies).allowed
 
 
-@pytest.mark.parametrize("hazard", ["special", "program", "weapon", "missing_weapon", "missing_reset"])
+@pytest.mark.parametrize("hazard", ["special", "program", "missing_weapon", "missing_reset"])
 def test_active_encounter_preserves_source_hazard_and_equipment_gates(hazard):
     world = _world()
     if hazard == "special":
@@ -92,9 +92,92 @@ def test_active_encounter_preserves_source_hazard_and_equipment_gates(hazard):
         world.mob_resets = world.mob_resets[1:]
     else:
         world.mob_resets[0] = replace(world.mob_resets[0], equipment=((WEAR_WIELD, 1000),))
-        if hazard == "weapon":
-            world.objects[1000] = ObjectSource(1000, "knife", "a knife", ITEM_WEAPON, (0, 1, 4, 2), 10)
     assert not _budget(world=world).allowed
+
+
+def test_active_level_budget_prices_source_weapon_and_damroll_affects():
+    world = _world()
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        equipment=((WEAR_WIELD, 1000),),
+    )
+    world.objects[1000] = ObjectSource(
+        1000,
+        "knife",
+        "a knife",
+        ITEM_WEAPON,
+        (0, 1, 4, 2),
+        10,
+        affects=((19, 3),),
+    )
+    enemy = [_enemies(10)[0]]
+
+    baseline = _budget(world=_world(), enemies=enemy)
+    armed = _budget(world=world, enemies=enemy)
+
+    assert baseline.allowed and armed.allowed
+    assert armed.expected_incoming > baseline.expected_incoming
+    assert armed.peak_round > baseline.peak_round
+
+
+@pytest.mark.parametrize("location", [1, 8])
+def test_active_level_budget_ignores_npc_strength_and_level_equipment_affects(location):
+    world = _world()
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        equipment=((WEAR_WIELD, 1000),),
+    )
+    world.objects[1000] = ObjectSource(
+        1000,
+        "knife",
+        "a knife",
+        ITEM_WEAPON,
+        (0, 1, 4, 2),
+        10,
+        affects=((location, 3),),
+    )
+
+    budget = _budget(world=world, enemies=[_enemies(10)[0]])
+
+    assert budget.allowed
+
+
+@pytest.mark.parametrize("location", [50, 51])
+def test_active_level_budget_prices_crit_and_swiftness_equipment_affects(location):
+    world = _world()
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        equipment=((WEAR_WIELD, 1000),),
+    )
+    world.objects[1000] = ObjectSource(
+        1000,
+        "knife",
+        "a knife",
+        ITEM_WEAPON,
+        (0, 1, 4, 2),
+        10,
+        affects=((location, 3),),
+    )
+
+    budget = _budget(world=world, enemies=[_enemies(10)[0]])
+
+    baseline = _budget(world=_world(), enemies=[_enemies(10)[0]])
+    assert baseline.allowed and budget.allowed
+    assert budget.expected_incoming > baseline.expected_incoming
+    if location == 50:
+        assert budget.peak_round > baseline.peak_round
+
+
+def test_active_level_budget_rejects_unresolved_source_crit_or_swiftness():
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1], crit_modifier=None, crit_modifier_known=False
+    )
+
+    budget = _budget(world=world, enemies=[_enemies(10)[0]])
+
+    assert not budget.allowed
+    assert "unsupported source combat loadout" in budget.reason
 
 
 def test_active_encounter_allows_only_the_audited_red_dragon_maintenance_reset():
@@ -514,6 +597,42 @@ def test_active_encounter_accepts_only_opted_in_hephaestus_lightning_special():
         **common,
         allowed_hephaestus_special_vnums=(908,),
     ).allowed
+
+
+def test_active_encounter_accepts_the_audited_irmugar_hezron_pair_only():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    enemies = [
+        {"isnpc": "16125", "name": "Irmugar", "level": "47"},
+        {"isnpc": "16126", "name": "The hezron", "level": "35"},
+    ]
+    common = dict(
+        world=world,
+        enemies=enemies,
+        character_level=45,
+        hp=1095,
+        max_hp=1095,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput(
+            "kick", 35, 55, 75, "actions", 0, 12,
+        ),
+        target_hp_evidence_only=True,
+        maximum_level_offsets_by_vnum={16125: 5},
+    )
+
+    rejected = active_encounter_budget(**common)
+    accepted = active_encounter_budget(
+        **common,
+        allowed_source_mage_special_vnums=(16125,),
+        allowed_source_companion_vnums=(16126,),
+    )
+
+    assert rejected.allowed is False
+    assert accepted.allowed is True
+    assert accepted.mobile_vnums == (16125, 16126)
 
 
 @pytest.mark.parametrize("hazard", [

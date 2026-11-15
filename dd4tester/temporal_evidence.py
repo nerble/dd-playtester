@@ -23,6 +23,16 @@ _LOCATOR_NONCOMBAT_EVENTS = frozenset({
 _LOCATOR_NONCOMBAT_COMMANDS = frozenset({"cast invis"})
 
 
+def resource_activation_waiting(record: Mapping[str, Any], *, now: float | None = None) -> bool:
+    """A refused activation is temporarily unavailable, not consumed."""
+    deadline = record.get("activation_retry_after_epoch")
+    if deadline is None:
+        return False
+    if isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline):
+        return True
+    return (datetime.now(timezone.utc).timestamp() if now is None else now) < deadline
+
+
 def single_area_locator_miss(
     segment: Mapping[str, Any],
     events: Collection[Mapping[str, Any]],

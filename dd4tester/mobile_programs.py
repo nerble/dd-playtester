@@ -11,6 +11,51 @@ from .hunt_candidates import MobileProgram
 _RANDOM_BRANCH = re.compile(r"if rand\(([0-9]{1,3})\)", re.IGNORECASE)
 
 
+def explicit_speech_transfer_programs_only(programs: Collection[MobileProgram]) -> bool:
+    """Prove movement alone cannot activate these password-only transfers."""
+    if not 1 <= len(programs) <= 4:
+        return False
+    for program in programs:
+        condition = " ".join(program.condition.split())
+        if (
+            program.trigger.casefold() != "speech_prog"
+            or not re.fullmatch(r"p [A-Za-z][A-Za-z0-9 ,.'!?-]{2,95}", condition)
+            or len(program.commands) != 1
+            or not re.fullmatch(
+                r"mptransfer \$n [1-9][0-9]* group",
+                " ".join(program.commands[0].split()), re.IGNORECASE,
+            )
+        ):
+            return False
+    return True
+
+
+def greeting_display_programs_only(programs: Collection[MobileProgram]) -> bool:
+    """Recognize short, unconditional greetings containing only say/emote.
+
+    This proves the actor's commands, not room safety: say can activate
+    another mobile's speech program, so callers retain route/isolation checks.
+    """
+    if not 1 <= len(programs) <= 4:
+        return False
+    for program in programs:
+        if (
+            not isinstance(program, MobileProgram)
+            or program.trigger.casefold() not in {"greet_prog", "all_greet_prog"}
+            or not program.condition.isdecimal()
+            or not 0 <= int(program.condition) <= 100
+            or not 1 <= len(program.commands) <= 8
+        ):
+            return False
+        for line in program.commands:
+            if "\r" in line or "\n" in line:
+                return False
+            verb, separator, body = " ".join(line.split()).partition(" ")
+            if not separator or not body or verb.casefold() not in {"say", "emote"}:
+                return False
+    return True
+
+
 def greeting_echo_programs_only(programs: Collection[MobileProgram]) -> bool:
     """Prove bounded greeting scripts contain only random branches and echoes."""
     if not programs or len(programs) > 4:

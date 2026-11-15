@@ -3008,17 +3008,20 @@ _VAMPIRE_CATACOMBS_LEVEL_41_44_POLICY = ProgressionPolicy(
         "The fixed recall route ends at the bouncer in room 9571, whose "
         "source program transfers characters above level 14 to room 9500.",
         "Current-band targets are Grok (9510), the wandering art critic "
-        "(9545), Mavralyn (9523), Augus (9541), and Grieb (9542). Each "
-        "reset/loadout and route is re-audited from current DD4 source; the "
-        "three level-41/42 targets require the verified spiked key.",
+        "(9545), Mavralyn (9523), Augus (9541), Grieb (9542), and "
+        "Nathaniel (9532). Each reset/loadout and route is re-audited from "
+        "current DD4 source; the deeper targets require the verified spiked "
+        "key.",
         "Grok's source-confirmed warrior special requires a verified "
         "Sanctuary reserve. Every target still requires fresh live identity, "
         "isolation, useful `consider`, output, and the character's own "
-        "withdrawal checks; target hitpoints do not determine admission.",
+        "withdrawal checks; target hitpoints do not determine admission. "
+        "Nathaniel's singleton cane is an armed exception: it is admitted "
+        "only with the carried Sanctuary reserve and a fresh exact live stop.",
     ),
     practice_skill=None,
     segment_kill_limit=3,
-    source_mobile_vnums=(9510, 9545, 9523, 9541, 9542),
+    source_mobile_vnums=(9510, 9545, 9523, 9541, 9542, 9532),
 )
 
 _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
@@ -3054,7 +3057,7 @@ _VAMPIRE_CATACOMBS_KEY_38_39_POLICY = ProgressionPolicy(
 _VAMPIRE_CATACOMBS_KEY_RECOVERY_38_40_POLICY = ProgressionPolicy(
     policy_id="vampire-catacombs-key-recovery-38-40",
     minimum_level=38,
-    maximum_level=44,
+    maximum_level=45,
     status="research",
     execution="vampire-catacombs-key-recovery",
     summary=(
@@ -3063,7 +3066,7 @@ _VAMPIRE_CATACOMBS_KEY_RECOVERY_38_40_POLICY = ProgressionPolicy(
     ),
     evidence=(
         "After the exact room-3007 cache miss, Joan's source reset in room "
-        "9517 remains an alternate key source at levels 41-44.",
+        "9517 remains an alternate required-loot source through level 45.",
         "The existing route still requires fresh live identity, consider, "
         "crowd, required-loot confirmation, and own-health checks.",
     ),
@@ -5837,25 +5840,30 @@ _MIRROR_REALM_LIBRARIAN_HUNT_POLICY = replace(
 
 
 _PIT_OFFICIAL_RESEARCH_POLICY = ProgressionPolicy(
-    "pit-official-probe-41-45", 41, 45, "research", "pit-official-research",
-    "Reach and consider the Pit Official without initiating combat, then return to the Midgaard healer.",
+    "pit-official-probe-41-45", 41, 45, "unavailable", None,
+    "Retain the old Pit Official probe as historical evidence; do not dispatch it.",
     (
-        "DD4 source revision d7cb330: mobile 13700 resets in safe Pit spectator room 13703; it is level 39, sentinel, and not aggressive.",
-        "The four-move recall route and its room companions are source-vetted; spec_breath_acid keeps this as no-combat research only.",
-        "Any unexpected combat aborts with flee and healer recovery.",
+        "DD4 reset_area checks each M reset in file order against the mobile "
+        "prototype's current count. The first mobile 13700 reset is room 13702 "
+        "and has a maximum count of one.",
+        "The later room-13703 spectator reset is skipped after the first "
+        "instance loads, so the old spectator-room research stop cannot prove "
+        "a live Pit Official and is retired.",
+        "This policy id remains recognizable for historical campaign records; "
+        "ordinary source-ranked selection must choose the next executable route.",
     ), None,
 )
 
 
 _DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="dwarven-home-chess-dwarf-probe-46-50",
-    minimum_level=46,
+    minimum_level=45,
     maximum_level=50,
     status="research",
     execution="dwarven-home-chess-dwarf-research",
     summary=(
         "Reach and consider the isolated Dwarven Home chess-room dwarf before "
-        "enabling a bounded level-46 to 50 hunt."
+        "enabling a bounded level-45 to 50 hunt."
     ),
     evidence=(
         "DD4 source revision bf745c3: mobile 20514, the dwarf, resets once "
@@ -5870,18 +5878,19 @@ _DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY = ProgressionPolicy(
         "combat.",
     ),
     practice_skill=None,
+    source_mobile_vnums=(20514,),
 )
 
 
 _DWARVEN_HOME_CHESS_DWARF_HUNT_POLICY = ProgressionPolicy(
     policy_id="dwarven-home-chess-dwarf-hunt-46-50",
-    minimum_level=46,
+    minimum_level=45,
     maximum_level=50,
     status="research",
     execution="dwarven-home-chess-dwarf-hunt",
     summary=(
         "Run one bounded chess-room dwarf hunt after a fresh viable "
-        "level-difference consider result."
+        "level-difference consider result from level 45 through 50."
     ),
     evidence=(
         *_DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY.evidence,
@@ -5890,18 +5899,19 @@ _DWARVEN_HOME_CHESS_DWARF_HUNT_POLICY = ProgressionPolicy(
         "the character, one exact target, and one confirmed kill.",
     ),
     practice_skill=None,
+    source_mobile_vnums=(20514,),
     segment_kill_limit=1,
 )
 
 
 _MIRROR_REALM_STORN_RESEARCH_POLICY = ProgressionPolicy(
     policy_id="mirror-realm-storn-probe-46-50",
-    minimum_level=46,
+    minimum_level=45,
     maximum_level=50,
     status="research",
     execution="mirror-realm-storn-research",
     summary=(
-        "Use the isolated Mirror Realm assassin as a second level-46 to 50 "
+        "Use the isolated Mirror Realm assassin as a second level-45 to 50 "
         "probe after the Dwarven Home candidate is unavailable."
     ),
     evidence=(
@@ -5914,12 +5924,13 @@ _MIRROR_REALM_STORN_RESEARCH_POLICY = ProgressionPolicy(
         "crowd state, and do_consider level-difference evidence are recorded.",
     ),
     practice_skill=None,
+    source_mobile_vnums=(19034,),
 )
 
 
 _MIRROR_REALM_STORN_HUNT_POLICY = ProgressionPolicy(
     policy_id="mirror-realm-storn-hunt-46-50",
-    minimum_level=46,
+    minimum_level=45,
     maximum_level=50,
     status="research",
     execution="mirror-realm-storn-hunt",
@@ -5934,6 +5945,7 @@ _MIRROR_REALM_STORN_HUNT_POLICY = ProgressionPolicy(
         "the character, one exact target, and one confirmed kill.",
     ),
     practice_skill=None,
+    source_mobile_vnums=(19034,),
     segment_kill_limit=1,
 )
 
@@ -5981,6 +5993,113 @@ _DARKWOOD_STRANGE_MIST_HUNT_POLICY = ProgressionPolicy(
         "the character, one exact target, and one confirmed kill.",
     ),
     practice_skill=None,
+    segment_kill_limit=1,
+)
+
+
+_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="dwarven-home-gambler-live-consider-probe-45-50",
+    minimum_level=45,
+    maximum_level=50,
+    status="research",
+    execution="dwarven-home-gambler-research",
+    summary=(
+        "Use the exact isolated Dwarven Home gambler as a level-45 to 50 probe "
+        "after the chess dwarf and Storn routes close."
+    ),
+    evidence=(
+        "DD4 source revision 66f1f42675c0da46966ef3f15d96b06e191a0660: "
+        "mobile 20515, the dwarven gambler, resets once in Dwarven Home "
+        "room 20531 at source level 49.",
+        "The source flags are sentinel and stay-area, with no special "
+        "procedure and no source-listed equipment or object drop.",
+        "The source-derived route reaches room 20531 through two reset-open "
+        "doors and a source-isolated room; reachable aggressive mobiles are "
+        "below the level-difference danger band for this policy.",
+        "The room line says `dwarf`, but the source keyword is `gambler`; "
+        "bind the live selector to VNUM 20515 and reset room 20531 so the "
+        "chess dwarf cannot satisfy this probe.",
+        "Its `game_high_dice` callback only runs the wagering game; the mobile "
+        "has no combat special. Require a fresh exact-target, isolated live "
+        "consider before any separate hunt policy can run.",
+        "DD4 source do_consider maps `Do you feel lucky, punk?` to a target "
+        "2-5 levels above the character. This is within the live +5 band; "
+        "ignore the accompanying current-HP comparison for admission.",
+    ),
+    practice_skill=None,
+    source_mobile_vnums=(20515,),
+)
+
+
+_DWARVEN_HOME_GAMBLER_LEVEL_45_HUNT_POLICY = ProgressionPolicy(
+    policy_id="dwarven-home-gambler-live-consider-hunt-45-50",
+    minimum_level=45,
+    maximum_level=50,
+    status="research",
+    execution="dwarven-home-gambler-hunt",
+    summary=(
+        "Run one bounded Dwarven Home gambler hunt after a fresh viable "
+        "level-difference consider result."
+    ),
+    evidence=(
+        *_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY.evidence,
+        "Combat promotion requires a fresh exact consider in the useful "
+        "level band through +5, at least 85% health, the exact isolated "
+        "VNUM-20515 target, and one confirmed kill.",
+    ),
+    practice_skill=None,
+    source_mobile_vnums=(20515,),
+    segment_kill_limit=1,
+)
+
+
+_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-master-dunn-probe-45-50",
+    minimum_level=45,
+    maximum_level=50,
+    status="research",
+    execution="mirror-realm-master-dunn-research",
+    summary=(
+        "Use the isolated Mirror Realm Master Dunn as an independent "
+        "level-45 to 50 probe after the Dwarven Home routes close."
+    ),
+    evidence=(
+        "DD4 source revision 66f1f42675c0da46966ef3f15d96b06e191a0660: "
+        "mobile 19028, Master Dunn, resets once in Mirror Realm room 19073 "
+        "at source level 45.",
+        "The source mobile is sentinel and stay-area with no special "
+        "procedure; its reset carries one kendo and ordinary armor, so this "
+        "is an armed-target contract rather than an unarmed singleton probe.",
+        "The registered route follows the existing Mirror Realm approach to "
+        "room 19170, then takes west, west, down, east, south to room 19073. "
+        "The route retains the normal source hazard and live crowd checks.",
+        "The probe records exact TARGETMODE identity, isolation, and live "
+        "consider evidence without initiating combat.",
+    ),
+    practice_skill=None,
+    source_mobile_vnums=(19028,),
+)
+
+
+_MIRROR_REALM_MASTER_DUNN_HUNT_POLICY = ProgressionPolicy(
+    policy_id="mirror-realm-master-dunn-hunt-45-50",
+    minimum_level=45,
+    maximum_level=50,
+    status="research",
+    execution="mirror-realm-master-dunn-hunt",
+    summary=(
+        "Run one bounded Master Dunn hunt after a fresh viable "
+        "level-difference consider result."
+    ),
+    evidence=(
+        *_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY.evidence,
+        "Combat promotion requires a fresh exact consider in the useful "
+        "level band, at least 85% health, no more than one live level above "
+        "the character, one exact isolated target, and one confirmed kill; "
+        "the source armed-target checks remain active.",
+    ),
+    practice_skill=None,
+    source_mobile_vnums=(19028,),
     segment_kill_limit=1,
 )
 
@@ -10427,12 +10546,74 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             practice_skill=context.practice_skill,
         )
     if 41 <= normalized_level <= 45:
-        if _PIT_OFFICIAL_RESEARCH_POLICY.policy_id not in (context.policy_xp_deltas or {}):
+        completed_policy_ids = {
+            str(policy_id) for policy_id in (context.policy_xp_deltas or {})
+        }
+        pit_probe_recorded = (
+            _PIT_OFFICIAL_RESEARCH_POLICY.policy_id in completed_policy_ids
+            or any(
+                policy_id.startswith("source-ranked-hunt-pit-")
+                for policy_id in completed_policy_ids
+            )
+        )
+        if not pit_probe_recorded:
             return replace(_PIT_OFFICIAL_RESEARCH_POLICY, practice_skill=context.practice_skill)
+        if normalized_level == 45:
+            chess_dwarf_policy = _research_hunt_policy(
+                context,
+                probe=_DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY,
+                hunt=_DWARVEN_HOME_CHESS_DWARF_HUNT_POLICY,
+            )
+            if chess_dwarf_policy is not None:
+                return replace(
+                    chess_dwarf_policy,
+                    practice_skill=context.practice_skill,
+                )
+            storn_policy = _research_hunt_policy(
+                context,
+                probe=_MIRROR_REALM_STORN_RESEARCH_POLICY,
+                hunt=_MIRROR_REALM_STORN_HUNT_POLICY,
+            )
+            if storn_policy is not None:
+                return replace(
+                    storn_policy,
+                    practice_skill=context.practice_skill,
+                )
+            gambler_policy = _research_hunt_policy(
+                context,
+                probe=_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY,
+                hunt=_DWARVEN_HOME_GAMBLER_LEVEL_45_HUNT_POLICY,
+            )
+            if gambler_policy is not None:
+                return replace(
+                    gambler_policy,
+                    practice_skill=context.practice_skill,
+                )
+            master_dunn_policy = _research_hunt_policy(
+                context,
+                probe=_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY,
+                hunt=_MIRROR_REALM_MASTER_DUNN_HUNT_POLICY,
+            )
+            if master_dunn_policy is not None:
+                return replace(
+                    master_dunn_policy,
+                    practice_skill=context.practice_skill,
+                )
         return replace(
             _UNAVAILABLE_POLICY, minimum_level=41, maximum_level=45,
-            summary="The Pit Official probe is recorded; do not authorize combat until its evidence is reviewed.",
-            evidence=_PIT_OFFICIAL_RESEARCH_POLICY.evidence,
+            summary=(
+                "The retired Pit Official record is preserved and the level-45 chess-"
+                "dwarf and Mirror Realm Storn probes are either recorded or "
+                "unavailable; do not authorize combat until their evidence is "
+                "reviewed."
+            ),
+            evidence=(
+                *_PIT_OFFICIAL_RESEARCH_POLICY.evidence,
+                *_DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY.evidence,
+                *_MIRROR_REALM_STORN_RESEARCH_POLICY.evidence,
+                *_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY.evidence,
+                *_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY.evidence,
+            ),
             practice_skill=context.practice_skill,
         )
     if 46 <= normalized_level <= 50:
@@ -10450,6 +10631,20 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
         )
         if storn_policy is not None:
             return replace(storn_policy, practice_skill=context.practice_skill)
+        gambler_policy = _research_hunt_policy(
+            context,
+            probe=_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY,
+            hunt=_DWARVEN_HOME_GAMBLER_LEVEL_45_HUNT_POLICY,
+        )
+        if gambler_policy is not None:
+            return replace(gambler_policy, practice_skill=context.practice_skill)
+        master_dunn_policy = _research_hunt_policy(
+            context,
+            probe=_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY,
+            hunt=_MIRROR_REALM_MASTER_DUNN_HUNT_POLICY,
+        )
+        if master_dunn_policy is not None:
+            return replace(master_dunn_policy, practice_skill=context.practice_skill)
         return replace(
             _UNAVAILABLE_POLICY,
             minimum_level=46,
@@ -10462,6 +10657,8 @@ def _select_policy(context: ProgressionContext) -> ProgressionPolicy:
             evidence=(
                 *_DWARVEN_HOME_CHESS_DWARF_RESEARCH_POLICY.evidence,
                 *_MIRROR_REALM_STORN_RESEARCH_POLICY.evidence,
+                *_DWARVEN_HOME_GAMBLER_LEVEL_45_RESEARCH_POLICY.evidence,
+                *_MIRROR_REALM_MASTER_DUNN_RESEARCH_POLICY.evidence,
             ),
             practice_skill=context.practice_skill,
         )

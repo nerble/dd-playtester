@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable, Mapping
 
 from .equipment import (
-    GearCatalog, ITEM_BODY_PART, ITEM_CURSED, ITEM_POISONED, normalize_item_name,
+    GearCatalog, ITEM_BODY_PART, ITEM_CURSED, ITEM_NODROP, ITEM_PAINT,
+    ITEM_POISONED, normalize_item_name,
 )
 from .hunt_candidates import ITEM_CONTAINER, ITEM_PILL, ITEM_POTION
 from .observations import _DD4_PROMPT
@@ -67,7 +68,9 @@ def empty_pouch_storage_plan(
     counts = Counter(normalize_item_name(description) for description in descriptions)
     for description, group in zip(descriptions, candidates):
         if any(item.item_type not in {ITEM_POTION, ITEM_PILL}
-               or item.extra_flags & (ITEM_BODY_PART | ITEM_CURSED | ITEM_POISONED)
+               or item.extra_flags & (
+                   ITEM_BODY_PART | ITEM_CURSED | ITEM_NODROP | ITEM_POISONED
+               )
                for item in group):
             continue
         name = normalize_item_name(description)
@@ -98,6 +101,7 @@ class HealerPouchStorage:
     before_count: int = 0
     packed: int = 0
     failure: str | None = None
+    catalog: GearCatalog | None = None
 
     @property
     def pending(self) -> bool:
@@ -106,8 +110,15 @@ class HealerPouchStorage:
     def _begin_reply(self, phase: str, now: float) -> None:
         self.phase, self.deadline, self.buffer = phase, now + 5, ""
 
-    def begin(self, plan: PouchStoragePlan, count: int, *, now: float) -> str:
-        self.plan, self.before_count = plan, count
+    def begin(
+        self,
+        plan: PouchStoragePlan,
+        count: int,
+        *,
+        now: float,
+        catalog: GearCatalog | None = None,
+    ) -> str:
+        self.plan, self.before_count, self.catalog = plan, count, catalog
         self._begin_reply("audit", now)
         return f"look in {plan.pouch_keyword}"
 
@@ -151,9 +162,10 @@ class HealerPouchStorage:
             # is only the completion proof.
             contents = response[header.end():].strip()
             if contents.casefold() != "nothing.":
-                self.phase = "unavailable"
-                self.deadline = None
-                return None
+                if not self._existing_contents_fit(contents):
+                    self.phase = "unavailable"
+                    self.deadline = None
+                    return None
             self._begin_reply("put", now)
             return f"put {plan.potion_keyword} {plan.pouch_keyword}"
         if self.phase == "put":
@@ -183,6 +195,56 @@ class HealerPouchStorage:
                 elif observed == (count, maximum):
                     self.phase, self.deadline = "complete", None
         return None
+
+    def _existing_contents_fit(self, contents: str) -> bool:
+        """Prove that known pouch contents leave room for the planned item.
+
+        ``look in`` exposes descriptions rather than object VNUMs.  Every
+        possible source match therefore has to be pouch-compatible and safe,
+        and the heaviest possible match is used for the capacity calculation.
+        Without a catalog, retain the historical refusal for non-empty pouches.
+        """
+        plan = self.plan
+        catalog = self.catalog
+        if plan is None or catalog is None:
+            return False
+        lines = tuple(line.strip() for line in contents.splitlines() if line.strip())
+        if not lines:
+            return False
+        existing_weight = 0
+        for line in lines:
+            candidates = catalog.candidates(line)
+            if not candidates or any(
+                item.item_type not in {ITEM_POTION, ITEM_PILL, ITEM_PAINT}
+                or item.extra_flags & (ITEM_BODY_PART | ITEM_CURSED | ITEM_POISONED)
+                or item.weight < 0
+                for item in candidates
+            ):
+                return False
+            existing_weight += max(item.weight for item in candidates)
+        pouch = catalog.objects.get(plan.pouch_vnum)
+        potions = tuple(
+            catalog.objects.get(vnum) for vnum in plan.potion_vnums
+        )
+        if (
+            pouch is None
+            or not pouch.values
+            or any(item is None for item in potions)
+        ):
+            return False
+        potion_weight = max(item.weight for item in potions if item is not None)
+        if potion_weight <= 0:
+            return False
+        available = max(
+            0,
+            pouch.values[0] - pouch.weight - existing_weight,
+        )
+        quantity = min(plan.quantity, available // potion_weight)
+        if quantity <= 0:
+            return False
+        if quantity != plan.quantity:
+            self.plan = replace(plan, quantity=quantity)
+        return True
 
     def receipt(self) -> dict | None:
         if self.plan is None:

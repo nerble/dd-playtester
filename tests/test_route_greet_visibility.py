@@ -6,7 +6,11 @@ import pytest
 from dd4tester.campaign import _FIELD_ROUTE_HAZARD_ABORT_PREFIXES, _source_guard_fixed_fastwalk_route
 from dd4tester.character import CharacterSpec
 from dd4tester.fastwalks import route_named
-from dd4tester.hunt_candidates import MobileProgram, load_world_source
+from dd4tester.hunt_candidates import (
+    MobileProgram,
+    load_world_source,
+    source_invisibility_blocks_mobile_aggression,
+)
 from dd4tester.observations import GameEvent
 from dd4tester.starter import FieldHuntStop, StarterPolicy
 from dd4tester.state import CharacterState
@@ -182,6 +186,26 @@ def test_source_aggression_route_requires_fresh_live_invisibility(source_world):
     )
 
 
+def test_source_aggression_route_uses_audited_equipment_and_specials(source_world):
+    policy, state = policy_and_state(source_world)
+    route = replace(
+        policy.fastwalk_route,
+        route_invisibility_source_mobile_vnums=(14008, 17010, 18501),
+    )
+    policy.fastwalk_route = route
+
+    assert all(
+        source_invisibility_blocks_mobile_aggression(
+            source_world,
+            mobile_vnum,
+            audit_equipment=True,
+        )
+        for mobile_vnum in route.route_invisibility_source_mobile_vnums
+    )
+    assert policy._source_aggression_invisibility_decision(state) is None
+    assert not policy.fastwalk_returning
+
+
 @pytest.mark.parametrize("duration", ["0", "1"])
 def test_expiring_route_invisibility_waits_at_healer_before_recasting(
     source_world,
@@ -253,6 +277,43 @@ def test_expiring_route_invisibility_waits_at_healer_before_recasting(
     ).command == "cast invis"
 
 
+def test_fresh_route_invisibility_cancels_stale_healer_expiry_wait(source_world):
+    route = replace(
+        route_named("moria"),
+        route_invisibility_source_mobile_vnums=(4516,),
+    )
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping(
+            {"name": "Testchar", "race": "human", "gender": "female", "class": "mage"}
+        ),
+        "unused",
+        source_world=source_world,
+        fastwalk_route=route,
+    )
+    policy.in_world = policy.prompt_ready = True
+    policy.current_room = "3054"
+    policy.fastwalk_invisibility_expiry_wait_phase = "to_healer"
+    policy.route_visibility_affects_observed = True
+    state = CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        move=312,
+        max_move=320,
+        room_vnum="3054",
+        position=4,
+        affects=[[{"name": "invis", "gives": "invisibility", "duration": "23"}]],
+    )
+
+    decision = policy._fastwalk_invisibility_expiry_wait_decision(state, "3054")
+
+    assert decision is not None
+    assert decision.command == "south"
+    assert policy.fastwalk_invisibility_expiry_wait_phase == "to_origin"
+
+
 def test_invisibility_expiry_wait_preempts_generic_sleep_wake(source_world):
     policy = StarterPolicy(
         CharacterSpec.from_mapping(
@@ -285,6 +346,42 @@ def test_invisibility_expiry_wait_preempts_generic_sleep_wake(source_world):
     assert decision is not None
     assert decision.command == "stand"
     assert policy.fastwalk_invisibility_expiry_wait_phase == "wake"
+
+
+def test_invisibility_expiry_wait_watchdog_keeps_healer_sleep_active(source_world):
+    policy = StarterPolicy(
+        CharacterSpec.from_mapping(
+            {"name": "Testchar", "race": "human", "gender": "female", "class": "mage"}
+        ),
+        "unused",
+        source_world=source_world,
+        fastwalk_route=replace(
+            route_named("moria"),
+            route_invisibility_source_mobile_vnums=(4516,),
+        ),
+    )
+    policy.in_world = policy.prompt_ready = True
+    policy.current_room = "3054"
+    policy.fastwalk_invisibility_expiry_wait_phase = "wait"
+    state = CharacterState(
+        level=18,
+        hp=218,
+        max_hp=218,
+        mana=628,
+        max_mana=628,
+        move=320,
+        max_move=320,
+        room_vnum="3054",
+        position=4,
+        affects=[[{"name": "invis", "gives": "invisibility", "duration": "20"}]],
+    )
+
+    decision = policy.recover_from_stall(state, "no policy decision")
+
+    assert decision is not None
+    assert decision.command == "score"
+    assert "route invisibility" in decision.reason
+    assert policy.fastwalk_invisibility_expiry_wait_phase == "wait"
 
 
 def test_source_aggression_route_without_invisibility_fails_closed(source_world):

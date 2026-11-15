@@ -210,9 +210,20 @@ def _build_run_report_uncached(
 def render_markdown(report: dict[str, Any]) -> str:
     """Render a compact, human-readable form of a run report."""
     run = report["run"]
-    progress = report["progress"]
+    progress = report.get("progress") or {}
+    room = progress.get("room") or {}
+    activity = report.get("activity") or {}
+    decision_analysis = report.get("decision_analysis") or {}
     character = report.get("character") or {}
     identity = _format_identity(character)
+    evidence = report.get("evidence") or {}
+    combat_basis = evidence.get("combat_metrics_basis")
+    compact = bool(evidence.get("compact"))
+    minimum_label = " (known minimum)" if compact and combat_basis != "observed_events" else ""
+    combat_decisions = progress.get("combat_decisions", 0)
+    if compact and combat_basis in {None, "kill_lower_bound"}:
+        combat_decisions = None
+    decision_count = "unknown" if combat_decisions is None else str(combat_decisions)
     lines = [
         f"# Run {run['id']}: {run['scenario_name']}",
         "",
@@ -240,38 +251,38 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "| Measure | Initial | Final | Change |",
         "| --- | ---: | ---: | ---: |",
-        _change_row("Level", progress["level"]),
-        _change_row("XP", progress["experience"]),
-        _change_row("Health", progress["health"], resource=True),
+        _change_row("Level", progress.get("level") or {}),
+        _change_row("XP", progress.get("experience") or {}),
+        _change_row("Health", progress.get("health") or {}, resource=True),
         "",
-        f"Initial room: {progress['room']['initial'] or '-'}  ",
-        f"Final room: {progress['room']['final'] or '-'}  ",
-        f"Combat starts: {progress['combat_starts']}  ",
-        f"Combat decisions: {progress['combat_decisions']}  ",
-        f"Confirmed kills: {_format_confirmed_kills(progress['confirmed_kills'])}  ",
-        f"Observed level gains: {progress['level_gains_observed']}  ",
-        f"Items acquired: {progress['items_acquired']}  ",
-        f"Quests received: {progress['quests_received']}  ",
-        f"Training: {_format_training(progress['training'])}  ",
-        f"Loot sales: {_format_sales(progress['loot_sales'])}",
-        f"Loot sale refusals: {_format_sale_rejections(progress['loot_sale_rejections'])}",
+        f"Initial room: {room.get('initial') or '-'}  ",
+        f"Final room: {room.get('final') or '-'}  ",
+        f"Combat starts{minimum_label}: {progress.get('combat_starts', 0) or 0}  ",
+        f"Combat decisions{minimum_label}: {decision_count}  ",
+        f"Confirmed kills: {_format_confirmed_kills(progress.get('confirmed_kills') or [])}  ",
+        f"Observed level gains: {progress.get('level_gains_observed', 0) or 0}  ",
+        f"Items acquired: {progress.get('items_acquired', 0) or 0}  ",
+        f"Quests received: {progress.get('quests_received', 0) or 0}  ",
+        f"Training: {_format_training(progress.get('training') or {})}  ",
+        f"Loot sales: {_format_sales(progress.get('loot_sales') or {})}",
+        f"Loot sale refusals: {_format_sale_rejections(progress.get('loot_sale_rejections') or [])}",
         "",
         "## Time Use",
         "",
-        f"Productive combat: {_format_duration(report['activity']['productive_combat_seconds'])}",
-        f"Travel: {_format_duration(report['activity']['travel_seconds'])}",
-        f"Maintenance: {_format_duration(report['activity']['maintenance_seconds'])}",
-        f"Waiting: {_format_duration(report['activity']['waiting_seconds'])}",
+        f"Productive combat: {_format_duration(activity.get('productive_combat_seconds'))}",
+        f"Travel: {_format_duration(activity.get('travel_seconds'))}",
+        f"Maintenance: {_format_duration(activity.get('maintenance_seconds'))}",
+        f"Waiting: {_format_duration(activity.get('waiting_seconds'))}",
         "",
         "## Decision Analysis",
         "",
         _count_line(
             "Decision categories",
-            report["decision_analysis"]["category_counts"],
+            decision_analysis.get("category_counts") or {},
         ),
         (
             "Safety-critical decisions: "
-            f"{report['decision_analysis']['safety_critical_count']}"
+            f"{decision_analysis.get('safety_critical_count', 0) or 0}"
         ),
         "",
         "Notable choices:",
@@ -280,7 +291,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     if persona_lines:
         character_index = lines.index(f"Character: {identity}") + 1
         lines[character_index:character_index] = persona_lines
-    notable_decisions = report["decision_analysis"]["notable_decisions"]
+    notable_decisions = decision_analysis.get("notable_decisions") or []
     lines.extend(
         f"- **{decision['category']}:** {decision['reason']}"
         for decision in notable_decisions
@@ -292,30 +303,33 @@ def render_markdown(report: dict[str, Any]) -> str:
         "## Failures",
         "",
     ])
-    lines.extend(f"- {failure}" for failure in report["failures"])
-    if not report["failures"]:
+    failures = report.get("failures") or []
+    lines.extend(f"- {failure}" for failure in failures)
+    if not failures:
         lines.append("- None detected.")
 
     lines.extend(["", "## Balance Signals", ""])
-    if report["balance_signals"]:
+    balance_signals = report.get("balance_signals") or []
+    if balance_signals:
         lines.extend(
             f"- **{signal['severity']} - {signal['name']}:** {signal['detail']}"
-            for signal in report["balance_signals"]
+            for signal in balance_signals
         )
     else:
         lines.append("- No balance signals were available from this run.")
 
     lines.extend(["", "## Representative Commentary", ""])
-    if report["commentary"]:
-        lines.extend(f"- {comment}" for comment in report["commentary"])
+    commentary = report.get("commentary") or []
+    if commentary:
+        lines.extend(f"- {comment}" for comment in commentary)
     else:
         lines.append("- No representative events were recorded.")
 
     lines.extend(["", "## Evidence", ""])
-    evidence = report["evidence"]
-    lines.append(f"State snapshots: {evidence['state_snapshot_count']}")
-    lines.append(_count_line("Recorded events", evidence["event_counts"]))
-    lines.append(_count_line("Game events", evidence["game_event_counts"]))
+    evidence = report.get("evidence") or {}
+    lines.append(f"State snapshots: {evidence.get('state_snapshot_count', 0) or 0}")
+    lines.append(_count_line("Recorded events", evidence.get("event_counts") or {}))
+    lines.append(_count_line("Game events", evidence.get("game_event_counts") or {}))
     return "\n".join(lines) + "\n"
 
 
@@ -845,7 +859,7 @@ def _progress_summary(
         "combat_starts": max(
             game_event_counts["combat_started"],
             _inferred_combat_start_count(game_events),
-            len(confirmed_kills),
+            int(bool(confirmed_kills)),
         ),
         "combat_decisions": sum(_is_combat_decision(decision) for decision in decisions),
         "confirmed_kills": confirmed_kills,
@@ -1421,9 +1435,10 @@ def _sales_summary(sales: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _format_sales(sales: dict[str, Any]) -> str:
-    if not sales["count"]:
+    count = int(sales.get("count", 0) or 0)
+    if not count:
         return "none"
-    return f"{sales['count']} item(s) for {sales['coins']} coins"
+    return f"{count} item(s) for {int(sales.get('coins', 0) or 0)} coins"
 
 
 def _format_sale_rejections(rejections: list[dict[str, Any]]) -> str:
@@ -1433,8 +1448,12 @@ def _format_sale_rejections(rejections: list[dict[str, Any]]) -> str:
 
 
 def _format_training(training: dict[str, list[dict[str, Any]]]) -> str:
-    accepted = ", ".join(str(item.get("skill")) for item in training["accepted"])
-    rejected = ", ".join(str(item.get("skill")) for item in training["rejected"])
+    accepted = ", ".join(
+        str(item.get("skill")) for item in training.get("accepted", ())
+    )
+    rejected = ", ".join(
+        str(item.get("skill")) for item in training.get("rejected", ())
+    )
     parts = []
     if accepted:
         parts.append(f"accepted {accepted}")
@@ -2144,16 +2163,16 @@ def _json_dict(value: Any) -> dict[str, Any]:
 
 def _change_row(name: str, change: dict[str, Any], *, resource: bool = False) -> str:
     initial = (
-        _display_resource(change["initial"], change.get("initial_maximum"))
+        _display_resource(change.get("initial"), change.get("initial_maximum"))
         if resource
-        else _display(change["initial"])
+        else _display(change.get("initial"))
     )
     final = (
-        _display_resource(change["final"], change.get("final_maximum"))
+        _display_resource(change.get("final"), change.get("final_maximum"))
         if resource
-        else _display(change["final"])
+        else _display(change.get("final"))
     )
-    return f"| {name} | {initial} | {final} | {_display(change['change'])} |"
+    return f"| {name} | {initial} | {final} | {_display(change.get('change'))} |"
 
 
 def _display_resource(current: Any, maximum: Any) -> str:

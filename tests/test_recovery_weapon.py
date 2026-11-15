@@ -54,6 +54,12 @@ def test_recovery_stat_only_gain_does_not_replace_primary():
     assert removals == additions == []
 
 
+def test_recovery_without_a_weapon_does_not_disarm_primary():
+    branch, _, _ = equipment_case()
+    removals, additions = plan_stance_swaps([], [branch], STANCE_RECOVERY)
+    assert removals == additions == []
+
+
 def test_recovery_weapon_set_bonus_is_not_discarded():
     branch, club, _ = equipment_case()
     object_set = ObjectSetSource(

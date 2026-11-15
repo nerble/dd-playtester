@@ -120,9 +120,18 @@ def test_missing_or_concealed_stats_are_not_training_permission(updates):
     assert practice_gain(28, 70, "physical", {**STATS, **updates}) is None
 
 
-@pytest.mark.parametrize("current,capacity", [(100, 70), (True, 70), (28, None), (28, True), (28, 50000)])
+@pytest.mark.parametrize("current,capacity", [(100, 70), (True, 70), (28, None), (28, True), (28, 0), (28, -1)])
 def test_practice_acceptance_is_bounded(current, capacity):
     assert practice_gain(current, capacity, "physical", STATS) is None
+
+
+def test_source_expert_teachers_above_player_mastery_remain_usable():
+    stats = {"str_mod": 29, "dex_mod": 15, "int_mod": 16, "wis_mod": 24}
+    assert practice_gain(52, 105, "intellectual", stats) == 72
+    assert practice_gain(52, 110, "intellectual", stats) == 75
+    assert practice_gain(99, 110, "intellectual", stats) is None
+    assert practice_gain(52, 50000, "intellectual", stats) == 100
+    assert practice_gain(100, 110, "intellectual", stats) is None
 
 
 def _world(character_class="warrior"):

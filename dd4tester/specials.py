@@ -69,6 +69,9 @@ ECONOMIC_SPECIALS = frozenset({"spec_thief"})
 TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
     {
         "spec_aboleth",
+        # special.c only reads ch->fighting and adds a hug after combat has
+        # started; it cannot initiate an attack against a passing player.
+        "spec_bear",
         "spec_bloodsucker",
         "spec_breath_acid",
         "spec_breath_any",
@@ -82,6 +85,7 @@ TRANSIT_SAFE_COMBAT_ONLY_SPECIALS = frozenset(
         "spec_cast_cleric",
         "spec_cast_druid",
         "spec_cast_electric",
+        "spec_faerie_dragon",
         "spec_cast_judge",
         "spec_cast_mage",
         "spec_cast_priestess",

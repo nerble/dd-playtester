@@ -51,6 +51,149 @@ def test_damage_acknowledgement_does_not_clear_ensuing_wait(spell, noun):
     assert not window.blocked(3.5)
 
 
+@pytest.mark.parametrize("spell,reply", [
+    ("cure serious", "You feel better!"),
+    ("cure light", "You feel better!"),
+    ("cure critical", "You feel better!"),
+    ("heal", "A warm feeling fills your body."),
+    ("cure serious", "You fail to correctly recite the spell!"),
+])
+def test_self_heal_acknowledgement_keeps_source_spell_wait(spell, reply):
+    window = CombatCommandWindow()
+    window.issue(f"cast '{spell}'", target="a dust dweller", now=0)
+    window.observe("The white aura around your body fades.\n", now=.1)
+    assert window.pending
+    window.observe(reply[:10], now=.2)
+    assert window.pending
+    window.observe(reply[10:] + "\n", now=.4)
+    assert not window.pending
+    assert window.blocked(3.6)
+    assert not window.blocked(3.7)
+
+
+def test_run_24884_heals_cannot_queue_through_failure_or_background_prompts(monkeypatch):
+    policy, state, clock = policy_fixture(monkeypatch)
+    policy.known_skills.add("cure serious")
+    state.hp = 40
+    monkeypatch.setattr(policy, "_field_combat_withdraw_ratio", lambda _: .2)
+    first = policy._combat_self_heal_decision(state)
+    assert first.command == "cast 'cure serious'"
+    policy.after_command(first)
+    clock[0] = .2
+    policy.observe_text("You fail to correctly recite the spell!\n")
+    policy.between_round_action_issued = False
+    assert policy._combat_self_heal_decision(state) is None
+    clock[0] = 1.2
+    policy.observe_text("The white aura around your body fades.\n")
+    policy.between_round_action_issued = False
+    assert policy._combat_self_heal_decision(state) is None
+    assert policy.cleric_combat_heals == 1
+    clock[0] = 3.5
+    assert policy._combat_self_heal_decision(state).command == "cast 'cure serious'"
+
+
+def test_unacknowledged_heal_blocks_more_combat_commands(monkeypatch):
+    policy, state, clock = policy_fixture(monkeypatch)
+    policy.known_skills.add("cure serious")
+    state.hp = 40
+    monkeypatch.setattr(policy, "_field_combat_withdraw_ratio", lambda _: .2)
+    first = policy._combat_self_heal_decision(state)
+    policy.after_command(first)
+    clock[0] = 12
+    policy.between_round_action_issued = False
+    assert policy._combat_self_heal_decision(state) is None
+    assert policy._between_round_combat_decision(state) is None
+    assert policy.combat_command_window.suspended
+
+
+def test_acknowledged_command_has_one_scoped_timer_wakeup_after_its_lag():
+    scope = (100, "#42", 2405, 46, "boot", 0)
+    window = CombatCommandWindow()
+    window.issue("kick", target="the guardian", now=0, scope=scope)
+    assert not window.take_ready_wakeup(scope=scope, now=2)
+    window.observe("Your kick wounds the guardian!\n", now=.3)
+    assert not window.take_ready_wakeup(scope=scope, now=2.5)
+    assert not window.take_ready_wakeup(scope=scope, now=2.6, prompt_ready=True)
+    assert window.take_ready_wakeup(scope=scope, now=2.6)
+    assert not window.take_ready_wakeup(scope=scope, now=3)
+    assert window.evidence()["timer_wakeups"] == 1
+
+
+@pytest.mark.parametrize("index", range(6))
+def test_timer_scope_change_permanently_invalidates_that_wakeup(index):
+    scope = (100, "#42", 2405, 46, "boot", 0)
+    changed = list(scope)
+    changed[index] = "different"
+    window = CombatCommandWindow()
+    window.issue("cast 'cure serious'", target="the guardian", now=0, scope=scope)
+    window.observe("You feel better!\n", now=.2)
+    assert not window.take_ready_wakeup(scope=tuple(changed), now=4)
+    assert not window.take_ready_wakeup(scope=scope, now=5)
+
+
+def test_timer_never_releases_pending_suspended_or_reset_commands():
+    scope = (100, "#42", 2405, 46, "boot", 0)
+    window = CombatCommandWindow()
+    window.issue("kick", target="the guardian", now=0, scope=scope)
+    assert not window.take_ready_wakeup(scope=scope, now=12)
+    window.suspend()
+    assert not window.take_ready_wakeup(scope=scope, now=13)
+    window.reset()
+    assert not window.take_ready_wakeup(scope=scope, now=14)
+
+
+def test_live_dispatch_binds_timer_to_current_room_instance_and_level(monkeypatch):
+    policy, state, clock = policy_fixture(monkeypatch)
+    policy.world_boot_id = "fixture-boot"
+    policy.enemy_snapshot_room = "2415"
+    policy.enemy_snapshot_stale = False
+    policy.after_command(BotDecision("kick", "damage"), state)
+    scope = policy._combat_command_scope(state)
+    assert scope is not None and scope[1] == "#22916"
+    clock[0] = .3
+    policy.observe_text("Your kick wounds Katrina the Shepherd!\n")
+    assert policy.combat_command_window.take_ready_wakeup(scope=scope, now=2.6)
+    state.room_vnum = "2416"
+    assert policy._combat_command_scope(state) is None
+
+
+def test_legacy_stop_uses_known_class_spell_instead_of_starving_it_behind_kick(monkeypatch):
+    policy, state, clock = policy_fixture(monkeypatch)
+    policy.spec = CharacterSpec.from_mapping({
+        "name": "Testknight", "race": "dwarf", "gender": "male",
+        "class": "warrior", "subclass": "knight",
+    })
+    policy.known_skills.update(("flamestrike", "kick"))
+    policy.known_skill_levels.update({"flamestrike": 48, "kick": 69})
+    stop = replace(policy.fastwalk_hunt_stops[0], source_combat_action=None,
+                   require_familiar=False)
+    policy.fastwalk_hunt_stops = (stop,)
+    state.level = 46
+    decision = policy._source_combat_spell_decision(
+        state, stop, target=policy.active_target, command_target="#22916",
+    )
+    assert decision.command == "cast 'flamestrike' #22916"
+    assert "class damage spell" in decision.reason
+    policy.combat_active = False
+    assert policy._source_combat_spell_decision(
+        state, stop, target=policy.active_target, command_target="#22916",
+    ) is None
+
+
+def test_legacy_class_spell_fallback_keeps_consider_only_and_mana_reserve(monkeypatch):
+    policy, state, clock = policy_fixture(monkeypatch)
+    stop = replace(policy.fastwalk_hunt_stops[0], source_combat_action=None)
+    policy.known_skills.add("chill touch")
+    assert policy._source_combat_spell_decision(
+        state, replace(stop, consider_only=True), target=policy.active_target,
+        command_target="#22916",
+    ) is None
+    state.mana = 10
+    assert policy._source_combat_spell_decision(
+        state, stop, target=policy.active_target, command_target="#22916",
+    ) is None
+
+
 def test_bundled_damage_response_acknowledges_before_wounds_and_prompt():
     window = CombatCommandWindow()
     window.issue("cast 'burning hands' #25929", target="the patrolling guard", now=0)

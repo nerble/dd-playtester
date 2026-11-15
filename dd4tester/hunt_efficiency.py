@@ -10,6 +10,42 @@ from .hunt_outcomes import completed_single_target_hunt
 from .storage import RUN_REPORT_SUMMARY_VERSION
 
 
+def load_bounded_hunt_visits(
+    storage: Any, campaign_id: int, phase: str,
+    recent_segments: Iterable[Mapping[str, Any]],
+    latest: Mapping[str, Any] | None = None,
+) -> list[tuple[Mapping[str, Any], Mapping[str, Any]]]:
+    """Link at most eight visits from 256 thin headers, not full history."""
+    known = {row["id"]: dict(row) for row in recent_segments if row["phase"] == phase}
+    if latest is not None:
+        known[latest["id"]] = dict(latest)
+    headers = getattr(storage, "list_recent_campaign_segment_headers", None)
+    load = getattr(storage, "get_campaign_segment_by_id", None)
+    if callable(headers) and callable(load):
+        selected = [dict(row) for row in headers(campaign_id, limit=256)
+                    if row["phase"] == phase]
+    else:
+        selected = list(known.values())
+    selected.sort(key=lambda row: row["id"], reverse=True)
+    visits = []
+    for header in selected[:8]:
+        row = known.get(header["id"])
+        if row is None:
+            loaded = load(campaign_id, header["id"])
+            row = dict(loaded) if loaded is not None else None
+        if (row is None or row.get("id") != header["id"]
+                or row.get("phase") != phase or row.get("run_id") != header.get("run_id")):
+            return []
+        run_id = row.get("run_id")
+        if type(run_id) is not int or run_id <= 0:
+            continue
+        summary = storage.get_run_summary(run_id)
+        if not isinstance(summary, Mapping):
+            return []
+        visits.append((row, summary))
+    return visits
+
+
 @dataclass(frozen=True)
 class HuntVisitEfficiency:
     net_xp: int

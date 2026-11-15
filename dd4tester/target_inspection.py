@@ -26,6 +26,15 @@ def normalized_description(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
+def look_health_match(text: str, name: str) -> re.Match | None:
+    return re.search(
+        re.escape(name) + r"\s+(?:is in perfect health|is slightly scratched|"
+        r"has a few bruises|has some cuts|has several wounds|has many nasty wounds|"
+        r"is bleeding freely|is covered in blood|is leaking guts|is almost dead|"
+        r"is DYING)\.\s*(?:\n|$)", text, re.IGNORECASE,
+    )
+
+
 def distinguishable_descriptions(descriptions: Mapping[int, str], expected: int) -> bool:
     expected_text = normalized_description(descriptions.get(expected, ""))
     return bool(
@@ -126,12 +135,7 @@ class TargetInspectionController:
         ):
             self.finish("absent", now=now, reason="target instance is no longer in the room")
             return
-        health = re.search(
-            re.escape(plan["name"]) + r"\s+(?:is in perfect health|is slightly scratched|"
-            r"has a few bruises|has some cuts|has several wounds|has many nasty wounds|"
-            r"is bleeding freely|is covered in blood|is leaking guts|is almost dead|"
-            r"is DYING)\.\s*(?:\n|$)", self.buffer, re.IGNORECASE,
-        )
+        health = look_health_match(self.buffer, plan["name"])
         if health is None:
             return
         before = normalized_description(self.buffer[:health.start()])

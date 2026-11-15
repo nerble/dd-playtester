@@ -113,7 +113,7 @@ def practice_gain(
         isinstance(current, bool) or not isinstance(current, int)
         or not 0 <= current < 100
         or isinstance(capacity, bool) or not isinstance(capacity, int)
-        or not 1 <= capacity <= 100
+        or capacity < 1
     ):
         return None
     intelligence = _stat(stats, "int")
@@ -131,4 +131,5 @@ def practice_gain(
         return None
     if capacity - 1 <= current + penalty:
         return None
+    # NPC teaching knowledge can exceed 100; do_practice caps the PC result.
     return min(100, (current - penalty + capacity) // 2)

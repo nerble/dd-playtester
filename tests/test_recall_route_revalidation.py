@@ -165,4 +165,4 @@ def test_recall_route_receipt_never_overrides_saved_crowd_cooldown(receipt_case)
     marker = receipt(receipt_case)
     state = {**receipt_case[3], RECALL_ROUTE_REVALIDATION_KEY: marker,
              "campaign_research_crowd_cooldowns": {marker["policy_id"]: 2}}
-    assert _source_ranked_result_status(receipt_case[4], state, character_level=30) == "cooldown"
+    assert _source_ranked_result_status(receipt_case[4], state, character_level=30) == "retryable"

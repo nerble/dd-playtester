@@ -1,0 +1,38 @@
+name: dorrik-healer-audit
+host: dragons-domain.org
+port: 8888
+timeout: 5
+database: runs/dd4tester.sqlite3
+transcript_dir: transcripts
+credential_name: dd4-login
+steps:
+  - wait_for: "Name:"
+    timeout: 10
+  - send_env: "DD4_USERNAME"
+    timeout: 2
+  - wait_for: "Password:"
+    timeout: 10
+  - send_env: "DD4_PASSWORD"
+    timeout: 2
+  - wait_for: "To Enter the Dragons Domain"
+    timeout: 15
+  - send: ""
+    timeout: 5
+  - wait_for: " hits "
+    timeout: 15
+  - send: "look"
+    timeout: 3
+  - wait_for: "By the Temple Altar"
+    timeout: 5
+  - send: "time"
+    timeout: 4
+  - send: "balance"
+    timeout: 4
+  - send: "score"
+    timeout: 4
+  - send: "inventory"
+    timeout: 4
+  - send: "equipment"
+    timeout: 4
+  - send: "quit"
+    timeout: 5

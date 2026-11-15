@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import dd4tester.campaign as campaign
 from dd4tester.campaign import (
     _SOURCE_RANKED_XP_LOSS_POLICIES_KEY, _merge_protection_recovery_metadata,
     _xp_loss_event_observed,
@@ -31,6 +32,12 @@ def test_source_stop_identity_accepts_recall_origin_suffix() -> None:
     assert source_stop_identity(
         "source-ranked-hunt-example-101-201-31-recall-2"
     ) == (101, 201, 31)
+
+
+def test_source_stop_identity_accepts_sanctuary_maintenance_suffix() -> None:
+    assert source_stop_identity(
+        "source-ranked-hunt-olympus-908-937-45-sanctuary-maintenance"
+    ) == (908, 937, 45)
 
 
 def test_withdrawal_retains_actual_combat_output_only_with_explicit_loss(monkeypatch) -> None:
@@ -173,8 +180,63 @@ def _row(kind: str, payload: dict, event_id: int) -> dict:
     return {"id": event_id, "run_id": 9, "kind": kind, "payload_json": json.dumps(payload)}
 
 
+def test_registered_loss_identity_is_owned_by_startup_repair(monkeypatch):
+    phase = "vampire-catacombs-hunt-41-44"
+    target = "source-ranked-hunt-vamp-catacombs-9532-9574-45"
+    start = {
+        "level": 45, "world_boot_id": "boot", "campaign_source_revision": "revision",
+        "xp": 1000, "campaign_xp_loss_total": 0,
+    }
+    end = {
+        **start, "xp": 561, "campaign_xp_loss_total": 1405,
+        "xp_loss_observed": True, "campaign_source_combat_losses": [],
+        "campaign_fastwalk_sanctuary_consumed_in_combat": True,
+        "campaign_fastwalk_source_present_sightings": [{
+            "policy_id": target, "room_vnum": "9574", "target": "Nathaniel",
+        }],
+    }
+    segment = {
+        "id": 7, "sequence": 1, "phase": phase, "status": "success", "run_id": 9,
+        "start_state_json": json.dumps(start), "end_state_json": json.dumps(end),
+    }
+    context = [
+        _row("game_event", {"type": "enemies_changed", "data": {"value": [[{
+            "name": "Nathaniel", "isnpc": "9532",
+        }]]}}, 1),
+        _row("decision", {"command": "flee"}, 2),
+        _row("game_event", {"type": "room_entered", "data": {
+            "vnum": "9573", "arrival": {"from": 9574},
+        }}, 3),
+    ]
+    loss = _row("game_event", {
+        "type": "experience_lost", "data": {"xp": 1405, "partial_xp": 966},
+    }, 4)
+    storage = SimpleNamespace(
+        list_campaign_segments_for_phases=lambda *_args: [segment],
+        get_campaign_segment_by_id=lambda *_args: segment,
+        list_combat_loss_contexts=lambda _run_id: [(loss, context)],
+    )
+    monkeypatch.setattr(campaign, "_segment_objective_kills", lambda *_args: [])
+    repaired = campaign._repair_registered_research_xp_loss_history(
+        end, (), storage=storage, campaign_id=39,
+    )
+    again = campaign._repair_registered_research_xp_loss_history(
+        repaired, (), storage=storage, campaign_id=39,
+    )
+    for observed in (repaired, again):
+        record = campaign._source_ranked_xp_loss_record(observed, target)
+        assert record["exact_stop_loss"] is True
+        assert record["loss_event_id"] == 7
+        assert record["xp_delta"] == -439
+        assert record["loss_count"] == 1
+        assert record["sanctuary_protected"] is True
+
+
+@pytest.mark.parametrize("registered", [False, True])
 @pytest.mark.parametrize("failure", (None, "wrong_mob", "wrong_room", "no_withdrawal", "new_boot"))
-def test_recent_loss_repair_requires_ordered_exact_enemy_room_and_penalty(failure: str | None) -> None:
+def test_recent_loss_repair_requires_ordered_exact_enemy_room_and_penalty(
+    failure: str | None, registered: bool,
+) -> None:
     start = {
         "level": 31, "world_boot_id": "boot", "campaign_source_revision": "revision",
         "campaign_source_ranked_hunt_candidate": {
@@ -183,6 +245,12 @@ def test_recent_loss_repair_requires_ordered_exact_enemy_room_and_penalty(failur
         },
     }
     end = {**start, "xp_loss_observed": True}
+    if registered:
+        start.pop("campaign_source_ranked_hunt_candidate")
+        end.pop("campaign_source_ranked_hunt_candidate")
+        end["campaign_fastwalk_source_present_sightings"] = [{
+            "policy_id": SECONDARY, "room_vnum": "202", "target": "the bartender",
+        }]
     if failure == "new_boot":
         end["world_boot_id"] = "later boot"
     context = [

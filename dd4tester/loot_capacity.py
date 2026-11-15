@@ -146,6 +146,7 @@ class HealerCarryingCapacity:
     food_relief_attempted: bool = False
     food_relief_keyword: str | None = None
     food_relief_failure: str | None = None
+    food_disposals: int = 0
     deferred_destination: str | None = None
     planned_relief_slots: int = 0
     reply: LootCapacityReply = field(default_factory=LootCapacityReply)
@@ -159,6 +160,7 @@ class HealerCarryingCapacity:
             "food_relief_attempted": self.food_relief_attempted,
             "food_relief_keyword": self.food_relief_keyword,
             "food_relief_failure": self.food_relief_failure,
+            "food_disposals": self.food_disposals,
             "deferred_destination": self.deferred_destination,
             "planned_relief_slots": self.planned_relief_slots,
         }

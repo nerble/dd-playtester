@@ -10439,13 +10439,14 @@ def test_level_thirty_six_keeps_jerry_v2_for_explicit_route_hazard() -> None:
     assert "no-combat" in policy.summary
 
 
-def test_level_forty_one_starts_with_no_combat_pit_official_probe() -> None:
+def test_level_forty_one_retains_pit_probe_as_retired_history() -> None:
     policy = policy_for(41, "mage")
 
     assert policy.policy_id == "pit-official-probe-41-45"
-    assert policy.status == "research"
-    assert policy.execution == "pit-official-research"
-    assert policy.executable
+    assert policy.status == "unavailable"
+    assert policy.execution is None
+    assert not policy.executable
+    assert "historical" in policy.summary
 
 
 def test_level_forty_one_waits_for_review_after_pit_official_probe() -> None:
@@ -10458,6 +10459,205 @@ def test_level_forty_one_waits_for_review_after_pit_official_probe() -> None:
     assert policy.status == "unavailable"
     assert not policy.executable
     assert "do not authorize combat" in policy.summary
+
+
+def test_level_forty_five_starts_with_dwarven_home_chess_dwarf_probe() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+    )
+
+    assert policy.policy_id == "dwarven-home-chess-dwarf-probe-46-50"
+    assert policy.minimum_level == 45
+    assert policy.status == "research"
+    assert policy.execution == "dwarven-home-chess-dwarf-research"
+    assert policy.executable
+
+
+def test_level_forty_five_promotes_viable_chess_dwarf_to_one_hunt() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="dwarven-home-chess-dwarf-probe-46-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-chess-dwarf-hunt-46-50"
+    assert policy.minimum_level == 45
+    assert policy.execution == "dwarven-home-chess-dwarf-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_forty_five_uses_storn_after_chess_dwarf_rejection() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="dwarven-home-chess-dwarf-probe-46-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            }
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-storn-probe-46-50"
+    assert policy.minimum_level == 45
+    assert policy.execution == "mirror-realm-storn-research"
+
+
+def test_level_forty_five_uses_gambler_after_chess_and_storn_rejection() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="mirror-realm-storn-probe-46-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-probe-45-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-exact-probe-45-50": {
+                "observed": False,
+                "viable": False,
+                "absent": True,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-source-bound-probe-45-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-gambler-live-consider-probe-45-50"
+    assert policy.minimum_level == 45
+    assert policy.maximum_level == 50
+    assert policy.execution == "dwarven-home-gambler-research"
+
+
+def test_level_forty_five_promotes_viable_gambler_to_one_hunt() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="dwarven-home-gambler-live-consider-probe-45-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-live-consider-probe-45-50": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "dwarven-home-gambler-live-consider-hunt-45-50"
+    assert policy.execution == "dwarven-home-gambler-hunt"
+    assert policy.segment_kill_limit == 1
+
+
+def test_level_forty_five_uses_master_dunn_after_gambler_rejection() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="dwarven-home-gambler-live-consider-probe-45-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-live-consider-probe-45-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-master-dunn-probe-45-50"
+    assert policy.minimum_level == 45
+    assert policy.maximum_level == 50
+    assert policy.execution == "mirror-realm-master-dunn-research"
+
+
+def test_level_forty_five_promotes_viable_master_dunn_to_one_hunt() -> None:
+    policy = policy_for(
+        45,
+        "warrior",
+        last_policy_id="mirror-realm-master-dunn-probe-45-50",
+        world_boot_id="boot-1",
+        policy_xp_deltas={"source-ranked-hunt-pit-13700-13703-45": 0},
+        research_results={
+            "dwarven-home-chess-dwarf-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-live-consider-probe-45-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-master-dunn-probe-45-50": {
+                "observed": True,
+                "viable": True,
+                "boot_id": "boot-1",
+            },
+        },
+    )
+
+    assert policy.policy_id == "mirror-realm-master-dunn-hunt-45-50"
+    assert policy.execution == "mirror-realm-master-dunn-hunt"
+    assert policy.segment_kill_limit == 1
 
 
 def test_level_forty_six_starts_with_dwarven_home_chess_dwarf_probe() -> None:
@@ -10520,6 +10720,16 @@ def test_level_forty_six_waits_after_both_registered_probes() -> None:
                 "boot_id": "boot-1",
             },
             "mirror-realm-storn-probe-46-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "dwarven-home-gambler-live-consider-probe-45-50": {
+                "observed": True,
+                "viable": False,
+                "boot_id": "boot-1",
+            },
+            "mirror-realm-master-dunn-probe-45-50": {
                 "observed": True,
                 "viable": False,
                 "boot_id": "boot-1",

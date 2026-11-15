@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 
 from .equipment import normalize_item_name
 from .hunt_candidates import (
-    AFF_SANCTUARY, ITEM_INSTRUMENT,
+    AFF_SANCTUARY, ITEM_INSTRUMENT, ITEM_ARMOR,
     ITEM_DONOT_RANDOMISE, ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND, ITEM_WEAPON,
     HuntCandidate, MobileSource, SourceCombatOutput, WorldSource,
     _apply_mobile_damage_modifier, _mobile_normal_hit_damage,
@@ -18,6 +18,42 @@ _ITEM_HUM = 1 << 1
 _ITEM_TAKE = 1
 _ITEM_HOLD = 1 << 14
 _WEAR_HOLD = 17
+_ITEM_TRASH = 13
+
+
+def bounded_low_guard_companion(
+    world: WorldSource, mobile_vnum: int, room_vnum: int, character_level: int,
+) -> bool:
+    """Audit one low guard wearing armor or inert, detrimental restraints."""
+    mobile = world.mobiles.get(mobile_vnum)
+    if (
+        mobile is None or mobile.level + 2 > character_level - 10
+        or mobile.aggressive or mobile.programs or mobile.non_corporeal
+        or mobile.fear_aura or mobile.costs_fame
+        or mobile_vnum in world.shopkeepers
+        or set(world.mobile_specials.get(mobile_vnum, ())) != {"spec_guard"}
+        or not mobile.damage_modifier_known or mobile.damage_modifier != 0
+    ):
+        return False
+    resets = [r for r in world.mob_resets if r.mobile_vnum == mobile_vnum]
+    if len(resets) != 1 or resets[0].room_vnum != room_vnum or resets[0].maximum_count != 1:
+        return False
+    return all(
+        (item := world.objects.get(vnum)) is not None and (
+            item.item_type == ITEM_ARMOR and all(
+                loc in {12, 13, 14, 17}
+                or (loc in {1, 2, 3, 4, 5, 18, 19} and mod <= 0)
+                for loc, mod in item.affects
+            )
+            or (
+                item.item_type == _ITEM_TRASH and item.wear_flags & ~1
+                and not any(item.values) and bool(item.affects)
+                and all(loc in {1, 2, 3, 4, 5, 18, 19} and mod <= 0
+                        for loc, mod in item.affects)
+            )
+        )
+        for vnum in (*resets[0].object_vnums, *(v for _, v in resets[0].equipment))
+    )
 
 
 def sanctuary_limited_output(output: SourceCombatOutput) -> SourceCombatOutput:

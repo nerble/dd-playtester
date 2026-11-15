@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any, Collection, Iterator, Mapping
 
 from . import __version__
+from .decisions import classify_decision
 from .lease import CampaignLease, CampaignLeaseBusyError, campaign_lease_path
+from .observations import valid_enemy_snapshot
 from .state import CURRENT_STATE_FIELDS
 
 
@@ -71,6 +73,69 @@ _EXPERIMENT_STARTING_STATE_FIELDS = frozenset(
 class _WriterControl:
     command: str
     completed: threading.Event
+
+
+def _record_combat_observation(
+    connection: sqlite3.Connection,
+    *,
+    run_id: int,
+    event_id: int,
+    kind: str,
+    payload: Mapping[str, Any],
+) -> None:
+    """Update bounded counters in the canonical event's own transaction."""
+    engaged: int | None = None
+    combat_decision = 0
+    if kind == "decision":
+        combat_decision = int(
+            str(payload.get("category") or "").casefold() == "combat"
+            or classify_decision(
+                str(payload.get("command") or ""),
+                str(payload.get("reason") or ""),
+                str(payload.get("stage") or ""),
+            ).category == "combat"
+        )
+    elif kind == "game_event":
+        event_type = payload.get("type")
+        if event_type == "combat_started":
+            engaged = 1
+        elif event_type == "enemies_changed":
+            data = payload.get("data")
+            value = data.get("value") if isinstance(data, Mapping) else None
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except (TypeError, json.JSONDecodeError):
+                    return
+            if not valid_enemy_snapshot(value):
+                return
+
+            def has_enemy(item: Any) -> bool:
+                return isinstance(item, dict) or (
+                    isinstance(item, list) and any(has_enemy(child) for child in item)
+                )
+
+            engaged = int(has_enemy(value))
+    if engaged is None and not combat_decision:
+        return
+    connection.execute(
+        """
+        INSERT INTO run_combat_metrics (
+            run_id, last_event_id, combat_starts, combat_decisions, engaged,
+            fully_observed
+        ) VALUES (?, ?, ?, ?, ?, 0)
+        ON CONFLICT(run_id) DO UPDATE SET
+            last_event_id = excluded.last_event_id,
+            combat_starts = run_combat_metrics.combat_starts
+                + CASE WHEN ? = 1 AND run_combat_metrics.engaged = 0 THEN 1 ELSE 0 END,
+            combat_decisions = run_combat_metrics.combat_decisions
+                + excluded.combat_decisions,
+            engaged = COALESCE(?, run_combat_metrics.engaged)
+        WHERE excluded.last_event_id > run_combat_metrics.last_event_id
+        """,
+        (run_id, event_id, int(engaged == 1), combat_decision,
+         engaged or 0, engaged, engaged),
+    )
 
 
 def _index_game_event(
@@ -480,6 +545,9 @@ class _BoundedObservationWriter:
         )
         event_id = int(cursor.lastrowid)
         connection.execute("DELETE FROM run_summaries WHERE run_id = ?", (run_id,))
+        _record_combat_observation(
+            connection, run_id=run_id, event_id=event_id, kind=kind, payload=payload,
+        )
         if kind == "game_event":
             _index_game_event(
                 connection,
@@ -767,6 +835,15 @@ class RunStorage:
                 run_id INTEGER PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
                 completed_at TEXT NOT NULL,
                 summary_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS run_combat_metrics (
+                run_id INTEGER PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+                last_event_id INTEGER NOT NULL DEFAULT 0,
+                combat_starts INTEGER NOT NULL DEFAULT 0,
+                combat_decisions INTEGER NOT NULL DEFAULT 0,
+                engaged INTEGER NOT NULL DEFAULT 0,
+                fully_observed INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS character_commands (
@@ -1137,8 +1214,13 @@ class RunStorage:
             """,
             (scenario_name, str(scenario_path), _now(), "running"),
         )
+        run_id = int(cursor.lastrowid)
+        self.connection.execute(
+            "INSERT INTO run_combat_metrics (run_id, fully_observed) VALUES (?, 1)",
+            (run_id,),
+        )
         self.connection.commit()
-        return int(cursor.lastrowid)
+        return run_id
 
     def set_transcript_path(self, run_id: int, transcript_path: Path) -> None:
         self.connection.execute(
@@ -1185,6 +1267,9 @@ class RunStorage:
             (run_id, event_timestamp, kind, json.dumps(payload, sort_keys=True)),
         )
         event_id = int(cursor.lastrowid)
+        _record_combat_observation(
+            self.connection, run_id=run_id, event_id=event_id, kind=kind, payload=payload,
+        )
         if kind == "game_event":
             _index_game_event(
                 self.connection,
@@ -2098,6 +2183,7 @@ class RunStorage:
         *,
         reason: str,
         character_name: str | None = None,
+        classify_zero_command_as_failed: bool = False,
     ) -> tuple[int, int, int]:
         """Recover one campaign without scanning the shared run history.
 
@@ -2207,7 +2293,7 @@ class RunStorage:
                 # before the worker opened its live run.  Keep that checkpoint
                 # resumable; the campaign-opening path explicitly classifies
                 # orphaned worker segments as failed when appropriate.
-                classify_zero_command_as_failed=False,
+                classify_zero_command_as_failed=classify_zero_command_as_failed,
             )
             return repaired_events, recovered_runs, segments
 
@@ -2473,6 +2559,19 @@ class RunStorage:
             (run_id, limit),
         )
         return list(reversed(cursor.fetchall()))
+
+    def list_recent_command_responses(
+        self, run_id: int, *, limit: int = 256,
+    ) -> list[sqlite3.Row]:
+        """Read bounded command-local evidence without intervening GMCP rows."""
+        if limit < 1:
+            raise ValueError("event limit must be positive")
+        rows = self.connection.execute(
+            """SELECT id, run_id, timestamp, kind, payload_json
+               FROM events WHERE run_id = ? AND kind IN ('command', 'response')
+               ORDER BY id DESC LIMIT ?""", (run_id, limit),
+        ).fetchall()
+        return list(reversed(rows))
 
     def list_combat_loss_contexts(
         self, run_id: int,
@@ -3685,6 +3784,15 @@ class RunStorage:
             except (TypeError, ValueError):
                 duration = None
         level_change = _change("level")
+        combat_metrics = self.connection.execute(
+            "SELECT combat_starts, combat_decisions, fully_observed "
+            "FROM run_combat_metrics WHERE run_id = ?", (run_id,),
+        ).fetchone()
+        combat_basis = (
+            "observed_events" if combat_metrics is not None and combat_metrics["fully_observed"]
+            else "partial_observed_events" if combat_metrics is not None
+            else "kill_lower_bound"
+        )
         summary = {
             "summary_version": RUN_REPORT_SUMMARY_VERSION,
             "summary_kind": "campaign_compact",
@@ -3713,8 +3821,12 @@ class RunStorage:
                     "initial": start_state.get("room_name"),
                     "final": end_state.get("room_name"),
                 },
-                "combat_starts": len(kills),
-                "combat_decisions": 0,
+                "combat_starts": max(
+                    int(bool(kills)), int(combat_metrics["combat_starts"]) if combat_metrics else 0,
+                ),
+                "combat_decisions": (
+                    int(combat_metrics["combat_decisions"]) if combat_metrics else None
+                ),
                 "confirmed_kills": kills,
                 "level_gains_observed": max(0, int(level_change["change"] or 0)),
                 "items_acquired": 0,
@@ -3728,6 +3840,7 @@ class RunStorage:
                 "compact": True,
                 "segment_id": int(segment["id"]),
                 "command_count": segment["command_count"],
+                "combat_metrics_basis": combat_basis,
             },
             "commentary": [],
         }

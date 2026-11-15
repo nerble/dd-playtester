@@ -1,8 +1,35 @@
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from dd4tester.fastwalks import expand_fastwalk, route_named, routes_for_level
+from dd4tester.hunt_candidates import load_world_source
+
+
+def test_registered_hunt_routes_replay_to_their_source_endpoints() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    expected = {
+        "dwarven home chess dwarf": 20530,
+        "dwarven home gambler": 20531,
+        "dwarven home master": 20537,
+        "mirror realm storn": 19114,
+        "mirror realm master dunn": 19073,
+    }
+
+    for route_name, endpoint in expected.items():
+        route = route_named(route_name)
+        room_vnum = 3001
+        for command in route.commands:
+            if command.startswith(("open ", "unlock ", "pick ")):
+                continue
+            room = world.rooms[room_vnum]
+            room_vnum = room.exits[command].destination
+        assert room_vnum == endpoint
+        assert route.research_endpoint_room_vnum == endpoint
 
 
 def test_expand_fastwalk_expands_repeated_directions_and_door_commands() -> None:
@@ -49,17 +76,18 @@ def test_official_routes_are_searchable_by_level_and_name() -> None:
     assert route_named("Dragon-Cult").commands == ("south", "south", "south", "west", "north")
 
 
-def test_mirror_realm_routes_avoid_the_greet_attack_street() -> None:
+def test_mirror_realm_routes_use_the_east_gate_bypass() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
     expected_city_exit = (
         "south",
         "south",
-        "south",
-        "west",
-        "west",
-        "west",
-        "north",
-        "north",
-        "west",
+        "east",
+        "east",
+        "east",
+        "east",
     )
 
     for route_name in (
@@ -68,21 +96,35 @@ def test_mirror_realm_routes_avoid_the_greet_attack_street() -> None:
         "mirror realm Caerlin Watchtowers",
         "mirror realm Caerlin Face",
     ):
-        assert route_named(route_name).commands[:9] == expected_city_exit
+        route = route_named(route_name)
+        assert route.commands[:6] == expected_city_exit
+        room_vnum = 3001
+        visited = [room_vnum]
+        for command in route.commands:
+            if command.startswith(("open ", "unlock ", "pick ")):
+                continue
+            room_vnum = world.rooms[room_vnum].exits[command].destination
+            visited.append(room_vnum)
+        assert 3025 not in visited
+        assert 3030 not in visited
 
 
 def test_mirror_realm_jerry_garcia_route_descends_to_ladder_exit() -> None:
     route = route_named("mirror realm jerry garcia")
-    open_north = route.commands.index("open north")
 
-    assert route.commands[open_north + 1 : open_north + 8] == (
-        "north",
-        "north",
-        "north",
+    assert route.commands[-12:] == (
+        "down",
+        "down",
         "west",
-        "down",
-        "down",
-        "open west",
+        "west",
+        "west",
+        "west",
+        "west",
+        "south",
+        "west",
+        "up",
+        "east",
+        "east",
     )
 
 
@@ -91,20 +133,7 @@ def test_mirror_realm_caerlin_route_reaches_source_reset() -> None:
     town_route = route_named("mirror realm Jerry Garcia")
 
     assert (route.minimum_level, route.maximum_level) == (35, 40)
-    street_route_end = town_route.commands.index(
-        "south", town_route.commands.index("open west")
-    )
-    assert route.commands == town_route.commands[:street_route_end]
-    open_north = route.commands.index("open north")
-    assert route.commands[open_north + 1 : open_north + 8] == (
-        "north",
-        "north",
-        "north",
-        "west",
-        "down",
-        "down",
-        "open west",
-    )
+    assert town_route.commands[: len(route.commands)] == route.commands
     assert route.commands[-5:] == ("west", "west", "west", "west", "west")
     assert route.recall_after_loot is True
     assert route.research_endpoint_room_vnum == 19068
@@ -113,10 +142,9 @@ def test_mirror_realm_caerlin_route_reaches_source_reset() -> None:
 def test_mirror_realm_caerlin_watchtower_route_stops_at_observed_room() -> None:
     route = route_named("mirror realm Caerlin Watchtowers")
     full_route = route_named("mirror realm Caerlin")
-    north_door = full_route.commands.index("open north")
 
     assert (route.minimum_level, route.maximum_level) == (35, 40)
-    assert route.commands == full_route.commands[: north_door + 4]
+    assert full_route.commands[: len(route.commands)] == route.commands
     assert route.recall_after_loot is True
     assert route.research_endpoint_room_vnum == 19008
     assert route.route_economic_hunt_mobile_vnums == (19036,)
@@ -125,10 +153,9 @@ def test_mirror_realm_caerlin_watchtower_route_stops_at_observed_room() -> None:
 def test_mirror_realm_caerlin_face_route_stops_before_north_door() -> None:
     route = route_named("mirror realm Caerlin Face")
     watchtower_route = route_named("mirror realm Caerlin Watchtowers")
-    north_door = watchtower_route.commands.index("open north")
 
     assert (route.minimum_level, route.maximum_level) == (35, 40)
-    assert route.commands == watchtower_route.commands[:north_door]
+    assert watchtower_route.commands[: len(route.commands)] == route.commands
     assert route.recall_after_loot is True
     assert route.research_endpoint_room_vnum == 19005
     assert route.route_economic_hunt_mobile_vnums == (19036,)
@@ -603,25 +630,27 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     jerry = route_named("Mirror Realm Jerry Garcia")
     assert jerry.minimum_level == 36
     assert jerry.maximum_level == 40
-    assert jerry.commands[-11:] == (
-        "open west", "west", "west", "west", "west", "west", "south",
-        "west", "up", "east", "east",
+    assert jerry.commands[-12:] == (
+        "down", "down", "west", "west", "west", "west", "west",
+        "south", "west", "up", "east", "east",
     )
     assert jerry.recall_after_loot is True
 
     chess_dwarf = route_named("Dwarven Home Chess Dwarf")
-    assert chess_dwarf.minimum_level == 46
+    assert chess_dwarf.minimum_level == 45
     assert chess_dwarf.maximum_level == 50
     assert chess_dwarf.commands == (
         ("south",) * 6
-        + ("west", "south", "west", "south", "west")
+        + ("west",) + ("south",) * 2
+        + ("west", "south", "west")
         + ("south",) * 2
+        + ("west",) + ("south",) * 2
         + ("open south",)
-        + ("south",) * 7
+        + ("south",) * 6
         + ("west",) * 2
         + ("south",) * 3
         + ("west",) * 2
-        + ("south",)
+        + ("south",) * 2
         + ("east",) * 4
         + ("north", "open east", "east")
         + ("north",) * 3
@@ -633,7 +662,7 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert chess_dwarf.recall_after_loot is True
 
     storn = route_named("Mirror Realm Storn")
-    assert storn.minimum_level == 46
+    assert storn.minimum_level == 45
     assert storn.maximum_level == 50
     assert storn.commands == (
         ("south",) * 2
@@ -646,13 +675,14 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
         + ("east",) * 2
         + ("north",) * 2
         + ("open north",)
-        + ("north",) * 4
+        + ("north",) * 3
         + ("east",)
         + ("down",) * 2
         + ("open east",)
-        + ("east",) * 6
+        + ("east",) * 5
         + ("south",) * 2
     )
+    assert storn.research_endpoint_room_vnum == 19114
     assert storn.recall_after_loot is True
 
     strange_mist = route_named("Darkwood Strange Mist")
@@ -678,14 +708,16 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert gambler.maximum_level == 55
     assert gambler.commands == (
         ("south",) * 6
-        + ("west", "south", "west", "south", "west")
+        + ("west",) + ("south",) * 2
+        + ("west", "south", "west")
         + ("south",) * 2
+        + ("west",) + ("south",) * 2
         + ("open south",)
-        + ("south",) * 7
+        + ("south",) * 6
         + ("west",) * 2
         + ("south",) * 3
         + ("west",) * 2
-        + ("south",)
+        + ("south",) * 2
         + ("east",) * 4
         + ("north", "open east", "east")
         + ("north",) * 3
@@ -700,14 +732,16 @@ def test_route_named_includes_source_backed_hunt_routes() -> None:
     assert master.maximum_level == 60
     assert master.commands == (
         ("south",) * 6
-        + ("west", "south", "west", "south", "west")
+        + ("west",) + ("south",) * 2
+        + ("west", "south", "west")
         + ("south",) * 2
+        + ("west",) + ("south",) * 2
         + ("open south",)
-        + ("south",) * 7
+        + ("south",) * 6
         + ("west",) * 2
         + ("south",) * 3
         + ("west",) * 2
-        + ("south",) * 3
+        + ("south",) * 2
         + ("east",) * 4
         + ("north", "open east", "east")
         + ("north",) * 3

@@ -59,11 +59,41 @@ class LiveMobileSourceOverride:
     alignment: int
     act_flags: int
     affected_flags: int
+    crit_modifier: int | None = None
+    haste_modifier: int | None = None
 
 
 # Dwarven Home's October 26 conversion only replaced these prototypes' direct
 # flags with the new dwarf template. The live MUD still uses the old records.
 LIVE_MOBILE_SOURCE_OVERRIDES = {
+    # Moria's November 14 template conversion is not deployed live. The
+    # pre-conversion carrier has ordinary direct flags and no scalar modifiers.
+    ("moria.are", 4055): LiveMobileSourceOverride(
+        source_revision="4f0d46ebb7c9465571816e8476298577dc541eb3",
+        template_name="hobgoblin",
+        keywords="hobgoblin",
+        short_description="the large hobgoblin",
+        level=10,
+        alignment=-500,
+        act_flags=68,
+        affected_flags=0,
+        crit_modifier=0,
+        haste_modifier=0,
+    ),
+    # Goblin Fortress was converted to the newer template syntax in
+    # 7fe440c, but the live MUD still has the pre-conversion prototype. Keep
+    # this ordinary visitor on its legacy direct flags and scalar modifiers;
+    # do not let the unreleased ``goblin`` template authorize the hunt.
+    ("goblin_fortress.are", 20301): LiveMobileSourceOverride(
+        source_revision="e48256a59aa326cd99fe6669dddf896d690bcade",
+        template_name="goblin",
+        keywords="goblin visitor",
+        short_description="The goblin visitor",
+        level=42,
+        alignment=-1000,
+        act_flags=66,
+        affected_flags=516,
+    ),
     ("dwarven_home.are", 20512): LiveMobileSourceOverride(
         source_revision="6b1ffdab647b3329a056a9d122c2fda59de6b9ec",
         template_name="dwarf",

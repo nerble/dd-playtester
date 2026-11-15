@@ -4,14 +4,25 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 
 SOURCE_COMBAT_LOSSES_KEY = "campaign_source_combat_losses"
 _POLICY_ID = re.compile(
-    r"^source-ranked-hunt-.+-(\d+)-(\d+)-(\d+)(?:-recall-\d+)?$"
+    r"^source-ranked-hunt-.+-(\d+)-(\d+)-(\d+)"
+    r"(?:-recall-\d+)?(?:-sanctuary-maintenance)?$"
 )
+
+
+def source_stop_policy_id(
+    area_file: str, mobile_vnum: int, room_vnum: int, character_level: int,
+    recall_index: int = 0,
+) -> str:
+    area = re.sub(r"[^a-z0-9]+", "-", Path(area_file).stem.casefold()).strip("-") or "area"
+    suffix = f"-recall-{recall_index}" if recall_index else ""
+    return f"source-ranked-hunt-{area}-{mobile_vnum}-{room_vnum}-{character_level}{suffix}"
 
 
 def source_stop_identity(policy_id: str) -> tuple[int, int, int] | None:
@@ -64,12 +75,27 @@ def recover_source_combat_losses(
     ):
         return []
     candidate = start.get("campaign_source_ranked_hunt_candidate")
-    if not isinstance(candidate, Mapping):
-        return []
-    circuit = candidate.get("circuit") or ()
+    circuit = (candidate.get("circuit") or ()) if isinstance(candidate, Mapping) else ()
     if not isinstance(circuit, (list, tuple)) or len(circuit) > 16:
         return []
-    candidates = [candidate, *circuit]
+    candidates = [candidate, *circuit] if isinstance(candidate, Mapping) else []
+    sightings = end.get("campaign_fastwalk_source_present_sightings")
+    if isinstance(sightings, (list, tuple)) and len(sightings) <= 16:
+        for sighting in sightings:
+            if not isinstance(sighting, Mapping):
+                continue
+            policy_id = str(sighting.get("policy_id") or "")
+            identity = source_stop_identity(policy_id)
+            if (
+                identity is not None and identity[2] == start["level"]
+                and str(identity[1]) == str(sighting.get("room_vnum"))
+                and not any(isinstance(item, Mapping) and item.get("policy_id") == policy_id
+                            for item in candidates)
+            ):
+                candidates.append({
+                    "policy_id": policy_id, "mobile_vnum": identity[0],
+                    "room_vnum": identity[1],
+                })
     recovered = []
     for loss_row, context in contexts[:4]:
         try:

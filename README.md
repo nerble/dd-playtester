@@ -3,17 +3,335 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: November 10, 2026
+## Current Status: November 15, 2026
 
-The latest durable campaign checkpoint is **76265** (campaign **39**); the
-latest live activity includes runs **24139-24145**. Dorrik is a level **45
-Knight** with **2,051,243 XP** and **18 quest points**, safely recovered at the
-Midgaard healer in room **3054**. Run **24134** was stopped after a live I/O
-stall; run **24135** completed normally after the recovery and training fixes,
-and the later bounded frontier visits all returned safely. The latest frontier
-checkpoint records a Cyclops route hazard as route-local evidence and does not
-wait for a reboot.
+Completed checkpoint **81002** (campaign **39**, run **25125**) records Dorrik
+at level **46 Knight**, **2,155,907 XP**, 1,082/1,117 HP, full mana/movement,
+at the Midgaard healer (**3054**). HERO remains unproved; **105,093 XP** remains
+to 47. No gameplay worker remains at this completed boundary; HERO100 is active.
+Runs **25108-25125** lost **25,206 net XP** despite four useful kills (13,151 XP)
+and four maintenance kills (680 XP). Egor's failed timed escape cost 50 XP,
+then death cost **38,987**. Corpse and equipment recovery succeeded. The
+whole-session observed rate is **-413.37 XP/minute** over 60.98 elapsed minutes,
+including development and supplies. Earlier partial gains do not describe the
+complete result. The latest **25125** safely killed Mayor for **3,689 XP**.
+Circuit selection and stop assembly now exclude current-level failed peers
+across reset rooms, while preserving independent primary selection.
+The long Egor trip exposed repeated field-hazard returns consuming its fight
+and escape time. Ordinary XP field aborts now end that trip, and the next
+invocation rotates normally; cheap origin checks remain. Removed duplicate
+final-handoff resupply selection. Staff replenishment now requires a fresh exact
+pickup, and explicit empty pickup evidence cannot report a completed resupply.
+The active-combat shutdown now has a state-aware finite ceiling: 90 seconds for
+an escape while fighting, 60 seconds for an incapacitated death transition, and
+25 seconds for ordinary cleanup. The outer campaign watcher honors that exact
+deadline, so it cannot close the socket during a live escape. This is saved and
+compiled but not live-proved yet. See [Operating Instructions](docs/OPERATIONS.md).
+Routine verification trips now use the documented 600-second limit, not the
+earlier 300-second cap.
+
+**25104** bought/wore the missing belt pouch for 50 copper; **25105** packed
+and verified the carried Sanctuary potion through the existing departure
+routine. **25107** quaffed it and confirmed Sanctuary in the actual XP fight.
+The shop fix resolves unrelated pouch namesakes against the registered leather
+worker's stock, without relaxing armour identity or purchase confirmation.
+**25113** subsequently killed the Mayor for **3,177 XP**, returned safely,
+and dispatched neither failed child. **25109** killed goblin visitor 20301
+for 3,771 XP; **25110** killed Buddha 10728 for 2,514. **25111** wasted a return
+visit before the Buddha respawned. Measured challengers now respect normal
+post-kill/absence rotation when another target is ready; a normally selected
+repeat or fallback remains eligible. **25113** chose the Mayor instead and
+completed safely. New cases compile but remain unrun under today's spent
+regression allowance. HERO100 remains active.
+Resume with the ordinary campaign command documented below.
+
+Named singleton losses now apply to general source aliases. Measured routes
+remain visible after maintenance pushes them out of the runtime tail: compare
+eight linked visits from 256 thin headers, not full history. Final source
+handoff now compares measured hunts before optional gear repair; **25093**
+live-proved that winning branch. Adept-only circuits can use independently
+admitted measured peers with ordinary continuation checks. Their combined rate
+and live multi-stop completion remain unproved; the proposed Buddha pair is
+now closed by 10727's new exact loss. **25082/80742** live-proved funded flight
+renewal and persisted ownership after the old funds-only delay was archived.
+
+Fixed consumed-resource persistence: normal completion now retains an explicit
+empty reserve after observed inventory and confirmed logout, instead of silently
+inheriting old staff/pill receipts. **25055/80620** live-proved that clear.
+Acquisition history cannot reset remaining charges or restore consumed gear;
+those additional cases compile but remain unrun under today's test allowance.
+Gear selection checks the other combat/recovery mode when the preferred mode
+has no upgrade; carrier kills impose no per-reboot acquisition quota. **25065**
+acquired and wore a mithril helm, but not its planned vest; no vest credit is
+due. A stale-primary hint no longer interrupts a freshly productive hunt when
+the source no-progress streak is zero. Repeated failures still trigger repair.
+Wolf pack **17053** yielded **3,336 XP** on an earlier gear route and is a
+promising separate hunt, not yet a proved ordinary repeat.
+An older nominal-level check no longer contradicts an existing source-audited
+relative-level approval for plain aggressive targets whose level fuzz overlaps
+useful XP. Wolf pack 17053 now passes the ordinary selector on checkpoint
+80644; fresh live checks and a successful ordinary visit remain required.
+
+Flight renewal begun inside an XP hunt now saves its own typed failure or
+fresh-effect receipt. A confirmed funds shortfall reaches the existing bank
+workflow instead of repeating an unaffordable purchase. **25073** withdrew one
+platinum; a newer purse increase covering the current quote now ends that
+funding task and archives its old funds-only cooldown. **25082** bought/quaffed
+flight for 164 copper; **25084/25086** subsequently completed ordinary kills.
+Today's recorded regression batch is spent; additional
+cases compile but are unrun. Publication is deferred until **9:02:42 PM** by
+the recorded failed-attempt retry window.
+
+The scouting-to-hunt shortcut now includes the existing measured source-route
+comparison. Losing comparisons cannot overwrite the selected route's state.
+A safe win remains usable after unrelated losses when the recorded cumulative
+XP loss accounts for the decline; exact failed targets remain closed. The
+normal campaign compared alternatives and completed the repeat dwarf hunt.
+Required Sanctuary pills now check known fullness at the healer before a
+needless trip, while fresh pills that fit stay reserved for the endpoint.
+The first-fullness branch still needs live proof. Run **25043** did replace an
+unmeasured Olympus candidate with the measured dwarf route; its later loss
+remains recorded. New cases compile but remain unrun under today's allowance.
+
+Departure preparation now checks the learned `armor` spell for source-audited
+Mage, Cleric and Knight paths with observed proficiency. It is recovery-owned,
+healer-only and optional: one cast, a 12-second deadline, command-local reply,
+source lag and fresh effect confirmation. It never refreshes active armor or
+grants combat permission. **25047** recorded active armor with zero casts;
+the missing-armor cast and failure paths still need live proof.
+
+Recent live work proves bank withdrawal and food restocking (**25016/25017**),
+flight purchase and onward travel (**25021**), and fresh Moria Sanctuary
+acquisition (**25022**). **25024** then died fighting Odin, losing 24,947 net XP;
+corpse recovery and healer return completed. The exact loss remains closed.
+Removed a global gear-search quota that hid untried upgrades after five trips.
+**25025** collected large club **1521**. **25028** successfully stunned the
+Alchemist with it, switched back to the primary weapon, killed him and acquired
+the ivory staff. **25030** obtained detect hidden; **25031** then activated
+Sanctuary and killed sand worm **39004** for **4,633 XP**, continuing to a second
+fight before returning. The trip averaged about **1,058 net XP/minute** over
+its connected run including travel/recovery, not over all preceding preparation.
+Remaining staff charges are source-estimated, not a live-verified count.
+Prepared protection and gear keep their ordinary combat turn through supply
+visits. Carrier dispatch retains exact identity instead of silently changing
+targets; earlier false Caerlin credit is flagged, not erased from old runs.
+New cases compile but remain unrun under November 15's spent allowance.
+See [operating evidence](docs/OPERATIONS.md) for proof limits and corrections.
+
+Recent repairs prevent repeated optional gear detours, detect-hidden potion
+use on unrelated gear trips, and an identity-mismatch escape pre-empting the
+already-audited low-guard handoff after a required-loot carrier dies. Recovery
+acquisition now needs HP/mana benefit, and bounded standing field healing may
+restore an existing stop's readiness after a fresh room audit. These new paths
+compile; their added regression cases and live execution remain unproved.
+No field sleeping or combat admission/withdrawal limits are relaxed.
+The normal `campaign` command remains the resume path; no routine
+`--retry-stalled` is needed. See the usage commands below.
+
+Already-active flight no longer bypasses pending detection/breathing purchases.
+Run **24969** bought and drank see-invisible, continued to Athena, defeated her
+and acquired an ivory Sanctuary staff. Source refresh now preserves actual
+carrier-acquisition provenance separately from route permission; a bounded
+repair recovered the sewer-dragon preference without altering losses.
+Compact reports now store observed combat counts in `run_combat_metrics`;
+Athena's report records one fight and 18 combat decisions. Historical unknown
+counts are labelled as minima, not proof of no fighting. A checked nearby
+recall escape now precedes long return paths; that dispatcher change compiles
+but has not yet been live-proved. New cases remain unrun under today's limit.
+
+Gear repair can now precede another hunt after repeated current-level losses
+and either an outdated primary weapon or two unproductive source visits.
+The final handoff shares this rule, so early hunt selections cannot bypass it.
+Distinct failed segments count across policies. A successful upgrade keeps its
+next XP turn through intervening sales and supply visits, using acquisition
+receipts and bounded completed-hunt summaries rather than the last policy label.
+An empty or below-band visit does not test the upgraded gear.
+Source carrier, carrying, quest and recovery checks remain mandatory. The
+gear-source report now includes `upgrade_rank`, the estimated gain over the
+replaceable carried slot, alongside the item's standalone `stance_rank`.
+Acquisition ordering uses that gain so a small weapon improvement does not
+automatically outrank a larger armour improvement. Actual set-aware wearing,
+class/level legality and live verification remain separate.
+Retained, uniquely source-verified detect-hidden potions can now be activated
+as part of hunt departure rather than another return-home visit. Run **24946**
+proves quaffing followed by onward travel in the same session. The registered
+chess-dwarf, Storn, gambler and Master Dunn probes first offer an executable
+ordinary source-ranked hunt priority over a separate scouting visit; if the
+normal selector rejects every hunt, scouting remains available. Failed registered
+singletons cannot re-enter this handoff under a generic policy alias. Saved
+live affects and existing loss/admission checks are not bypassed.
+The Cyclops-thief visit **24928** exposed a timing gap: detect hidden was active,
+but detect invisibility expired during travel. Zero/one-tick detection now
+waits for renewal before departure; a still-active spell is not refreshed with
+a wasted potion. Today's focused batch finished with **169 passes, five
+failures**. Corrections are saved and compile but have not been rerun; the
+daily allowance is spent. The later upgrade-turn checks are also saved unrun.
+The Cyclops-specific renewed visibility route remains unproved; combined
+carrier preparation now has separate live proof in run 24969.
+
+Sanctuary replenishment now prefers a previously acquired carrier after a fresh
+source audit, without reviving its old combat permission. An old Moria receipt
+cannot rename an independent carrier. Run **24918** proved this path by killing
+the sewer dragon and obtaining a fresh ten-charge Red DragonOrb. Each completed
+acquisition records its segment ID so later consumed-object cycles are not
+limited to one per reboot. Repeated depletion/replenishment within one level
+is now live-proved again by **24976** and **24985** at the same level/boot;
+real carrier losses remain closed. Charge counts remain source estimates
+until live use confirms the acquired object's remaining reserve.
+
+Repeated croupier refusals exposed a history-repair loop: repairs now require
+the actual fight plan to accept the recorded level tier. Plain audited
+multi-room populations and passive singletons with bounded say/emote greetings
+now retain the intended +2..+5 live consider tier. This repairs the croupier and
+mouse plans without admitting crowds, unknown scripts or old combat losses.
+Both widened-tier paths have now reached live combat, but neither new attempt
+made a kill. Circuit-member repair also finds its recorded parent trip within
+bounded history instead of requiring a nonexistent standalone child run.
+Target HP remains evidence only, never an admission or withdrawal rule.
+
+Invisible resource carriers now receive the existing detection-potion
+preparation. The first live purchase exposed a separate premature-logout bug;
+that handoff is corrected and run **24913** reached Hermes combat, but did not
+acquire Sanctuary. Supply funding now looks up the newest bank visit within
+256 segments instead of losing its receipt outside the short runtime tail.
+Expert-teacher knowledge above 100 is accepted while player proficiency stays
+capped at 100. These changes compile; new cases remain unrun under today's
+spent regression allowance. Bank reuse still needs a new live withdrawal;
+resource acquisition has live proof in **24918**.
+
+Earlier combat-cadence, healer trainer-cursor and live-level/VNUM classification
+fixes are retained. Run **24886** killed a worm and mouse for **9,573 XP** and
+raised Dorrik to 46. The legacy-route class-spell fallback is saved but not yet
+live-proven. Next: improve combat damage/accuracy and useful training while
+retaining working protection and current-band progression; stop spending
+segments on unchanged preparation or low-return repeats.
+Tonight's local commit attempt failed before staging; no remote changed and
+no retry is allowed before November 15 at 9:02:42 PM Auckland time.
+
+### Earlier November 14 Evidence
+
+Run **24880** proved a newly repaired route to the sand worm (39004).
+Its level-100 teleporter bystander only responds to a spoken password; ordinary
+walking does not trigger it. The route audit now recognizes that exact source
+shape while preserving automatic-transfer hazards and all live combat checks.
+The bot killed the worm for **4,862 XP**, then fully recovered and logged out
+at the healer: execution successful, objective achieved, safety safe. Checkpoint
+**79876** records **2,111,948 XP**, still level **45**, **1,052 XP** from 46.
+The later dust-dweller attempt (**24884**) lost **509 net XP** and escaped;
+checkpoint **79899** preserved that failure. Its queued healing commands led to
+the timing correction used in **24886**. Run **24885** then obtained a fresh
+Red DragonOrb from the sewer dragon as protection maintenance, not an XP hunt.
+
+The earlier recovered campaign checkpoint was **79871** (campaign **39**,
+live run **24879**). Dorrik was a level **45 Knight** with **2,107,086 XP**,
+fully recovered and logged out at the Midgaard healer in room **3054**. Run
+**24866** filled and verified his empty arm and leg slots. The earlier corrected
+Storn hunt (**24861**) reached combat with Sanctuary, stun, flamestrike, kick and three
+self-heals, then withdrew with **242 net XP lost**. It recorded no kill or
+level gain. The exact protected loss remains closed; recovery does not erase it.
+The next priority is combat strength and executable useful-XP selection, not
+another unchanged Storn attempt or a reboot wait. The corrected handoff reached
+Egor combat in run **24869**, but withdrew with **314 net XP lost**, no kill or
+level gain. That actual protected loss remains closed. Run **24870** acquired
+the source-verified invisibility supply for an independent route.
+Run **24872** reached the pirate-guard endpoint, then recalled at full health
+on a material-crowd warning and lost **1,405 XP**. That result is retained.
+The room warning incorrectly included the primary's fighting short name as
+a second mobile; a separate level-45 scruffy pirate was genuinely present.
+The saved parser correction excludes only a fresh, fully source-confirmed
+primary instance, never the real bystander. It has not yet been live-proven.
 HERO remains unproved, and Dorrik is still the sole progression pilot.
+
+Run **24873** killed the howling wolf pack for **2,498 XP**, ending combat at
+850/1,077 health. Its replacement in **24877** failed live consider as too low
+level; that visit made no kill. Run **24878** engaged the helmsman despite
+the "built like a tank" comparison, then fled at 68% health when a genuinely
+different pirate joined: **360 net XP lost**, no kill. Net progress
+since checkpoint 79820 is **2,138 XP**, with **5,914 XP** still needed for 46.
+The later source audit found that this pirate is a frost-wand carrier, not
+an ordinary melee-only opponent. Its icicle (17057) can cast frost breath,
+including destruction of containers and potions. That failed fight stays
+closed. These fights did not prove the expanded self-healing allowance.
+
+Ordinary newcomers to an already-opened XP fight now have a separate bounded
+room/look/consider assessment instead of blanket retreat. The existing combat
+controller retains both opponents, health-based escape, healing and protection
+limits, and the normal run deadline. Unknown/extra actors, source magic-item
+hazards and failed checks still withdraw. A confirmed one-level rise can keep
+the engaged pair; a later loss names the surviving opponent without erasing
+the parent trip's failure. This is **implemented, not live-proven**. The new
+focused tests are saved but unrun under today's spent allowance. Compilation
+and the CLI import check pass. No new live run or XP came from this work.
+
+Coin funding can now reuse the existing one-platinum bank route before another
+coin-gathering trip, provided bounded evidence confirms a banked reserve and
+a successful earlier withdrawal. Run **24875** recorded **132,614** copper-equivalent
+banked at that visit. A newer failed bank visit closes that old proof. Run
+**24974** subsequently live-proved the new reserve-reuse handoff; current funds
+must come from the newest command-confirmed bank visit, not that older balance.
+Local preparation timeouts now remain resumable rather than being mislabeled
+as expiry of the longer live-session cap. Current-level combat failures are
+excluded from reset-wait selection; read-only replay of checkpoint **79871**
+no longer chooses Storn's stale cooldown. No new live connection or XP was
+produced by that replay. New tests are saved but unrun under today's spent
+regression allowance; compilation and scoped whitespace checks pass.
+
+Basic armour shopping now accumulates each command's reply through its prompt
+with a five-second deadline. It selects the cheapest uniquely source-legal
+offer, uses the listing's exact item selector where available, and requires
+the exact purchase acknowledgement before wearing it. Missing replies never
+fall back to a bare keyword purchase. Run **24863** verified two free carrying
+slots and quoted the **367**-copper shortfall. Run **24864** collected **1,207**
+copper-equivalent from a source-backed coin stash. After banking, run **24866**
+bought sleeves for **233** and trousers for **186**, verified both slots filled,
+and returned to the healer with **581** copper-equivalent. Prices are refreshed
+after a boot change. A safe shopping return is not
+reported as achieved while the planned slots remain empty. Added tests are
+saved but unrun under November 14's spent allowance.
+
+The registered Storn probe/hunt now shares the generic route's exact protected
+loss closure, preventing a redundant no-combat scouting trip under another
+policy name. Optional Sanctuary top-ups are suppressed while a verified carried
+staff has at least two charges, enough for the existing per-fight activation
+limit. This does not lower protection or health checks or clear target losses.
+
+Registered and generic source-ranked hunts now share visibility preparation.
+Hidden targets require detect hidden independently of detect invisibility;
+the selected circuit is checked again at dispatch. The campaign can acquire
+and activate a source-verified detection resource automatically. If detection
+expires before an unseen target is located, it returns for preparation instead
+of recording a false absence. Run **24848** acquired another detection potion
+and **24849** verified activation. Nathaniel's earlier **24846** fight still
+records its actual **439 XP** loss; vision fixes do not clear combat failures.
+Flee/recall now retain exact-target withdrawal evidence until the XP-loss event
+arrives. New focused tests are saved but **not run** because November 14's
+regression allowance was already spent; compilation and whitespace checks pass.
+Startup repair now also reconstructs exact registered-target losses from
+bounded, linked combat events. Checkpoint **79707** saved Nathaniel's exact
+loss rather than relying on a temporary selector copy. Run **24857** exercised
+the detection-expiry return live: no carrier absence or objective kill was
+claimed, and Dorrik returned safely. That preparation sequence produced
+no progression-objective kill or level gain.
+
+Prepared visibility hunts now retain their intended target through maintenance
+and resume it through fresh selection once detection is active. Historical
+consider repair uses the newest linked visit, not merged-list ordering. The
+passive-singleton "feel lucky" allowance now accounts for source-level spawn
+variation while keeping the existing live +5 ceiling. Use the ordinary resume
+command below; `--retry-stalled` deliberately requests route rotation and is
+not the default progression mode. New tests for these changes are saved but
+unrun under November 14's spent allowance.
+Run **24860** exposed the old level-fuzz rejection; run **24861** verified that
+the corrected route binding reaches combat and that exact withdrawal identity
+and protection evidence survive the failed escape sequence.
+
+The White Lotus Chief route (mobile **10734**, room **10836**) now has an exact
+source audit for its two deeply below-band Miden'nir wanderers. Both the old
+preflight wording and the newer adjacent-scan result from run **24232** are
+recognized as stale, retryable evidence for that exact policy. The bounded
+mage contract now reaches the current-band selector, while live identity,
+`consider`, Sanctuary, blindness recovery, crowd, health-floor, and
+healer-return checks remain unchanged.
 
 The Ice Hall recovery first uses the source-verified open exit to the
 recallable room only when live flight, water travel, or an equivalent movement
@@ -36,14 +354,13 @@ training state provides it. The campaign wrapper now honors this exact
 source-bounded wait past the ordinary outer deadline; no other live policy gets
 an unbounded extension.
 
-The November 10 full regression batch recorded **9,902 passed and 20 failed**
-before the current repairs; the reported failures were repaired and the
-affected focused harnesses now pass. The focused runner/recovery sweep is now
-**19 passed**, with **9** additional route-hazard campaign checks passing. The
-full suite was not rerun because the daily regression
-allowance was already spent. Routine observations now stay on the bounded
-SQLite writer queue instead of flushing synchronously before every live socket
-read or command.
+The latest recorded full regression batch, November 11, finished with
+**9,928 passed and 46 failed**. The ledger records subsequent focused repairs;
+that full batch remains failed as executed and does not validate later edits.
+November 14's focused allowance is already spent, so newly added tests have
+not been run. Routine observations now stay on the
+bounded SQLite writer queue instead of flushing synchronously before every
+live socket read or command.
 
 The Nov 4 bounded invocation safely achieved **7,993 XP** against the
 source-audited Mirror Realm proprietor and returned to the healer. Fresh live
@@ -51,21 +368,54 @@ identity, relative level, consider, isolation, Dorrik's 20% health floor,
 provisions, and return checks still decide every fight. Target HP remains
 observation only.
 
-The upstream source mirror was refreshed from GitHub on November 3 and is now
-**b9a20e151b2adea19e1aa6780a7791dcbfb327db**. Several area and mobile-archetype
+The checked-out upstream source mirror is now
+**66f1f42675c0da46966ef3f15d96b06e191a0660**. Several area and mobile-archetype
 updates are not deployed on the live MUD. The live deployment filter continues
 to keep known unreleased or revised templates unresolved; the Mirror Realm area
-file did not change in this source update. The November 10 full regression
-allowance is spent; the focused runner/recovery checks and compile checks listed
-above are the validation for the current changes. Campaign **39** is the
+file's historical evidence remains separate from new source audits. Compilation,
+whitespace checks, and the specifically recorded live runs are the validation
+for the current changes. Campaign **39** is the
 current profile-owned history; older blocked campaign history must not roll
 Dorrik back.
 
-Resume the active campaign with one bounded segment using:
+Resume the active campaign with two bounded segments using:
 
 ```powershell
-python -m dd4tester campaign runs/heroes/dorrik/campaign.yaml --segments 1 --reset-retries 0 --max-segment-runtime 300 --progress
+python -m dd4tester campaign runs/heroes/dorrik/campaign.yaml --segments 2 --reset-retries 0 --max-segment-runtime 600 --progress
 ```
+
+The 600-second worker budget leaves room for preparation, travel, combat and
+healer recovery. Source preparation retains its separate checked deadline;
+this does not change health-floor, identity or encounter limits. Use
+`--segments 1` for a single visit; the command resumes the saved character.
+
+For a read-only selection diagnostic against an exact saved checkpoint:
+
+```powershell
+python tools/explain_hunt_selection.py runs/heroes/dorrik/campaign.yaml --checkpoint 79792 --full-policy
+```
+
+This profiles source selection without opening a MUD connection or changing
+SQLite. It is a bounded replay aid, not combat permission or a replacement for
+the live runner's complete history reconciliation. `--trace-rejections` adds
+slower line tracing; its timings must not be treated as ordinary runtime costs.
+Preparation timeouts are checkpointed as incomplete selection, not proof of an
+empty frontier. Old optional Sanctuary-carrier crowds no longer create a reset
+wait while the verified carried staff covers a full fight.
+
+Protection retries now distinguish selection from dispatch. Choosing a target
+reserves it; only a matching persisted segment consumes the attempt, before
+connection. This prevents the final binding pass rejecting its own newly
+selected retry. An adjacent-checkpoint repair restored the proven unlaunched
+Egor reservation at checkpoint **79796**, preserving the actual old loss. Run
+**24869**, segment **24232**, then reached real dispatch with checkpoint **79801**
+recording that segment's ownership. Added regressions remain saved but unrun
+under November 14's spent allowance.
+The Egor fight then exposed the fixed three-cast healing allowance. It is now
+eight attempts per encounter, with the existing mana reserve and own-health
+withdrawal gates. Actual incoming rounds can trigger healing earlier, capped
+at 75% health; target HP does not set this trigger. This change has not yet
+proved a completed live kill.
 
 Runs **20558-20563** completed the bounded Sanctuary rotation and several
 current-band hunts; run **20561** acquired the source-verified red dragonorb
@@ -3024,7 +3374,7 @@ configure other destinations. Run records retain the actual transcript path.
 
 SQLite tables: `runs`, `events`, `state_snapshots`, `character_commands`,
 `character_acquired_items`, `character_item_backfills`, `loot_sales`, `mob_kills`,
-`campaign_game_event_lookup`, `run_current_states`, `run_summaries`,
+`campaign_game_event_lookup`, `run_current_states`, `run_summaries`, `run_combat_metrics`,
 `campaigns`, `campaign_segments`, `campaign_checkpoints`, `campaign_usage`, and
 `campaign_run_links`, `campaign_run_link_backfills`, and `campaign_experiments`.
 The legacy `campaign_game_event_index` remains readable
@@ -3037,6 +3387,11 @@ transcript snapshot events keep their position and reason in `events`, but full
 state is copied there only for named recovery/evidence boundaries; other
 snapshot states update the compact current-state row. Historical duplicate
 snapshots remain readable without an automatic rewrite.
+`run_combat_metrics` keeps one small row per run, updated atomically with
+combat/enemy observations and decisions. Compact reports use these counters
+instead of treating kills as fights. Legacy or partially observed counters
+are labelled as known minima, with unknown decision counts shown explicitly;
+there is no automatic full-history backfill.
 `mob_kills.route_gate` marks an incidental source route-gate kill; it is not
 progression evidence even when the kill produced experience.
 
@@ -3188,13 +3543,15 @@ live `consider`, identity, route, crowd, health, and recovery gates.
 Live starter entry points install the same filter automatically, and the
 source-world caches keep upstream research and live-filtered results separate.
 
-`show-resource-sources` lists healing, food, sanctuary, protection, energy
+`show-resource-sources` lists detect-hidden, healing, food, sanctuary, protection, energy
 containment, flight, and water-breathing resources while keeping executable routes separate from
 source-only analysis. For example:
 
 ```powershell
 python -m dd4tester show-resource-sources --level 30 --effect water-breathing `
   --all-areas --live-deployment
+python -m dd4tester show-resource-sources --level 45 --effect detect-hidden `
+  --all-areas --include-out-of-band --live-deployment
 ```
 
 Use `--effect energy-containment` (or `--effect "disintegrate protection"`)

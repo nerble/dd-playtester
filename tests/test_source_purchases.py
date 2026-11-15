@@ -10,6 +10,7 @@ from dd4tester.hunt_candidates import (
 )
 from dd4tester.source_purchases import (
     ROUTE_INVISIBILITY_SUPPLY_KEY,
+    SOURCE_PURCHASE_BALANCE_FAILURE,
     TRAINING_TRAVEL_SUPPLY_KEY, SourceLiquidation, SourceLiquidationSession,
     SourcePurchase, SourcePurchaseSession,
     route_invisibility_supply,
@@ -41,6 +42,42 @@ def test_purchase_uses_live_price_selector_and_confirmed_inventory_gain():
     assert step(session, 5, inventory=(("anti-cyclops elixir", "#456"),)) is None
     assert session.stage == "complete"
     assert step(session, 6) is None
+
+
+def test_purchase_quantity_requires_total_balance_and_each_acknowledgement():
+    plan = replace(PLAN, quantity=2, coin_reserve=0)
+    session = SourcePurchaseSession(plan)
+    assert step(session, coins=40) == "list elixir"
+    session.observe("[2 27] [#123] anti-cyclops elixir\n" + PROMPT)
+    assert step(session, now=2, coins=40) is None
+    assert session.stage == "failed"
+    assert session.failure == SOURCE_PURCHASE_BALANCE_FAILURE
+
+    session = SourcePurchaseSession(plan)
+    assert step(session, coins=60) == "list elixir"
+    session.observe("[2 27] [#123] anti-cyclops elixir\n" + PROMPT)
+    assert step(session, now=2, coins=60) == "buy #123"
+    session.observe("You buy anti-cyclops elixir.\n" + PROMPT)
+    assert step(session, now=3, coins=33) == "buy #123"
+    session.observe("You buy anti-cyclops elixir.\n" + PROMPT)
+    assert step(session, now=4, coins=6) == "inventory"
+    session.observe(
+        "You are carrying:\n"
+        "[#456] anti-cyclops elixir\n"
+        "[#457] anti-cyclops elixir\n"
+        + PROMPT
+    )
+    assert step(
+        session,
+        now=5,
+        coins=6,
+        inventory=(
+            ("anti-cyclops elixir", "#456"),
+            ("anti-cyclops elixir", "#457"),
+        ),
+    ) is None
+    assert session.stage == "complete"
+    assert session.purchased_count == 2
 
 
 def test_purchase_records_capacity_rejection_separately_from_missing_ack():
@@ -389,6 +426,7 @@ def test_route_invisibility_supply_accepts_source_potion_and_safe_vendor_special
     assert plan is not None
     assert plan.purchase.object_vnum == 19021
     assert plan.purchase.shopkeeper_vnum == 19024
+    assert plan.purchase.quantity == 1
     assert plan.commands == ("east",)
     assert plan.required_move > 0
     state[ROUTE_INVISIBILITY_SUPPLY_KEY] = {
@@ -396,6 +434,27 @@ def test_route_invisibility_supply_accepts_source_potion_and_safe_vendor_special
         "level": 45,
         "status": "attempted",
     }
+    assert route_invisibility_supply(world, state) is None
+    state[ROUTE_INVISIBILITY_SUPPLY_KEY] = {
+        "boot_id": "boot",
+        "level": 45,
+        "status": "funding-required",
+        "funding_failure": SOURCE_PURCHASE_BALANCE_FAILURE,
+    }
+    state["campaign_source_purchases"] = [{
+        "object_vnum": 19021,
+        "failure": SOURCE_PURCHASE_BALANCE_FAILURE,
+        "price": 227,
+    }]
+    assert route_invisibility_supply(world, state) is not None
+    state[ROUTE_INVISIBILITY_SUPPLY_KEY] = {
+        "boot_id": "boot",
+        "level": 45,
+        "status": "acquired",
+    }
+    state.pop("campaign_source_purchases")
+    assert route_invisibility_supply(world, state) is not None
+    state["affects"] = [[{"name": "invis", "duration": "20"}]]
     assert route_invisibility_supply(world, state) is None
 
 

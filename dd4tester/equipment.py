@@ -38,6 +38,7 @@ APPLY_SWIFTNESS = 51
 ITEM_LIGHT = 1
 ITEM_WEAPON = 5
 ITEM_DIGGER = 6
+ITEM_TRASH = 13
 ITEM_PAINT = 28
 ITEM_POTION = 10
 ITEM_DRINK_CONTAINER = 17
@@ -178,6 +179,8 @@ class GearSourcePlacement:
     # Optional named plan for a source-backed acquisition that has more than
     # one preparation step (for example, buying a tool before a carrier hunt).
     source_gear_plan: str | None = None
+    # Marginal benefit over the selected replaceable slot, not item quality.
+    upgrade_rank: tuple[int, ...] = ()
 
 
 class GearCatalog:
@@ -374,14 +377,20 @@ def rank_gear_sources(
     )
     # An acquisition replaces the weakest selected slot, or fills an empty
     # one. Already-carried alternatives count, including duplicate objects.
+    replaceable_by_category = {
+        category: (
+            items[-1] if len(items) == _CATEGORY_CAPACITY.get(category, 1) else None
+        )
+        for category, items in current_loadout.items()
+    }
     current_by_category = {
         category: _stance_rank(
-            items[-1] if len(items) == _CATEGORY_CAPACITY.get(category, 1) else None,
+            item,
             stance,
             level_gain_priorities=level_gain_priorities,
             weapon_preference=weapon_preference,
         )
-        for category, items in current_loadout.items()
+        for category, item in replaceable_by_category.items()
     }
 
     selected_vnums = {item.vnum for item in selected_objects}
@@ -522,6 +531,10 @@ def rank_gear_sources(
                 object_description=item.short_description,
                 category=category,
                 stance_rank=score,
+                upgrade_rank=_gear_upgrade_rank(
+                    item, replaceable_by_category.get(category), stance,
+                    level_gain_priorities=level_gain_priorities,
+                ),
                 better_than_current=better_than_current,
                 source_kind=source_kind,
                 source_mobile_vnum=source_mobile_vnum,
@@ -657,6 +670,7 @@ def rank_gear_sources(
             placement.better_than_current,
             -status_order.get(placement.status, 9),
             -role_order.get(placement.weapon_role, 9),
+            placement.upgrade_rank,
             placement.stance_rank,
             -len(placement.route),
             -placement.object_vnum,
@@ -784,6 +798,7 @@ def rank_executable_carrier_gear_sources(
             or not placement.route
             or item is None
             or not is_releasable_funding_item(item)
+            or _carrier_endpoint_hazard_blocks_autonomous_gear(placement)
             or (
                 item_category(item) == "light"
                 and not is_active_light_source(item)
@@ -797,6 +812,28 @@ def rank_executable_carrier_gear_sources(
             continue
         executable.append(placement)
     return executable
+
+
+def _carrier_endpoint_hazard_blocks_autonomous_gear(
+    placement: GearSourcePlacement,
+) -> bool:
+    """Reject carrier loot whose source endpoint can add an unsafe fight."""
+    for raw_hazard in placement.hazards:
+        hazard = str(raw_hazard).casefold()
+        if any(
+            marker in hazard
+            for marker in (
+                "reachable combat-joining special:",
+                "reachable program attacker:",
+            )
+        ):
+            return True
+        if not hazard.startswith("room companion:"):
+            continue
+        match = re.search(r"\(up to\s+(\d+)\)", hazard)
+        if match is not None and int(match.group(1)) > 2:
+            return True
+    return False
 
 
 def normalize_item_name(value: str) -> str:
@@ -965,6 +1002,40 @@ def _has_positive_gear_utility(
     )
 
 
+def _gear_upgrade_rank(
+    item: ObjectSource,
+    replaced: ObjectSource | None,
+    stance: str,
+    *,
+    level_gain_priorities: tuple[str, ...] = (),
+) -> tuple[int, ...]:
+    """Compare slot gains on the same scale as a complete equipment set."""
+    def contribution(value: ObjectSource | None) -> tuple[int, ...]:
+        bonuses = _bonus_totals(value) if value is not None else {}
+        weapon = weapon_damage_score(value) if value is not None else 0
+        score = _stance_score_from_totals(
+            bonuses, stance, level_gain_priorities=level_gain_priorities,
+            armor=(value.values[0] if value is not None
+                   and value.item_type == 9 and value.values else 0),
+            weapon=weapon, aggregate_combat=True,
+        )
+        if stance == STANCE_COMBAT:
+            # Keep penalties visible in tradeoffs without changing the
+            # existing stance selector or granting equipment permission.
+            return (
+                weapon + 2 * bonuses.get(APPLY_DAMROLL, 0),
+                bonuses.get(APPLY_HITROLL, 0),
+                bonuses.get(APPLY_SWIFTNESS, 0),
+                bonuses.get(APPLY_CRIT, 0),
+                *score[4:],
+            )
+        return score
+
+    return tuple(
+        new - old for new, old in zip(contribution(item), contribution(replaced))
+    )
+
+
 def weapon_combat_score(item: ObjectSource) -> tuple[int, ...]:
     """Rank a weapon by generated damage and positive source combat bonuses."""
     return stance_score(item, STANCE_COMBAT)
@@ -1017,6 +1088,14 @@ def _recovery_resource_score(
     recovery = sum(resources.values())
     priorities = tuple(resources[p] for p in level_gain_priorities if p in resources)
     return (priorities or (recovery,)) + (recovery,)
+
+
+def has_recovery_resource_gain(
+    upgrade_rank: tuple[int, ...], *, level_gain_priorities: tuple[str, ...] = (),
+) -> bool:
+    """Require HP/mana benefit for a recovery acquisition, not a tie-break."""
+    width = len(_recovery_resource_score({}, level_gain_priorities))
+    return len(upgrade_rank) >= width and upgrade_rank[:width] > (0,) * width
 
 
 def _stance_score_from_totals(
@@ -1635,7 +1714,12 @@ def plan_stance_swaps(
     if stance == STANCE_RECOVERY:
         primary = [item for item in worn_equipment if item_category(item) == "wield"]
         chosen = [item for item in desired if item_category(item) == "wield"]
-        if (
+        if primary and not chosen:
+            # Recovery gear has no reason to disarm a usable weapon.  Keeping
+            # it worn avoids turning an otherwise harmless healer checkpoint
+            # into a mandatory city-rearm segment on the next departure.
+            desired.extend(primary)
+        elif (
             len(primary) == len(chosen) == 1 and primary[0].vnum != chosen[0].vnum
             and weapon_role(primary[0], weapon_preference) != "mismatch"
         ):

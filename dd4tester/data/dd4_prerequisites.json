@@ -8506,6 +8506,12 @@
     },
     {
       "class_name": "warrior",
+      "skill": "group inner",
+      "prerequisite": "warrior base",
+      "minimum_percent": 44
+    },
+    {
+      "class_name": "warrior",
       "skill": "advanced consider",
       "prerequisite": "group knowledge",
       "minimum_percent": 70

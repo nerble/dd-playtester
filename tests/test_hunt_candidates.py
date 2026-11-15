@@ -100,6 +100,7 @@ from dd4tester.hunt_candidates import (
     source_mobile_route_aggressor_level_only_is_bounded,
     source_mobile_route_program_attacker_is_bounded,
     _bounded_borderline_route_aggressor,
+    _effective_mob_resets,
     _source_key_carrier_resets,
     source_subclass_teacher_route,
     source_subclass_teacher_skill,
@@ -109,6 +110,23 @@ from dd4tester.hunt_candidates import (
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "hunt_area.are"
+
+
+def test_ordered_singleton_reset_uses_first_live_room_only() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    pit_resets = tuple(
+        reset
+        for reset in _effective_mob_resets(world.mob_resets, rooms=world.rooms)
+        if reset.mobile_vnum == 13700
+    )
+
+    assert [(reset.room_vnum, reset.maximum_count) for reset in pit_resets] == [
+        (13702, 1),
+    ]
 
 
 def test_required_consumable_can_rank_a_carrier_without_saleable_loot() -> None:
@@ -1022,6 +1040,50 @@ def test_source_assassin_special_remains_a_fixed_transit_hazard(monkeypatch) -> 
 
     assert not candidate.autonomous_safe
     assert "route crosses a non-safe special mobile" in (
+        candidate.autonomy_rejections
+    )
+
+
+def test_source_bear_special_is_combat_only_for_fixed_transit(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "dd4tester.hunt_candidates.LOW_LEVEL_AREA_FILES",
+        ("target.are",),
+    )
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(100, "target", "the target", 15, 0, 0, "target.are"),
+            200: MobileSource(
+                200,
+                "bear",
+                "the source bear",
+                8,
+                ACT_SENTINEL,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(3001, "Recall", "midgaard.are"),
+            7001: RoomSource(7001, "Transit", "target.are"),
+            7002: RoomSource(7002, "Target", "target.are"),
+        },
+        mob_resets=[
+            MobReset(200, 7001, 1, ()),
+            MobReset(100, 7002, 1, ()),
+        ],
+        mobile_specials={200: ("spec_bear",)},
+    )
+    world.rooms[3001].exits["north"] = ExitSource("north", 7001, 0, -1)
+    world.rooms[7001].exits["north"] = ExitSource("north", 7002, 0, -1)
+
+    [candidate] = rank_hunt_candidates(
+        world,
+        character_level=15,
+        include_xp_only=True,
+    )
+
+    assert candidate.autonomous_safe
+    assert "route crosses a non-safe special mobile" not in (
         candidate.autonomy_rejections
     )
 
@@ -1953,6 +2015,51 @@ def test_live_source_restores_only_audited_legacy_dwarven_targets() -> None:
     assert "dwarf" not in world.mobile_templates
 
 
+def test_live_source_restores_audited_legacy_goblin_visitor() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        live_deployment=True,
+    )
+
+    visitor = world.mobiles[20301]
+    assert visitor.template_name is None
+    assert visitor.affected_flags == 516
+    assert visitor.body_form_flags is None
+    assert visitor.hp_modifier == 0
+    assert visitor.hp_modifier_known is True
+    assert visitor.damage_modifier == 0
+    assert visitor.damage_modifier_known is True
+    assert visitor.live_compatibility_source_revision == (
+        "e48256a59aa326cd99fe6669dddf896d690bcade"
+    )
+
+
+def test_live_source_restores_audited_legacy_moria_sanctuary_carrier() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"), include_all_areas=True,
+        live_deployment=True,
+    )
+    carrier = world.mobiles[4055]
+    assert carrier.template_name is None
+    assert carrier.level == 10
+    assert carrier.act_flags == 68
+    assert carrier.affected_flags == 0
+    assert carrier.alignment == -500
+    assert carrier.hp_modifier == carrier.damage_modifier == 0
+    assert carrier.hp_modifier_known and carrier.damage_modifier_known
+    assert carrier.crit_modifier == carrier.haste_modifier == 0
+    assert carrier.crit_modifier_known and carrier.haste_modifier_known
+    assert carrier.live_compatibility_source_revision == (
+        "4f0d46ebb7c9465571816e8476298577dc541eb3"
+    )
+    assert [(r.room_vnum, r.maximum_count, r.object_vnums)
+            for r in world.mob_resets if r.mobile_vnum == 4055] == [
+        (4064, 2, (4050,)), (4071, 2, (4050,)),
+    ]
+    assert world.mobile_specials.get(4055, ()) == ()
+
+
 def test_live_deployment_profile_propagates_to_nested_source_loads() -> None:
     with source_directory_context(
         Path("runs/dd4-source/server/area"),
@@ -2091,6 +2198,8 @@ A fire elemental is here.~
 < fire_elemental~ common~
 MobHPMod 25
 MobDamMod 35
+MobCritMod 20
+MobSwiftMod 30
 #0
 #OBJECTS
 #0
@@ -2110,6 +2219,8 @@ MobDamMod 35
     assert mobile.template_damage_modifier == 0
     assert mobile.area_damage_modifier == 35
     assert mobile.damage_modifier == 35
+    assert mobile.crit_modifier == 20
+    assert mobile.haste_modifier == 30
 
 
 def test_current_source_sets_skeleton_hp_modifier_is_zero() -> None:
@@ -2127,6 +2238,21 @@ def test_current_source_sets_skeleton_hp_modifier_is_zero() -> None:
     assert mobile.hp_modifier == 0
     assert mobile.template_damage_modifier == 0
     assert mobile.damage_modifier == 0
+    assert mobile.crit_modifier_known
+    assert mobile.haste_modifier_known
+
+
+def test_mobile_without_template_uses_neutral_crit_and_swiftness_modifiers() -> None:
+    mobile = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    ).mobiles[903]
+
+    assert mobile.template_name is None
+    assert mobile.crit_modifier == 0
+    assert mobile.haste_modifier == 0
+    assert mobile.crit_modifier_known
+    assert mobile.haste_modifier_known
 
 
 def test_unresolved_mobile_template_hp_modifier_fails_closed(tmp_path: Path) -> None:
@@ -2155,6 +2281,11 @@ An unknown guardian is here.~
         include_objects=False,
         mobile_templates={},
     ).mobiles[100]
+
+    assert not mobile.crit_modifier_known
+    assert mobile.crit_modifier is None
+    assert not mobile.haste_modifier_known
+    assert mobile.haste_modifier is None
 
     assert mobile.hp_modifier is None
     assert mobile.hp_modifier_known is False
@@ -2719,6 +2850,22 @@ def test_protection_is_a_distinct_source_resource_effect() -> None:
     assert activation.spell == "protection"
     assert activation.command == "quaff"
     assert activation.consumes_object is True
+
+
+def test_detect_hidden_resource_has_its_own_consumable_activation() -> None:
+    item = ObjectSource(
+        4558, "potion inky black", "an inky black potion", ITEM_POTION,
+        (13, 0, 0, 0), 0,
+        value_strings=("13", "detect hidden", "infravision", ""),
+    )
+    assert resource_effects_for_object(item) == ("detect-hidden",)
+    for effect in ("detect-hidden", "detect hidden"):
+        activation = resource_activation_for_object(item, effect=effect)
+        assert activation is not None
+        assert activation.spell == "detect hidden"
+        assert activation.command == "quaff"
+        assert activation.consumes_object is True
+    assert resource_activation_for_object(item, effect="sanctuary") is None
 
 
 def test_energy_containment_is_a_distinct_disintegrate_protection_resource() -> None:

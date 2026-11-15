@@ -13,7 +13,7 @@ def _catalog():
                          (9, 0, -1, 0), 1, weight=1)
     first = ObjectSource(311, "potion clear", "a clear potion", 10, (20,), 1, weight=2)
     second = ObjectSource(4442, "clear potion", "a clear potion", 10, (30,), 1,
-                          weight=3, extra_flags=ITEM_NODROP)
+                          weight=3)
     return GearCatalog({item.vnum: item for item in (pouch, first, second)})
 
 
@@ -30,6 +30,14 @@ def test_storage_does_not_infer_effects_from_ambiguous_potion() -> None:
     assert plan.potion_vnums == (311, 4442)
     assert plan.quantity == 2
     assert plan.potion_keyword == "clear"
+
+
+def test_storage_rejects_nonreleasable_potion_candidates() -> None:
+    catalog = _catalog()
+    catalog.objects[4442] = replace(
+        catalog.objects[4442], extra_flags=ITEM_NODROP,
+    )
+    assert _plan(GearCatalog(catalog.objects)) is None
 
 
 def test_storage_requires_exact_worn_container_identity() -> None:
@@ -64,6 +72,57 @@ def test_storage_preserves_existing_pouch_contents() -> None:
     storage.observe("A small leather pouch contains:\na purple potion\n" + PROMPT, now=1)
     assert storage.next_command(39, 38, now=1) is None
     assert storage.phase == "unavailable" and storage.packed == 0
+
+
+def test_storage_accepts_known_safe_nonempty_pouch_contents_with_capacity() -> None:
+    pouch = ObjectSource(
+        3370, "beltpouch belt pouch", "a small leather pouch", 15,
+        (9, 0, -1, 0), 1, weight=1,
+    )
+    potion = ObjectSource(
+        19021, "potion invis invisible", "a clear potion of invisibility", 10,
+        (20,), 1, weight=1,
+    )
+    purple_sanctuary = ObjectSource(
+        4050, "potion purple", "a purple potion", 10,
+        (17,), 1, weight=1,
+    )
+    purple_ordinary = ObjectSource(
+        27287, "potion purple", "a purple potion", 10,
+        (31,), 1, weight=1,
+    )
+    beads = ObjectSource(
+        10721, "enchanted prayer beads", "enchanted prayer beads", ITEM_PILL,
+        (44, 0, 0, 0), 1, weight=1, extra_flags=64,
+    )
+    catalog = GearCatalog({
+        item.vnum: item
+        for item in (pouch, potion, purple_sanctuary, purple_ordinary, beads)
+    })
+    plan = empty_pouch_storage_plan(
+        ["a clear potion of invisibility"] * 4,
+        [{"slot": "pouch", "vnum": pouch.vnum, "name": pouch.short_description}],
+        catalog,
+    )
+    assert plan is not None
+    storage = HealerPouchStorage()
+    assert storage.begin(plan, 38, now=0, catalog=catalog) == "look in beltpouch"
+    storage.observe(
+        "A small leather pouch contains:\n"
+        "a purple potion\n"
+        "enchanted prayer beads\n" + PROMPT,
+        now=1,
+    )
+    assert storage.next_command(38, 38, now=1) == "put invisible beltpouch"
+    assert storage.phase == "put"
+
+
+def test_storage_rejects_unknown_or_unsafe_nonempty_pouch_contents() -> None:
+    storage = HealerPouchStorage()
+    storage.begin(_plan(), 39, now=0, catalog=_catalog())
+    storage.observe("A small leather pouch contains:\nunknown relic\n" + PROMPT, now=1)
+    assert storage.next_command(39, 38, now=1) is None
+    assert storage.phase == "unavailable"
 
 
 def test_storage_requires_each_acknowledgement_and_fresh_capacity() -> None:

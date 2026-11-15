@@ -77,6 +77,59 @@ def recover_flight_capacity_failure(
     }
 
 
+def recover_inline_flight_funds_failure(
+    storage: Any, segment: Mapping[str, Any], state: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    run_id = segment.get("run_id")
+    loader = getattr(storage, "list_recent_command_responses", None)
+    if not callable(loader):
+        loader = getattr(storage, "list_recent_events", None)
+    if (type(run_id) is not int or run_id <= 0 or not callable(loader)
+            or segment.get("status") != "failed"
+            or not str(segment.get("error") or "").endswith("flight purchase failed: funds")
+            or str(state.get("room_vnum")) != "3054" or state.get("dead")
+            or state.get("in_combat") or not state.get("world_boot_id")):
+        return None
+    try:
+        start = json.loads(segment.get("start_state_json") or "{}")
+    except (TypeError, ValueError):
+        return None
+    if (not _same_character_name((start, state)) or any(
+            start.get(key) != state.get(key)
+            for key in ("level", "world_boot_id", "xp"))):
+        return None
+    rows = loader(run_id, limit=256)
+    if not rows or len(rows) >= 256:
+        return None
+    command, purchases = None, []
+    for raw in rows:
+        row = dict(raw)
+        try:
+            payload = json.loads(row.get("payload_json") or "{}")
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, Mapping):
+            return None
+        if row.get("kind") == "command":
+            command = str(payload.get("command") or "").casefold().strip()
+            if command == "buy light":
+                purchases.append("")
+        elif row.get("kind") == "response" and command == "buy light" and purchases:
+            purchases[-1] += str(payload.get("text") or "").casefold()
+    if not purchases or "you buy " in purchases[-1] or not any(
+        marker in purchases[-1] for marker in (
+            "you can't afford", "you can't even afford", "you do not have enough",
+        )
+    ):
+        return None
+    return {
+        "reason": "funds", "run_id": run_id, "segment_id": segment.get("id"),
+        "level": state.get("level"), "boot_id": state.get("world_boot_id"),
+        "source_revision": state.get("campaign_source_revision"),
+        "legacy_canonical_event_count": len(rows),
+    }
+
+
 def recover_flight_capacity_preflight_failure(
     storage: Any, segment: Mapping[str, Any], state: Mapping[str, Any],
 ) -> dict[str, Any] | None:

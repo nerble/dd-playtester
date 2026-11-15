@@ -99,7 +99,10 @@ def completed_single_target_hunt(
             or type(snapshot.get("xp")) is not int
         ):
             return False
-    if not state["xp"] >= end["xp"] > start["xp"]:
+    if (
+        end["xp"] <= start["xp"]
+        or state["xp"] < max(0, end["xp"] - (losses[0] - losses[2]))
+    ):
         return False
     if any(end.get(key) for key in (
         "campaign_fastwalk_abort_reason", "campaign_fastwalk_route_hazards",

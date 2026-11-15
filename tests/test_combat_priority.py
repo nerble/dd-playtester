@@ -230,6 +230,25 @@ def test_purgatory_movement_still_waits_for_a_response() -> None:
     assert policy.next_decision(state) is None
 
 
+def test_purgatory_refreshes_room_before_retrying_pending_movement() -> None:
+    policy = field_policy()
+    policy.purgatory_pending_departure = ("401", "east")
+    policy.purgatory_exit_snapshots["401"] = {"e": "410"}
+    state = CharacterState(
+        dead=True,
+        area="Purgatory",
+        room_vnum="401",
+        exits={"east": "410", "south": "410"},
+    )
+
+    decision = policy._purgatory_recovery_decision(state)
+
+    assert decision is not None
+    assert decision.command == "look"
+    assert "delayed movement acknowledgement" in decision.reason
+    assert policy.purgatory_pending_departure_attempts == 1
+
+
 def test_purgatory_does_not_repeat_an_exhausted_parent_edge() -> None:
     policy = field_policy()
     policy.purgatory_visited_rooms.update({"413", "425"})

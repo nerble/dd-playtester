@@ -8,12 +8,246 @@ and autonomously reach the requested level, up to HERO 100. Preserve progress,
 explain the experience, and support direct Telnet and visible Mudlet operation.
 
 **Not complete:** no HERO character is proved. The highest actual frontier is
-level 41 (Dorrik). Per the current focus instruction, breadth is deferred until
+level 46 (Dorrik). Per the current focus instruction, breadth is deferred until
 one character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current campaign status: October 30, 2026
+### Current Campaign Status: November 15, 2026
+
+Completed checkpoint **81002**, campaign **39**, records Dorrik at level **46**,
+**2,155,907 XP**, at healer **3054**, **105,093 XP** to 47. No owned worker
+remains. The complete 25108-25125 block lost **25,206 XP**, including Egor's
+failed timed escape and one death. Corpse/equipment recovery succeeded.
+Four useful kills produced 13,151 XP, four maintenance kills 680; the 38,987
+death loss and 50 flee loss dominate them. Whole-session rate is **-413.37
+XP/minute** over 60.98 elapsed minutes. The earlier 9,662-XP partial gain must
+not hide this result. **25125** subsequently completed a safe 3,689-XP Mayor kill.
+Next sustain these gains, verify the new field-abort and staff-pickup behavior,
+and live-prove the new state-aware active-combat cleanup deadline. The code now
+allows 90 seconds for a bounded escape, 60 seconds for incapacitation, and 25
+seconds for ordinary cleanup; the outer watcher honors that same deadline. Do not retry the closed
+Egor encounter to manufacture proof; use independent currently eligible hunts.
+**25113** chose Mayor rather than the absent Buddha, excluded failed circuit
+peers, killed Mayor for **3,177 XP** and returned safely. Post-kill/absence
+rotation now applies to measured challengers without imposing a retry quota.
+The previous 1,942-XP block and 25107's child loss remain historical evidence.
+The pouch purchase/storage/activation is live-proved; new offline cases are
+saved and compiled, not rerun under the spent daily allowance. Next sustain
+these independent useful hunts and prove the level-47 transition. No HERO or
+multi-kill circuit is yet proved.
+**25084** repeated Buddha 10728 for 3,697 XP; **25086** independently killed
+10727 for 4,075. Named-loss aliases, flight ownership and bounded visit lookup
+are repaired. **25093** now live-proves the final pre-gear measured comparison,
+killing 10728 for 3,995 XP after another 3,784-XP win in 25090. Adept-only
+measured circuit expansion is saved but live-unproved; the proposed pair is
+closed by 10727's later loss, and pirate guard 29129 also has a new exact loss.
+Next sustain independent useful kills toward 47 and prove multi-stop execution
+only with currently eligible peers. Preserve all losses and partial-XP outcomes.
+**25068** safely killed Golden Buddha **10728/10819** for **3,654 XP**, about
+**1,424 XP/minute** including connected travel/recovery. Its independent win
+must not erase failed Buddha 10729, other exact losses, or the later orca route
+failure. Fresh productive selection now takes precedence over an old optional
+weapon hint; two unproductive hunts still trigger equipment repair.
+**25065** acquired/wore a mithril helm, not the planned vest. The consumed
+resource ledger clears explicitly rather than restoring old staff receipts.
+Inline flight failures now persist their owner and route funds shortfalls to
+the existing bank workflow. **25073** withdrew 1,000 copper-equivalent;
+**25082/80742** now proves actual quoted flight purchase/quaff, fresh effect,
+and persisted preparation/funding resolution after the funds-only delay was
+archived. Its summary still reports not_achieved despite the observed flight;
+inspect that objective contract separately, without crediting a missing hunt.
+Source selection also
+admits wolf pack 17053/17276 under its
+existing relative-level contract; its ordinary hunt remains unproved.
+Wei Chin **24983** yielded partial XP but ended in withdrawal. The elite sword
+and bishop piece are acquired equipment, not sustained progression proof.
+No further level or HERO has been proved; preserve exact losses and routes.
+Prepared Sanctuary now retains its real combat opportunity through optional
+gear selection. Run 25002 proved the exact mage status-recovery handoff but
+failed its fight. Run 25010 acquired a real Moria potion under a wrong Caerlin
+label; dispatch binding and acquisition invalidation now address that defect.
+Run 25011 consumed the potion, fought King Loranhir and lost 1,509 net XP.
+Visibility quote failures survive failed sessions for the existing bank/funding
+handoff. Search selection now skips source-rejected registered alternatives;
+new cases are saved/compiled, not regression-tested or fully live-proved.
+Runs 25016/25017 proved bank-reserve withdrawal and food restocking. Flight
+preparation continued into travel in 25021, and 25022 acquired a Moria potion.
+Odin 25024 killed Dorrik for 24,947 net XP lost; corpse recovery succeeded.
+A global same-level/boot equipment quota was then removed without clearing
+exact attempts or combat losses. Run 25025 acquired club 1521; 25028 proved
+successful stun, primary-weapon restoration, an Alchemist kill and staff pickup.
+Detect-hidden preparation 25030 led into the two-target ordinary hunt 25031.
+The second target, dust dweller 39008/39009, retains its exact failed-fight
+receipt even though the hunt ended with positive XP. Next selection must use
+fresh eligible targets without repeating that failure or chaining gear trips.
+The orb's stale `2.dragonorb` reference was repaired and reached the actual
+item in 24991, exposing an alignment refusal and false weapon-disarm handling.
+Held-resource legality, hold/drop acknowledgement and explicit missing-pickup
+handling are corrected and compiled. Run 24992 recovered the interrupted
+session. Next protection acquisition must be usable at the current alignment;
+do not repeat the now-incompatible Red DragonOrb loop.
+
+Next: improve actual damage and readiness after route fights, not just item
+scores, and turn current-band visits into completed kills on the way to 47.
+The early scouting handoff now compares measured source routes, committing
+only the winning candidate's state. Loss-accounted XP declines no longer hide
+an independent safe success. Run 25042 invoked that comparison and retained
+the dwarf route. Run 25043 then replaced an unmeasured Olympus candidate with
+that measured route; the resulting dwarf loss remains closed.
+Run 25040 wasted a trip on a full-stomach nectar refusal. Required pills now
+make that check at the healer when the live fullness already predicts it;
+fresh pills that fit keep their endpoint timing. This new first-refusal branch
+is compiled, not live-proved or regression-tested.
+The new recovery-owned departure preparation supports learned `armor` on the
+audited Mage/Cleric/Knight paths. It skips active armor and limits missing-effect
+preparation to one cast and 12 seconds, with exact reply, source lag, fresh
+affect and transport-prompt checks. Run 25047 proved no-refresh/receipt capture,
+not a player cast. Missing-effect casting and negative cases remain unproved;
+focused cases are saved/compiled for the next permitted regression batch.
+Do not chain optional gear searches after an unsuccessful detour when an
+ordinary XP hunt is executable. Keep acquired gear's useful-combat turn through
+maintenance; Sanctuary supply hunts cannot consume it. Preserve detection
+potions for remaining hidden-source stops instead of unrelated gear work.
+New standing field recovery and exact audited post-carrier guard handoff
+compile but still need live proof and the next permitted regression batch.
+Do not replace that work with roster breadth or higher-band coverage.
+Staff charge variance is source-explained: ordinary `create_object()` staves
+use `number_fuzzy(value[1])`, then copy it into remaining charges. A prototype
+with three charges can load with two to four. Two observed uses followed by
+disappearance are consistent, not a GMCP charge bug. Keep source estimates
+separate from observed uses/disappearance; never claim an exact live count.
+
+Combined flight/detection preparation now has live proof in **24969**:
+verified purchase, onward travel, Athena kill and required staff acquired.
+Acquisition-ranking history survives source refresh separately from permission;
+the bounded repair is persisted at **80250**. New compact counters distinguish
+fights from kills and retain failed encounters. The no-recall local-exit
+dispatch fix is compiled, not live-proved; **24971** recovered via the older
+long route and lost 1,480 XP. New cases remain unrun under the daily limit.
+
+Whole-loadout repair can now precede another hunt after repeated losses and
+unproductive trips, without requiring an outdated primary weapon. Preserve
+the actual gear acquisition gates and let an upgrade have an XP trip next.
+Acquired gear now retains a useful-combat turn through maintenance visits; distinct
+failed segments drive repair priority, and registered/generic target aliases
+cannot bypass singleton losses in the optional scouting-to-hunt handoff.
+The Cyclops-thief stop failed from expiring detect invisibility, not absence;
+its short timer now triggers healer-side renewal instead of another blind
+departure. The November 15 focused batch passed 169 cases and failed five;
+corrections compile but remain unrerun under the spent daily allowance. Later
+upgrade-turn cases are saved unrun. The Cyclops-specific renewed visibility
+route remains unproved. No roster or higher-band expansion is due.
+
+Protection replenishment has live proof: **24918** reacquired a ten-charge
+Red DragonOrb from the sewer dragon after fresh source checks. Historical
+acquisition ranks that source without reopening an exact loss. Acquisition
+segment IDs support later resource cycles without a per-reboot quota; repeated
+depletion/replenishment at the same level/boot is now also proved by 24976
+and 24985. Stale Moria
+identity restoration no longer replaces independent work. Circuit consider
+repair now finds explicit parent-trip evidence through bounded history; the
+normal campaign persisted it and reached the mouse. Bank lookup, expert-teacher
+capacity and detection handoff fixes remain saved. New cases compile but are
+unrun under the daily allowance; bank-reserve reuse now has live proof in
+24974, followed by flight preparation in 24975.
+
+Earlier checkpoint **79950** recorded **2,131,102 XP**. The block since **79938**
+gained **6,925 net XP**: **24895** lost 136 against Ben, **24896** killed two mobs
+for 7,061, and **24897** returned safely without a kill. One useful kill's shared
+name incorrectly marked it below-band; live-level/VNUM precedence is fixed,
+with old evidence preserved and new regression cases saved unrun.
+
+Earlier run **24894** killed dwarf
+**20514** for **3,771 XP**, achieving its objective safely. The block since
+**79910** gained **2,765 net XP**, including incidental supply XP and the
+**1,126-XP** current-level Storn loss, which remains closed. Seventeen combat
+commands were acknowledged with eleven timed wake-ups and no timeout. The
+healer trainer-cursor stall is repaired; a separate legacy-route class-spell
+dispatch fix still needs live proof. Reduce repeat capped-teacher travel and
+continue useful current-band circuits. New cases await the next permitted batch.
+
+Earlier run **24886** killed sand
+worm **39004** and tiny mouse **39011** for **9,573 net XP** in 293 seconds,
+including return/recovery; objective achieved, safety safe, no flee. This
+proved a two-target trip across the level transition and observed eight
+properly spaced self-heal attempts. Next: spend the new practices on useful
+current-class progression, then continue measured, productive current-band
+circuits. New timing/transit tests await the next allowed regression batch.
+
+A concrete route false-positive is repaired: passive, fixed, unequipped
+password-only teleporters no longer block ordinary walking. The real checkpoint
+selected sand worm **39004**. Run **24880** walked the route, killed that target
+for **4,862 XP**, and returned fully recovered to the healer. Checkpoint **79876**
+recorded **2,111,948 XP**, level **45**, **1,052 XP** short of 46, with an achieved,
+safe outcome. A subsequent dust-dweller fight (**24884**) lost **509 net XP**;
+its healing queue bug was fixed without erasing that loss. Run **24885**
+replenished Sanctuary from the sewer dragon before the successful level-46 trip.
+
+Earlier campaign **39** checkpoint **79871** resumed Dorrik at level **45** with
+**2,107,086 XP**, **18 QP**, and full healer recovery in room **3054**.
+Run **24861** reached Storn combat after detection preparation, corrected
+consider-history ordering, source-level fuzz handling and final route binding.
+It withdrew with **242 net XP lost**, no kill and no level gain. The exact
+protected loss is recorded and must not be reopened by maintenance or recovery.
+HERO and unattended creation-to-HERO progression remain unproved.
+
+Runs **24863-24866** repaired basic-slot shopping, funded the purchases from a
+coin stash, and verified both empty arm and leg slots filled. The controller now
+retains complete source-legal offers and a resumable funding budget; failed or
+unaffordable purchases are not objective completion. This was maintenance, not
+level progression. Optional staff top-ups and redundant Storn alias probes no
+longer substitute for finding an executable hunt.
+Selection and dispatch now own separate protection-retry states. An adjacent
+checkpoint repair restored a proven unlaunched reservation, and run **24869**
+reached the actual Egor fight. It withdrew with **314 net XP lost** and no kill;
+retain that protected failure. The bounded healing allowance is now eight
+attempts with observed-round anticipation, not the earlier three-cast cap.
+Run **24870** acquired invisibility for an independent route. The new healing
+behavior still needs live kill evidence; no level gain is claimed.
+Run **24872** recalled at full health from the pirate-guard room after a crowd
+warning, costing **1,405 XP**. The primary short-name/bystander correction is
+saved, but another useful-band mobile was actually present; do not erase the
+failure or claim the encounter was isolated.
+
+Run **24873** killed the wolf pack for **2,498 XP**. The replacement pack in
+**24877** was below band. Run **24878** attacked the helmsman on positive
+consider despite the tank comparison, but fled at 68% health after an armed
+pirate joined, losing **360 net XP**. The later source audit identified its
+held frost-breath wand; it is not an ordinary melee-only companion and the
+exact failed encounter remains closed. This pass gained **2,138 net XP**, no
+level; **5,914 XP** remains to 46. The new eight-heal allowance is not yet
+kill-proven. The bank-reserve shortcut is implemented with bounded withdrawal
+evidence, avoiding fresh coin collection when savings already cover supplies.
+Post-selection preparation expiry now has a resumable outcome separate from
+live-session timeout. Current-level combat losses no longer masquerade as
+reset-wait choices; replay of checkpoint 79871 finds no eligible reset wait.
+Tests for these changes are saved but unrun under November 14's spent budget.
+
+Ordinary live-joiner assessment is now implemented as combat-owned source,
+room, instance-look and consider proof, reusing the existing encounter loop.
+It preserves healing/protection limits, the player's floor, actual crowd
+counts despite duplicated enemy packets, and a one-level observed transition.
+Survivor loss attribution preserves the parent failure. Tests are saved but
+unrun, and no successful live pair is proved.
+
+Next, validate that controller in the next permitted batch and obtain a fresh
+ordinary-pair live result without reopening old failures. Resume actual XP
+progression toward 46 and reduce repeated ranking during post-selection
+validation. A dated source-only audit found 171 ordinary-loadout prototypes in
+the scouting band, 151 without generic current-level loss records; these are
+not route- or live-approved targets. Use that broader catalog to identify why
+the narrow selector is rejecting useful current-band choices, rather than
+declaring the world empty. Verify a useful kill with expanded healing. Do not
+wait for a reboot or let the closed Storn fight own another reset wait.
+Also improve combat damage, inspect available
+practice budgets and teachers, and progress useful prerequisites such as
+disarm when attainable. Verify an actual improvement before another difficult
+fight; do not replace this work with more optional supply visits or matrix
+breadth. The current source revision is
+**66f1f42675c0da46966ef3f15d96b06e191a0660**, separate from live deployment.
+
+### Historical Snapshot: October 30, 2026
 
 Campaign **35**, checkpoint **67252**, keeps Dorrik as the only progression
 pilot. Dorrik is a level **41 Dwarf Knight** at **1,511,314 XP** with **18 QP**,

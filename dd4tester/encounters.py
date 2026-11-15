@@ -163,6 +163,8 @@ class SourceMaterialEncounter:
     boot_id: str | None
     prepared_at: float
     started_at: float | None = None
+    ordinary_joiner: bool = False
+    bystander_maximum_level_offset: int = -2
 
 
 def source_solo_budget(
@@ -719,6 +721,8 @@ def active_encounter_budget(
     # retained for checkpoint callers, but current callers should leave it on.
     target_hp_evidence_only: bool = True,
     maximum_level_offsets_by_vnum: Mapping[int, int] | None = None,
+    allowed_source_companion_vnums: Collection[int] = (),
+    allowed_source_mage_special_vnums: Collection[int] = (),
     allowed_adept_special_vnums: Collection[int] = (),
     allowed_caerlin_special_vnums: Collection[int] = (),
     allowed_hephaestus_special_vnums: Collection[int] = (),
@@ -749,6 +753,8 @@ def active_encounter_budget(
             max_mana=max_mana,
             output=output,
             maximum_level_offsets_by_vnum=maximum_level_offsets_by_vnum or {},
+            allowed_source_companion_vnums=allowed_source_companion_vnums,
+            allowed_source_mage_special_vnums=allowed_source_mage_special_vnums,
             allowed_adept_special_vnums=allowed_adept_special_vnums,
             allowed_caerlin_special_vnums=allowed_caerlin_special_vnums,
             allowed_hephaestus_special_vnums=allowed_hephaestus_special_vnums,
@@ -856,6 +862,8 @@ def _active_level_encounter_budget(
     max_mana: int,
     output: SourceCombatOutput | None,
     maximum_level_offsets_by_vnum: Mapping[int, int],
+    allowed_source_companion_vnums: Collection[int],
+    allowed_source_mage_special_vnums: Collection[int],
     allowed_adept_special_vnums: Collection[int],
     allowed_caerlin_special_vnums: Collection[int],
     allowed_hephaestus_special_vnums: Collection[int],
@@ -896,68 +904,38 @@ def _active_level_encounter_budget(
             or not _encounter_special_is_allowed(
                 world,
                 vnum,
-                allowed_adept_special_vnums,
-                allowed_caerlin_special_vnums,
-                allowed_hephaestus_special_vnums,
-                allowed_red_dragon_fire_special_vnums,
+                allowed_adept_special_vnums=allowed_adept_special_vnums,
+                allowed_caerlin_special_vnums=allowed_caerlin_special_vnums,
+                allowed_hephaestus_special_vnums=allowed_hephaestus_special_vnums,
+                allowed_red_dragon_fire_special_vnums=(
+                    allowed_red_dragon_fire_special_vnums
+                ),
+                allowed_source_companion_vnums=allowed_source_companion_vnums,
+                allowed_source_mage_special_vnums=(
+                    allowed_source_mage_special_vnums
+                ),
             )
             or vnum in world.shopkeepers
         ):
             return EncounterBudget(False, "enemy requires a separate source-hazard policy")
         if not mobile.damage_modifier_known:
             return EncounterBudget(False, "source mobile damage modifier is unavailable")
-        resets = [reset for reset in world.mob_resets if reset.mobile_vnum == vnum]
-        if not resets or (
-            not red_dragon_allowed
-            and any(
-            slot in {WEAR_WIELD, WEAR_DUAL}
-            and (
-                (item := world.objects.get(object_vnum)) is None
-                or item.item_type == ITEM_WEAPON
-            )
-            for reset in resets
-            for slot, object_vnum in reset.equipment
-            )
-        ):
-            return EncounterBudget(False, "armed or unreset enemy retains its source gate")
-        wielding = bool(
-            red_dragon_allowed
-            and any(
-                slot == WEAR_WIELD
-                and (item := world.objects.get(object_vnum)) is not None
-                and item.item_type == ITEM_WEAPON
-                for reset in resets
-                for slot, object_vnum in reset.equipment
-            )
+        damage_profile = _source_mobile_worst_attack_profile(
+            world,
+            vnum,
+            level=level,
+            damage_modifier=mobile.damage_modifier,
         )
-        dual_wielding = bool(
-            red_dragon_allowed
-            and any(
-                slot == WEAR_DUAL
-                and (item := world.objects.get(object_vnum)) is not None
-                and item.item_type == ITEM_WEAPON
-                for reset in resets
-                for slot, object_vnum in reset.equipment
+        if damage_profile is None:
+            return EncounterBudget(
+                False,
+                "enemy has an unreset or unsupported source combat loadout",
             )
-        )
+        incoming, enemy_peak, enemy_critical = damage_profile
         vnums.append(vnum)
-        expected += mobile_expected_round_damage(
-            level,
-            wielding=wielding,
-            dual_wielding=dual_wielding,
-            damage_modifier=mobile.damage_modifier,
-        )
-        peak += _mobile_peak_round_damage(
-            level,
-            wielding=wielding,
-            dual_wielding=dual_wielding,
-            damage_modifier=mobile.damage_modifier,
-        )
-        critical += _mobile_critical_hit_damage(
-            level,
-            wielding=wielding,
-            damage_modifier=mobile.damage_modifier,
-        )
+        expected += incoming
+        peak += enemy_peak
+        critical += enemy_critical
 
     reserve = ceil(max_hp * 0.20)
     mana_cost = 2 * output.resource_cost if output.resource == "mana" else 0
@@ -973,6 +951,104 @@ def _active_level_encounter_budget(
         True,
         "live identities and levels pass; enemy HP does not gate this encounter",
         tuple(vnums), 0, expected, peak, reserve, mana_cost,
+    )
+
+
+def _source_mobile_worst_attack_profile(
+    world: WorldSource,
+    mobile_vnum: int,
+    *,
+    level: int,
+    damage_modifier: int | None,
+) -> tuple[int, int, int] | None:
+    """Bound attacks from every source reset, including known worn damroll."""
+    resets = tuple(
+        reset for reset in world.mob_resets if reset.mobile_vnum == mobile_vnum
+    )
+    if not resets:
+        return None
+    mobile = world.mobiles.get(mobile_vnum)
+    if (
+        mobile is None
+        or not mobile.crit_modifier_known
+        or mobile.crit_modifier is None
+        or not mobile.haste_modifier_known
+        or mobile.haste_modifier is None
+    ):
+        return None
+
+    profiles: list[tuple[int, int, int]] = []
+    for reset in resets:
+        wielding = False
+        dual_wielding = False
+        damroll_bonus = 0
+        crit_bonus = 0
+        haste_bonus = 0
+        for slot, object_vnum in reset.equipment:
+            item = world.objects.get(object_vnum)
+            if item is None:
+                return None
+            affects = tuple(item.affects)
+            # DD4 ignores APPLY_STR/APPLY_LEVEL for NPCs; crit, swiftness and
+            # damroll equipment directly affect their attack profile.
+            damroll_bonus += sum(
+                amount for location, amount in affects if location == 19
+            )
+            crit_bonus += sum(
+                amount for location, amount in affects if location == 50
+            )
+            haste_bonus += sum(
+                amount for location, amount in affects if location == 51
+            )
+            if slot == WEAR_WIELD and item.item_type == ITEM_WEAPON:
+                wielding = True
+            elif slot == WEAR_DUAL and item.item_type == ITEM_WEAPON:
+                dual_wielding = True
+
+        # Do not credit a negative equipment bonus: the mob may lose or
+        # replace that item before the observed encounter finishes.
+        damroll_bonus = max(0, damroll_bonus)
+        crit_chance = min(
+            100, max(0, 5 + mobile.crit_modifier + max(0, crit_bonus))
+        )
+        swift_chance = min(
+            100, max(0, 5 + mobile.haste_modifier + max(0, haste_bonus))
+        )
+        expected = mobile_expected_round_damage(
+            level,
+            wielding=wielding,
+            dual_wielding=dual_wielding,
+            damage_modifier=damage_modifier,
+            source_damage_bonus=damroll_bonus,
+        )
+        # DD4 adds one NPC attack on a successful swiftness roll and doubles
+        # each ordinary hit on a successful critical roll.
+        expected = (
+            expected * (100 + swift_chance) * (100 + crit_chance) + 9_999
+        ) // 10_000
+        peak = _mobile_peak_round_damage(
+            level,
+            wielding=wielding,
+            dual_wielding=dual_wielding,
+            damage_modifier=damage_modifier,
+            source_damage_bonus=damroll_bonus,
+        )
+        if crit_chance:
+            peak *= 2
+        profiles.append((
+            expected,
+            peak,
+            _mobile_critical_hit_damage(
+                level,
+                wielding=wielding or dual_wielding,
+                damage_modifier=damage_modifier,
+                source_damage_bonus=damroll_bonus,
+            ),
+        ))
+    return (
+        max(profile[0] for profile in profiles),
+        max(profile[1] for profile in profiles),
+        max(profile[2] for profile in profiles),
     )
 
 
@@ -1031,6 +1107,8 @@ def _encounter_special_is_allowed(
     allowed_caerlin_special_vnums: Collection[int] = (),
     allowed_hephaestus_special_vnums: Collection[int] = (),
     allowed_red_dragon_fire_special_vnums: Collection[int] = (),
+    allowed_source_companion_vnums: Collection[int] = (),
+    allowed_source_mage_special_vnums: Collection[int] = (),
 ) -> bool:
     specials = set(world.mobile_specials.get(mobile_vnum, ()))
     if not specials:
@@ -1050,6 +1128,49 @@ def _encounter_special_is_allowed(
         and not mobile.costs_fame
         and len(resets) == 1
         and resets[0].maximum_count == 1
+    )
+    source_companion_allowed = (
+        mobile_vnum in allowed_source_companion_vnums
+        and mobile_vnum == 16126
+        and specials == {"spec_demon"}
+        and mobile is not None
+        and mobile.level == 35
+        and mobile.aggressive
+        and mobile.wanders
+        and mobile.stay_area
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.attack_programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and len(resets) == 1
+        and resets[0].maximum_count == 1
+        and not resets[0].object_vnums
+        and not resets[0].equipment
+    )
+    source_mage_allowed = (
+        mobile_vnum in allowed_source_mage_special_vnums
+        and mobile_vnum == 16125
+        and specials == {"spec_cast_mage"}
+        and mobile is not None
+        and mobile.level == 47
+        and mobile.area_file.casefold() == "underdark.are"
+        and not mobile.aggressive
+        and not mobile.wanders
+        and mobile.sentinel
+        and mobile.stay_area
+        and not mobile.fear_aura
+        and not mobile.confused
+        and not mobile.programs
+        and not mobile.attack_programs
+        and not mobile.non_corporeal
+        and not mobile.costs_fame
+        and len(resets) == 1
+        and resets[0].room_vnum == 16478
+        and resets[0].maximum_count == 1
+        and not resets[0].object_vnums
+        and not resets[0].equipment
     )
     caerlin_allowed = (
         mobile_vnum in allowed_caerlin_special_vnums
@@ -1109,6 +1230,9 @@ def _encounter_special_is_allowed(
         and _red_dragon_fire_reset_shape_allowed(world, mobile_vnum)
     )
     return (
+        source_companion_allowed
+        or source_mage_allowed
+        or
         adept_allowed
         or caerlin_allowed
         or hephaestus_allowed

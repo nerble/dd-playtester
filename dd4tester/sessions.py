@@ -15,7 +15,10 @@ from .target_inspection import TargetInspectionController
 from .carrier_inspection import CarrierEquipmentInspection
 from .loot_capacity import HealerCarryingCapacity, LootCapacityReply
 from .pouch_storage import HealerPouchStorage
+from .field_healing import FieldHealingSession
 from .logout import LogoutConfirmation
+from .ordinary_joiners import OrdinaryJoinerAssessment
+from .self_buffs import HealerBuffPreparation
 
 if TYPE_CHECKING:
     from .starter import FieldHuntStop, StarterPolicy
@@ -36,6 +39,8 @@ class CombatSessionController:
     pending_withdrawal: dict[str, Any] | None = None
     source_attacker_aliases: list[dict[str, Any]] = field(default_factory=list)
     source_losses: list[dict[str, Any]] = field(default_factory=list)
+    required_loot_guard_handoffs: list[dict[str, Any]] = field(default_factory=list)
+    ordinary_joiner: OrdinaryJoinerAssessment = field(default_factory=OrdinaryJoinerAssessment)
 
     def observe_xp_loss(self, data: Mapping[str, Any]) -> None:
         if self.pending_withdrawal is None:
@@ -83,6 +88,8 @@ class RecoverySessionController:
     adjacent_recall_escape: AdjacentRecallEscape | None = None
     carrying_capacity: HealerCarryingCapacity = field(default_factory=HealerCarryingCapacity)
     pouch_storage: HealerPouchStorage = field(default_factory=HealerPouchStorage)
+    field_healing: FieldHealingSession = field(default_factory=FieldHealingSession)
+    self_buffs: HealerBuffPreparation = field(default_factory=HealerBuffPreparation)
     flight_purchase_failure_reason: str | None = None
     sale_reply_buffer: str = ""
 

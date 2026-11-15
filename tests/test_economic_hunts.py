@@ -99,7 +99,7 @@ def test_passive_economic_audit_rechecks_mutable_source_world(
     assert calls == 2
 
 
-def test_source_bounded_singleton_thief_population_opens_plain_galaxy_targets() -> None:
+def test_source_bounded_thief_route_preserves_hazards_and_opens_mirror_target() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
         include_all_areas=True,
@@ -123,13 +123,30 @@ def test_source_bounded_singleton_thief_population_opens_plain_galaxy_targets() 
     }
 
     assert plain_bounded_economic_resets(world, 9301)
-    candidate = next(item for item in candidates if item.target == "Orion the hunter")
+    # Orion's route also crosses a bear and a brownie.  The economic adapter
+    # may remove the bounded thief risk only; it must preserve independent
+    # source-special hazards.
+    orion = next(item for item in candidates if item.target == "Orion the hunter")
+    orion_admitted = economic_hunt_candidate(orion, state, world)
+
+    assert not orion_admitted.autonomous_safe
+    assert "route crosses a non-safe special mobile" in (
+        orion_admitted.autonomy_rejections
+    )
+    assert "a non-safe special mobile can reach the route" in (
+        orion_admitted.autonomy_rejections
+    )
+    assert orion_admitted.route_economic_hunt_mobile_vnums == ()
+
+    # Father Franklin has the same bounded Mirror Realm thief route without
+    # the unrelated combat-special hazards.
+    candidate = next(item for item in candidates if item.target == "Father Franklin")
     admitted = economic_hunt_candidate(candidate, state, world)
 
     assert admitted.autonomous_safe
     assert admitted.autonomy_rejections == ()
-    assert admitted.route_economic_hunt_mobile_vnums == (9301,)
-    assert admitted.route_economic_population is True
+    assert admitted.route_economic_hunt_mobile_vnums == (19036,)
+    assert admitted.route_economic_population is False
     assert admitted.route_economic_source_rejections == (
         "an economic special mobile can reach the route",
     )
