@@ -674,6 +674,13 @@ _SEVERED_BODY_PART = re.compile(
     r"(?:separated|torn|sliced)\b",
     re.IGNORECASE,
 )
+# Dismembered body parts are generated loot rather than ordinary source
+# prototypes. They are safe to eat or sacrifice, so they must still be usable
+# for capacity relief when the live inventory has no matching catalog entry.
+_INVENTORY_BODY_PART = re.compile(
+    r"^(?:the|a|an)?\s*(?P<part>head|heart|arm|leg|tail)\s+of\b",
+    re.IGNORECASE,
+)
 _DIRECTION_SHORTCUTS = {
     "n": "north",
     "s": "south",
@@ -4078,6 +4085,7 @@ class StarterPolicy:
         self.chill_touch_unavailable = False
         self.unavailable_combat_spells: set[str] = set()
         self.pending_combat_spell: str | None = None
+        self.anti_magic_room_vnum: str | None = None
         # A caster may need to change damage types when a live target resists
         # the preferred spell.  Keep the rotation encounter-local and finite;
         # source admission and the player's own-health/action gates remain
@@ -4515,6 +4523,7 @@ class StarterPolicy:
         self.combat_pouch_audit_failed = False
         self.combat_pouch_observed_item_count = 0
         self.combat_pouch_observed_non_potion_keywords: Counter[str] = Counter()
+        self.combat_pouch_observed_non_reserve_keywords: Counter[str] = Counter()
         self.combat_pouch_capacity_preflight_active = False
         self.combat_pouch_capacity_preflight_satisfied = False
         self.combat_pouch_extracted_keyword: str | None = None
@@ -6484,6 +6493,20 @@ class StarterPolicy:
                 )
             ):
                 self.fastwalk_post_objective_attacker_consider_viable = False
+        anti_magic_cast_refusal = any(
+            marker in recent
+            for marker in (
+                "an anti-magic field prevents any casting here",
+                "an anti magic field prevents any casting here",
+            )
+        )
+        if anti_magic_cast_refusal and self.pending_combat_spell is not None:
+            # Anti-magic is a room property, not a permanently unusable spell.
+            # Clear the rejected combat command and let the physical opener or
+            # between-round attack continue in this room.
+            self.anti_magic_room_vnum = str(self.current_room or "") or None
+            self.pending_combat_spell = None
+            self.between_round_action_issued = False
         if self.between_round_action_issued and (
             "you launch a volley of" in recent
             or "you launch a magic missile" in recent
@@ -6512,6 +6535,7 @@ class StarterPolicy:
             or "you disarm " in recent
             or "your opponent is not wielding a weapon" in recent
             or "your spell" in recent
+            or anti_magic_cast_refusal
             or "you feel better" in recent
             or re.search(r"<\d+/\d+ hits .*? move \[", recent) is not None
         ):
@@ -6993,6 +7017,11 @@ class StarterPolicy:
                     observed_non_potion[relief_keyword] -= 1
                     if observed_non_potion[relief_keyword] <= 0:
                         observed_non_potion.pop(relief_keyword, None)
+                observed_non_reserve = self.combat_pouch_observed_non_reserve_keywords
+                if observed_non_reserve.get(relief_keyword, 0) > 0:
+                    observed_non_reserve[relief_keyword] -= 1
+                    if observed_non_reserve[relief_keyword] <= 0:
+                        observed_non_reserve.pop(relief_keyword, None)
                 self.fastwalk_pouch_capacity_relief_keyword = None
                 self.combat_pouch_capacity_preflight_satisfied = False
                 if extracted_non_potion:
@@ -12012,6 +12041,12 @@ class StarterPolicy:
         if in_purgatory:
             self.purgatory_recovery_active = True
             return None
+        if repeated_command.casefold() == "recall" and self.fastwalk_route is not None:
+            # A no-recall field room can acknowledge each repeated recall with
+            # the same refusal. Let the source-backed return planner inspect
+            # the room and issue its known exit before the watchdog repeats
+            # the refused command again.
+            return self._return_home_decision(state)
         if (
             _is_sleeping(state)
             and self.fastwalk_invisibility_expiry_wait_phase is not None
@@ -13460,12 +13495,30 @@ class StarterPolicy:
                 state,
             )
         )
+        approved_transit_fight = bool(
+            route_hazard is not None
+            and self.active_target is not None
+            and _targets_match(self.active_target, route_hazard)
+            and self._plain_transit_fight_has_exact_live_target(live_enemies)
+        )
         if (
             route_hazard is not None
             and not bounded_midgaard_drunk
             and not bounded_plain_transit
             and not bounded_special_transit
+            and not approved_transit_fight
         ):
+            if self._route_hazard_waits_for_enemy_snapshot(
+                state,
+                route_hazard,
+                live_enemies,
+            ):
+                # Room text can arrive before Char.Enemies. Hold one prompt
+                # turn so an exact source identity can enter the ordinary
+                # consider/combat path instead of paying a flee penalty.
+                self.awaiting_enemy_assessment = True
+                self.prompt_ready = False
+                return None
             # Source-registered route hazards are never opportunistic targets:
             # they can respawn inside a randomized route after the boundary
             # preflight, so this path must not reuse the waypoint-resume logic.
@@ -14728,14 +14781,25 @@ class StarterPolicy:
                     self.awaiting_enemy_assessment = True
                     self.prompt_ready = False
                     return None
-                below_band_interruption = (
-                    bool(enemies)
-                    and state.level is not None
-                    and all(
-                        self._enemy_is_known_below_useful_band(enemy, state)
-                        for enemy in enemies
+                below_band_interruption = bool(
+                    self.fastwalk_transit_below_band_return_pending
+                    and self.active_target_below_useful_band
+                    and self.fastwalk_transit_below_band_target is not None
+                    and len(enemies) == 1
+                    and _targets_match(
+                        str(enemies[0].get("name", "")),
+                        self.fastwalk_transit_below_band_target,
                     )
                 )
+                if not below_band_interruption:
+                    below_band_interruption = (
+                        bool(enemies)
+                        and state.level is not None
+                        and all(
+                            self._enemy_is_known_below_useful_band(enemy, state)
+                            for enemy in enemies
+                        )
+                    )
                 if (
                     not below_band_interruption
                     and self.active_target is not None
@@ -14800,6 +14864,12 @@ class StarterPolicy:
                     live_enemies,
                 )
             )
+            considered_transit_attacker = bool(
+                plain_transit_attacker
+                and self.fastwalk_route is not None
+                and _int_or_none(live_enemies[0].get("isnpc"))
+                in set(self.fastwalk_route.route_consider_transit_mobile_vnums)
+            )
             armed_transit_attacker = bool(
                 plain_transit_attacker
                 and self.fastwalk_route is not None
@@ -14809,13 +14879,12 @@ class StarterPolicy:
                     self.fastwalk_route.route_allowed_armed_transit_mobile_vnums
                 )
             )
-            if armed_transit_attacker:
-                # Capacity-research routes may cross one exact, source-audited
-                # armed mobile, but its current-band status still belongs to
-                # live `consider`, not to the source estimate alone. Reuse the
-                # bounded route-attacker state machine so a negative result
-                # withdraws and a positive result opens the normal combat
-                # controller without an automatic flee penalty.
+            if considered_transit_attacker or armed_transit_attacker:
+                # Source-ranked current-band route interruptions, including
+                # fixed unarmed sentinels, get one exact live `consider`.
+                # Capacity-research armed routes use the same bounded path.
+                # A negative result withdraws; a positive result opens the
+                # normal combat controller without an automatic flee penalty.
                 self.unapproved_field_attacker = (
                     str(live_enemies[0].get("name") or "").strip() or None
                 )
@@ -21220,6 +21289,9 @@ class StarterPolicy:
         """Use an explicit source spell, or the live-known class spell in an open fight."""
         if state is None or stop is None:
             return None
+        room_vnum = str(state.room_vnum or self.current_room or "")
+        if self.anti_magic_room_vnum == room_vnum:
+            return None
         explicit_plan = stop.source_combat_action is not None
         if explicit_plan:
             spell = _normalize_skill_name(stop.source_combat_action)
@@ -24511,6 +24583,9 @@ class StarterPolicy:
             and not state.combat_target
             and not self._current_room_enemy_records(state)
         ):
+            pouch_cleanup = self._combat_pouch_extracted_cleanup_decision(state)
+            if pouch_cleanup is not None:
+                return pouch_cleanup
             self.combat_active = False
             self.active_target = None
             self.active_target_selector = None
@@ -24935,24 +25010,12 @@ class StarterPolicy:
                 character_level=int(state.level),
             )
         ):
-            maximum_level = _mobile_level_range(mobile.level)[1]
+            # This is a plain, singleton, unarmed source mobile in the
+            # useful relative-level band.  Static peak/critical damage is
+            # evidence only; the normal 20% own-health floor and live combat
+            # checks decide whether the fight continues.
             health_floor = (int(state.max_hp) + 4) // 5
-            return bool(
-                int(state.hp or 0) > health_floor
-                and _mobile_peak_round_damage(
-                    maximum_level,
-                    wielding=False,
-                    dual_wielding=False,
-                    damage_modifier=mobile.damage_modifier,
-                )
-                + _mobile_critical_hit_damage(
-                    maximum_level,
-                    wielding=False,
-                    damage_modifier=mobile.damage_modifier,
-                )
-                + health_floor
-                <= int(state.max_hp)
-            )
+            return int(state.hp or 0) > health_floor
         if route is None or mobile_vnum not in set(
             route.route_bounded_borderline_source_mobile_vnums
         ):
@@ -25209,6 +25272,61 @@ class StarterPolicy:
             )
         if self.fastwalk_post_objective_attacker_consider_viable is False:
             if transit_admitted:
+                matching_enemy = matching[0]
+                if (
+                    self._source_mobile_enemy_is_known_below_useful_band(
+                        matching_enemy,
+                        state,
+                    )
+                    and not self._source_mobile_route_transit_special_is_bounded(
+                        matching_enemy,
+                        state,
+                    )
+                ):
+                    # The source fuzz range can admit a route attacker whose
+                    # live level lands below the useful-XP floor. It is still
+                    # an unavoidable defensive fight once DD4 has engaged it;
+                    # killing it is route survival evidence, never progression
+                    # credit. Do not pay the larger flee penalty merely because
+                    # consider correctly says this is not an XP target.
+                    target_name = (
+                        str(matching_enemy.get("name") or attacker).strip()
+                        or attacker
+                    )
+                    self.active_target = target_name
+                    self.active_target_selector = selector
+                    self.active_target_level = _int_or_none(
+                        matching_enemy.get("level")
+                    )
+                    self.active_target_mobile_vnum = _int_or_none(
+                        matching_enemy.get("isnpc")
+                    )
+                    self.active_target_below_useful_band = True
+                    self.unapproved_field_attacker = None
+                    self.fastwalk_post_objective_attacker_consider_target = None
+                    self.fastwalk_post_objective_attacker_consider_selector = None
+                    self.fastwalk_post_objective_attacker_consider_viable = None
+                    self.fastwalk_post_objective_attacker_consider_attempts = 0
+                    self.fastwalk_post_objective_attacker_consider_response_pending = False
+                    self.fastwalk_transit_below_band_target = target_name
+                    self.fastwalk_transit_below_band_fight_completed = False
+                    self.fastwalk_transit_below_band_fight_count = max(
+                        1,
+                        self.fastwalk_transit_below_band_fight_count + 1,
+                    )
+                    self.fastwalk_transit_below_band_return_pending = True
+                    self.fastwalk_transit_below_band_resume_after_fight = False
+                    self.fastwalk_returning = True
+                    self.fastwalk_emergency_recall_pending = True
+                    self.fastwalk_abort_reason = (
+                        "field hunt aborted after one unavoidable below-band "
+                        f"transit attacker {target_name!r}"
+                    )
+                    marker = f"transit below-band attacker: {target_name}"
+                    if marker not in self.fastwalk_route_hazards:
+                        self.fastwalk_route_hazards.append(marker)
+                    combat = self._between_round_combat_decision(state)
+                    return True, combat
                 return True, self._armed_transit_consider_failure_decision(
                     state,
                     "armed route attacker failed the live consider gate",
@@ -25291,12 +25409,17 @@ class StarterPolicy:
             if route is not None
             else ()
         )
+        consider_vnums = set(
+            route.route_consider_transit_mobile_vnums
+            if route is not None
+            else ()
+        )
         special_vnums = set(
             route.route_bounded_transit_special_mobile_vnums
             if route is not None
             else ()
         )
-        allowed_vnums = plain_vnums | armed_vnums | special_vnums
+        allowed_vnums = plain_vnums | armed_vnums | special_vnums | consider_vnums
         allowed_room_vnums = set(
             (
                 route.route_allowed_plain_transit_room_vnums
@@ -25446,6 +25569,12 @@ class StarterPolicy:
                 damage_modifier=mobile.damage_modifier,
             )
         health_floor = (int(state.max_hp) + 4) // 5
+        if not armed:
+            # Static damage is useful evidence for reporting, but it must not
+            # veto an ordinary source-identified singleton in the useful
+            # relative-level band.  Live consider, crowd, identity, and the
+            # character's own health floor remain authoritative.
+            return int(state.hp) > health_floor
         return bool(
             int(state.hp) > health_floor
             and peak_damage + critical_damage + health_floor
@@ -27683,8 +27812,20 @@ class StarterPolicy:
             and self.city_restock_step >= 6
             and not _has_inventory_item(state.inventory, "pie")
         ):
-            self.failure = "city restock inventory audit found no pie after purchase"
-            return None
+            if (
+                self.affordable_pies is not None
+                and self.affordable_pies > 0
+                and not self.affordable_pies_ordered
+            ):
+                # The baker can answer the preceding purchase on the next
+                # prompt, after the inventory audit command has already
+                # advanced the step counter. Re-enter the partial-order path
+                # before treating the missing pie as a terminal audit failure.
+                self.city_restock_step = 5
+                self.food_ordered = False
+            else:
+                self.failure = "city restock inventory audit found no pie after purchase"
+                return None
         if self.city_restock_step >= 6:
             home_routes = {
                 "3009": "south",
@@ -32416,6 +32557,66 @@ class StarterPolicy:
                 return target
         return None
 
+    def _route_hazard_waits_for_enemy_snapshot(
+        self,
+        state: CharacterState,
+        route_hazard: str,
+        enemies: Collection[Mapping[str, Any]],
+    ) -> bool:
+        """Give a source-identified route attacker one turn to reach GMCP."""
+        route = self.fastwalk_route
+        if (
+            route is None
+            or not route.route_consider_transit_mobile_vnums
+            or enemies
+            or self.awaiting_enemy_assessment
+            or self.source_world is None
+            or self.fastwalk_returning
+        ):
+            return False
+        room_vnum = str(state.room_vnum or self.current_room or "")
+        allowed_rooms = set(
+            route.route_allowed_plain_transit_room_vnums
+            + route.route_allowed_armed_transit_room_vnums
+            + route.route_bounded_transit_special_room_vnums
+        )
+        if not room_vnum or room_vnum not in allowed_rooms:
+            return False
+        source_mobiles = [
+            self.source_world.mobiles.get(vnum)
+            for vnum in route.route_consider_transit_mobile_vnums
+        ]
+        matching_mobiles = [
+            mobile
+            for mobile in source_mobiles
+            if mobile is not None
+            and _targets_match(route_hazard, mobile.short_description)
+        ]
+        if len(matching_mobiles) != 1:
+            return False
+        mobile = matching_mobiles[0]
+        listing = state.room_listing
+        listing_confirms_mobile = False
+        if (
+            isinstance(listing, Mapping)
+            and str(listing.get("room_vnum") or "") == room_vnum
+            and listing.get("render_complete") is True
+            and isinstance(listing.get("targeted_lines"), list)
+        ):
+            source_descriptions = {
+                _normalize_mobile_line(mobile.short_description),
+                _normalize_mobile_line(mobile.room_description),
+            }
+            listing_confirms_mobile = sum(
+                1
+                for line in listing["targeted_lines"]
+                if isinstance(line, Mapping)
+                and str(line.get("target_id") or "").isdigit()
+                and _normalize_mobile_line(str(line.get("description") or ""))
+                in source_descriptions
+            ) == 1
+        return self._combat_exchange_observed() or listing_confirms_mobile
+
     def _bounded_midgaard_drunk_route_interruption(
         self,
         state: CharacterState,
@@ -32542,6 +32743,21 @@ class StarterPolicy:
                 else
                 "source-registered deep below-band unarmed transit preflight "
                 "admitted"
+            )
+            if marker not in self.fastwalk_route_hazards:
+                self.fastwalk_route_hazards.append(marker)
+            advance_or_complete()
+            return
+        if (
+            active_preflight is not None
+            and self._fastwalk_current_band_transit_preflight_admitted(
+                route,
+                active_preflight[1],
+            )
+        ):
+            marker = (
+                "source-registered current-band route transit preflight "
+                "deferred to adjacent live consider"
             )
             if marker not in self.fastwalk_route_hazards:
                 self.fastwalk_route_hazards.append(marker)
@@ -32829,6 +33045,22 @@ class StarterPolicy:
                         else "return because the route hazard locator was inconclusive"
                     ),
                 )
+            if (
+                not self.fastwalk_route_preflight_inconclusive
+                and self._fastwalk_current_band_transit_preflight_admitted(
+                    route,
+                    target,
+                )
+            ):
+                self.fastwalk_route_preflight_complete = True
+                self.fastwalk_route_preflight_hazard_observed = False
+                marker = (
+                    "source-registered current-band route transit preflight "
+                    "deferred to adjacent live consider"
+                )
+                if marker not in self.fastwalk_route_hazards:
+                    self.fastwalk_route_hazards.append(marker)
+                return None
             if armed_transit:
                 if (
                     route.route_preflight_scan_room_vnums
@@ -36496,6 +36728,18 @@ class StarterPolicy:
             None,
         )
         if eviction_keyword is None:
+            eviction_keyword = next(
+                (
+                    keyword
+                    for keyword, quantity in (
+                        self.combat_pouch_observed_non_reserve_keywords.items()
+                    )
+                    if int(quantity or 0) > 0
+                    and keyword not in self.fastwalk_pouch_capacity_relief_attempted
+                ),
+                None,
+            )
+        if eviction_keyword is None:
             eviction_keyword = self._combat_pouch_eviction_keyword(counts)
         if (
             eviction_keyword is None
@@ -36589,6 +36833,21 @@ class StarterPolicy:
             or self.combat_active
             or self._current_room_enemy_records(state)
         ):
+            if (
+                str(state.room_vnum or "") != "3054"
+                and not state.dead
+                and not state.in_combat
+                and not self.combat_active
+                and not self._current_room_enemy_records(state)
+            ):
+                # A full pouch may force one non-potion into the character's
+                # inventory in the field. Carry it home and finish the bounded
+                # disposal at the healer instead of recording a false failure.
+                self.fastwalk_returning = True
+                self.return_home = True
+                self.fastwalk_emergency_recall_pending = True
+                self.prompt_ready = True
+                return self._fastwalk_emergency_return_decision(state)
             return self._defer_failure_for_safe_return(
                 state,
                 "combat pouch cleanup lost its safe healer boundary",
@@ -36641,6 +36900,13 @@ class StarterPolicy:
             self.combat_pouch_extracted_keyword = None
             self.combat_pouch_extracted_cleanup_step = 0
             self.combat_pouch_capacity_preflight_satisfied = False
+            self.midgaard_logout_pending = True
+            self.midgaard_logout_save_reason = (
+                "persist the combat pouch cleanup at the Midgaard healer"
+            )
+            self.midgaard_logout_quit_reason = (
+                "combat pouch cleanup complete at the Midgaard healer"
+            )
         return None
 
     def _add_combat_pouch_potion(self, keyword: str, quantity: int) -> None:
@@ -36783,6 +37049,26 @@ class StarterPolicy:
                     for spell in _COMBAT_SAFE_POTION_SPELLS
                 ):
                     source_safe_keywords.add(keyword)
+
+        observed_non_reserves: Counter[str] = Counter()
+        if self.gear_catalog is not None:
+            for description in pouch_entries:
+                candidates = tuple(
+                    item
+                    for item in self.gear_catalog.candidates(description)
+                    if item.item_type == ITEM_POTION
+                )
+                if not candidates:
+                    continue
+                keyword = _combat_potion_item_keyword(candidates[0], potion_items)
+                if keyword == "black":
+                    continue
+                if (
+                    keyword not in source_safe_keywords
+                    and self.verified_combat_pouch_potions.get(keyword, 0) <= 0
+                ):
+                    observed_non_reserves[keyword] += 1
+        self.combat_pouch_observed_non_reserve_keywords = observed_non_reserves
 
         known_keywords = {
             "purple",
@@ -42511,7 +42797,9 @@ class StarterPolicy:
                     stop.source_healer_recovery is not None
                     and stop.exact_target and stop.require_isolated
                     and stop.maximum_target_count == 1
-                    and "no_recall" not in state.room_flags
+                    # No-recall blocks the recall shortcut, not the proven
+                    # walking return to the healer.  Exact source recovery
+                    # contracts must remain usable at no-recall endpoints.
                     and str(state.room_vnum or "") == stop.source_healer_recovery.room_vnum
                     and stop.source_healer_recovery.matches(
                         mobile_vnum=stop.source_mobile_vnum,
@@ -42809,6 +43097,16 @@ class StarterPolicy:
             and not state.dead and not state.in_combat and not self.combat_active
             and not self._current_room_enemy_records(state)
         )
+        # An item extracted from the combat pouch is a cleanup obligation, not
+        # ordinary storage stock. Dispose of it before this generic controller
+        # can put it straight back into the pouch.
+        if self.combat_pouch_extracted_keyword is not None:
+            extracted_cleanup = self._combat_pouch_extracted_cleanup_decision(state)
+            if (
+                extracted_cleanup is not None
+                or self.combat_pouch_extracted_keyword is not None
+            ):
+                return True, extracted_cleanup
         if storage.pending and not safe:
             storage.failure = "healer pouch storage lost its noncombat room gate"
             storage.phase = "failed"
@@ -44861,6 +45159,15 @@ class StarterPolicy:
                     stop,
                     room_vnum=str(state.room_vnum or self.current_room or ""),
                 )
+                or (
+                    stop.exact_target
+                    and stop.require_isolated
+                    and stop.maximum_target_count == 1
+                    and (
+                        stop.allow_healer_blindness_recovery
+                        or stop.allow_healer_poison_recovery
+                    )
+                )
             )
         )
         # Exact source-ranked armed singletons use the same own-health floor as
@@ -45865,6 +46172,74 @@ class StarterPolicy:
             and not self.source_world.mobile_specials.get(source_vnum)
         )
 
+    def _fastwalk_current_band_transit_preflight_admitted(
+        self,
+        route: Fastwalk,
+        target: str,
+    ) -> bool:
+        """Defer one exact current-band route mobile to an adjacent scan."""
+        if (
+            self.source_world is None
+            or not route.route_preflight_scan_room_vnums
+            or not route.route_consider_transit_mobile_vnums
+        ):
+            return False
+        try:
+            allowed_vnums = {
+                int(vnum)
+                for vnum in route.route_consider_transit_mobile_vnums
+            }
+            plain_vnums = {
+                int(vnum)
+                for vnum in route.route_allowed_plain_transit_mobile_vnums
+            }
+            armed_vnums = {
+                int(vnum)
+                for vnum in route.route_allowed_armed_transit_mobile_vnums
+            }
+            special_vnums = {
+                int(vnum)
+                for vnum in route.route_bounded_transit_special_mobile_vnums
+            }
+        except (TypeError, ValueError):
+            return False
+        allowed_vnums.intersection_update(plain_vnums)
+        allowed_vnums.difference_update(armed_vnums | special_vnums)
+        observed_identity = _target_identity_without_article(target)
+        source_vnums = tuple(
+            vnum
+            for vnum in sorted(allowed_vnums)
+            if vnum in self.source_world.mobiles
+            and _target_identity_without_article(
+                self.source_world.mobiles[vnum].short_description
+            )
+            == observed_identity
+        )
+        if len(source_vnums) != 1:
+            return False
+        source_vnum = source_vnums[0]
+        mobile = self.source_world.mobiles[source_vnum]
+        resets = tuple(
+            reset
+            for reset in self.source_world.mob_resets
+            if reset.mobile_vnum == source_vnum
+        )
+        return bool(
+            mobile.aggressive
+            and not mobile.programs
+            and not mobile.attack_programs
+            and not self.source_world.mobile_specials.get(source_vnum)
+            and not mobile.non_corporeal
+            and not mobile.fear_aura
+            and not mobile.costs_fame
+            and not mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+            and mobile.hp_modifier_known
+            and mobile.damage_modifier_known
+            and bool(mobile.room_description.strip())
+            and bool(resets)
+            and all(not reset.equipment for reset in resets)
+        )
+
     def _fastwalk_below_band_transit_scan_admitted(
         self,
         state: CharacterState,
@@ -45941,6 +46316,89 @@ class StarterPolicy:
                 return False
             seen_vnums.add(source_vnum)
         return bool(seen_vnums)
+
+    def _fastwalk_current_band_transit_scan_admitted(
+        self,
+        state: CharacterState,
+        route: Fastwalk,
+        destination: str,
+        matching_scan_matches: Collection[Any],
+    ) -> bool:
+        """Admit one exact current-band mobile for an in-room consider."""
+        if (
+            self.source_world is None
+            or self.combat_active
+            or state.in_combat
+            or self._current_room_enemy_records(state)
+            or len(matching_scan_matches) != 1
+            or str(destination)
+            not in set(route.route_allowed_plain_transit_room_vnums)
+        ):
+            return False
+        try:
+            current_vnums = {
+                int(vnum)
+                for vnum in route.route_consider_transit_mobile_vnums
+            }
+            current_vnums.intersection_update(
+                int(vnum)
+                for vnum in route.route_allowed_plain_transit_mobile_vnums
+            )
+            current_vnums.difference_update(
+                int(vnum)
+                for vnum in route.route_allowed_armed_transit_mobile_vnums
+            )
+            current_vnums.difference_update(
+                int(vnum)
+                for vnum in route.route_bounded_transit_special_mobile_vnums
+            )
+        except (TypeError, ValueError):
+            return False
+        if not current_vnums:
+            return False
+        observed_identity = _target_identity_without_article(
+            matching_scan_matches[0].group("target")
+        )
+        source_vnums = tuple(
+            vnum
+            for vnum in sorted(current_vnums)
+            if vnum in self.source_world.mobiles
+            and _target_identity_without_article(
+                self.source_world.mobiles[vnum].short_description
+            )
+            == observed_identity
+        )
+        if len(source_vnums) != 1:
+            return False
+        source_vnum = source_vnums[0]
+        mobile = self.source_world.mobiles[source_vnum]
+        resets = tuple(
+            reset
+            for reset in self.source_world.mob_resets
+            if reset.mobile_vnum == source_vnum
+        )
+        return bool(
+            mobile.aggressive
+            and not mobile.programs
+            and not mobile.attack_programs
+            and not self.source_world.mobile_specials.get(source_vnum)
+            and not mobile.non_corporeal
+            and not mobile.fear_aura
+            and not mobile.costs_fame
+            and not mobile.act_flags & (ACT_NO_EXPERIENCE | ACT_NO_FIGHT)
+            and source_vnum not in self.source_world.shopkeepers
+            and mobile.hp_modifier_known
+            and mobile.damage_modifier_known
+            and bool(mobile.room_description.strip())
+            and bool(resets)
+            and all(
+                not reset.object_vnums
+                and not reset.equipment
+                and str(reset.room_vnum)
+                in set(route.route_allowed_plain_transit_room_vnums)
+                for reset in resets
+            )
+        )
 
     def _fastwalk_route_pre_entry_scan_decision(
         self,
@@ -46129,6 +46587,19 @@ class StarterPolicy:
                     else
                     "source-registered deep below-band unarmed transit scan "
                     "admitted"
+                )
+                if marker not in self.fastwalk_route_hazards:
+                    self.fastwalk_route_hazards.append(marker)
+                return None
+            if self._fastwalk_current_band_transit_scan_admitted(
+                state,
+                route,
+                destination,
+                matching_scan_matches,
+            ):
+                marker = (
+                    "source-registered current-band transit adjacent scan "
+                    "admitted for live consider"
                 )
                 if marker not in self.fastwalk_route_hazards:
                     self.fastwalk_route_hazards.append(marker)
@@ -50105,9 +50576,16 @@ class StarterPolicy:
                 and self.consider_viable is True
             ):
                 if self.fastwalk_attack_target != target:
-                    return reject(
-                        "engaged endpoint target was not bound to the approved hunt",
-                    )
+                    if matching and endpoint_combat_started:
+                        # Arrival text can start combat before GMCP publishes
+                        # Char.Enemies. Once the delayed packet supplies the
+                        # exact isolated source match, bind it and require the
+                        # ordinary live consider before continuing.
+                        self.fastwalk_attack_target = target
+                    else:
+                        return reject(
+                            "engaged endpoint target was not bound to the approved hunt",
+                        )
                 consider_decision = self._consider_fastwalk_target(state)
                 if consider_decision is None:
                     return False, None
@@ -66029,6 +66507,13 @@ def _capacity_relief_inventory_keyword(
     if gear_catalog is None:
         return None
     descriptions = _inventory_descriptions(value)
+    for description in descriptions:
+        body_part = _INVENTORY_BODY_PART.match(normalize_item_name(description))
+        if body_part is not None:
+            # Dismembered body parts are live-generated food objects and do
+            # not have a stable source prototype. Their exact inventory
+            # selector is retained by the caller when it issues the command.
+            return body_part.group("part").casefold()
     duplicate_counts = Counter(normalize_item_name(description) for description in descriptions)
     hinted_vnums = {
         normalize_item_name(str(description)): int(vnum)

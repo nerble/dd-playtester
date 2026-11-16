@@ -8,6 +8,7 @@ from .hunt_candidates import (
     AFF_SANCTUARY, ITEM_INSTRUMENT, ITEM_ARMOR,
     ITEM_DONOT_RANDOMISE, ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND, ITEM_WEAPON,
     HuntCandidate, MobileSource, SourceCombatOutput, WorldSource,
+    WEAR_DUAL, WEAR_WIELD,
     _apply_mobile_damage_modifier, _mobile_normal_hit_damage,
 )
 from .specials import SAFE_NONCOMBAT_SPECIALS, source_special_profile
@@ -149,8 +150,18 @@ def single_weapon_loadout(
     *,
     allow_aggressive: bool = False,
     allow_specials: Collection[str] = (),
+    allow_dual_wield: bool = False,
+    allow_warrior_special_variance: bool = False,
 ) -> SingleWeaponLoadout | None:
-    """Audit a singleton prototype; movement never grants combat permission."""
+    """Audit a singleton prototype; movement never grants combat permission.
+
+    ``allow_dual_wield`` is reserved for a source-audited combat special whose
+    reset explicitly equips one wielded and one dual-wield weapon. Ordinary
+    armed-target checks remain single-weapon checks. The variance option is
+    narrower still: it permits only the exact ``spec_warrior`` reset to retain
+    source-randomised weapon prototypes and a source ``boss`` rank. It does
+    not relax armor, object-type, identity, or special-procedure checks.
+    """
     if world is None:
         return None
     candidate_specials = frozenset(candidate.specials)
@@ -174,14 +185,42 @@ def single_weapon_loadout(
         and warrior_profile.risk == "moderate-combat"
         and not warrior_profile.status_effects
     )
+    warrior_special_rejections = {
+        "target has special procedure spec_warrior",
+        "below-band transit aggressor is not an XP target",
+        "below-band wandering aggressor is not an XP target",
+    }
+    audited_warrior_special = bool(
+        requested_specials == {"spec_warrior"}
+        and candidate_specials == source_specials == {"spec_warrior"}
+        and "target has special procedure spec_warrior"
+        in set(candidate.autonomy_rejections)
+        and set(candidate.autonomy_rejections) <= warrior_special_rejections
+        and warrior_profile.xp_bonus == 10
+        and warrior_profile.risk == "moderate-combat"
+        and not warrior_profile.status_effects
+    )
+    audited_dual_wield = bool(allow_dual_wield and audited_warrior_special)
+    audited_warrior_variance = bool(
+        allow_warrior_special_variance and audited_dual_wield
+    )
     if (
-        not (candidate.autonomous_safe or audited_grok_special)
-        or len(candidate.equipped_weapons) != 1
+        not (
+            candidate.autonomous_safe
+            or audited_grok_special
+            or audited_warrior_special
+        )
+        or not candidate.equipped_weapons
+        or (
+            len(candidate.equipped_weapons) != 1
+            and not audited_dual_wield
+        )
         or candidate.source_spawn_limit != 1 or candidate.room_spawn_count != 1
         or candidate_specials != source_specials
         or not (
             source_specials <= SAFE_NONCOMBAT_SPECIALS
             or audited_grok_special
+            or audited_warrior_special
         )
     ):
         return None
@@ -194,7 +233,12 @@ def single_weapon_loadout(
         or not mobile.damage_modifier_known or mobile.damage_modifier is None
         or candidate.level != mobile.level
         or candidate.source_damage_modifier != mobile.damage_modifier
-        or mobile.rank.casefold() not in {"common", "none"}
+        or mobile.rank.casefold()
+        not in (
+            {"common", "none", "boss"}
+            if audited_warrior_variance
+            else {"common", "none"}
+        )
         or mobile.affected_flags & (_AFF_BATTLE_AURA | _AFF_GLOBE)
         or len(resets) != 1 or resets[0].room_vnum != candidate.room_vnum
         or resets[0].maximum_count != 1
@@ -203,8 +247,19 @@ def single_weapon_loadout(
     reset = resets[0]
     slots = [slot for slot, _vnum in reset.equipment]
     if (
-        len(slots) != len(set(slots)) or slots.count(16) != 1 or 18 in slots
+        len(slots) != len(set(slots)) or slots.count(16) != 1
+        or (18 in slots and not audited_dual_wield)
         or any(type(slot) is not int or not 0 <= slot <= 20 for slot in slots)
+    ):
+        return None
+    weapon_slots = tuple(
+        (slot, vnum)
+        for slot, vnum in reset.equipment
+        if slot in {16, 18}
+    )
+    if audited_dual_wield and any(
+        (item := world.objects.get(vnum)) is None or item.item_type != ITEM_WEAPON
+        for _slot, vnum in weapon_slots
     ):
         return None
     weapon_vnum = next(vnum for slot, vnum in reset.equipment if slot == 16)
@@ -218,6 +273,18 @@ def single_weapon_loadout(
         != normalize_item_name(candidate.equipped_weapons[0])
     ):
         return None
+    if audited_dual_wield:
+        source_weapon_names = tuple(
+            normalize_item_name(world.objects[vnum].short_description)
+            for _slot, vnum in weapon_slots
+        )
+        candidate_weapon_names = tuple(
+            normalize_item_name(name)
+            for name in candidate.equipped_weapons
+        )
+        if source_weapon_names != candidate_weapon_names:
+            return None
+    allowed_weapon_vnums = {vnum for _slot, vnum in weapon_slots}
     equipped_vnums = {vnum for _slot, vnum in reset.equipment}
     for vnum in set(reset.object_vnums) | equipped_vnums:
         item = world.objects.get(vnum)
@@ -228,7 +295,7 @@ def single_weapon_loadout(
         # not equip them. Reject combat items only when they are worn/held.
         if vnum in equipped_vnums and (
             item.item_type in {ITEM_PILL, ITEM_POTION, ITEM_SCROLL, ITEM_STAFF, ITEM_WAND}
-            or item.item_type == ITEM_WEAPON and vnum != weapon_vnum
+            or item.item_type == ITEM_WEAPON and vnum not in allowed_weapon_vnums
         ):
             return None
     damage_bonus = hitpoint_bonus = 0
@@ -237,11 +304,24 @@ def single_weapon_loadout(
     for _slot, vnum in reset.equipment:
         item = world.objects[vnum]
         fixed = bool(item.extra_flags & ITEM_DONOT_RANDOMISE)
+        randomized_warrior_equipment = bool(
+            audited_warrior_variance
+            and not fixed
+        )
         # db.c uses prototype level - 2 for reset gear. Fickle items can use
         # the strong randomiser even at low levels, introducing new affects.
         weak = bool(item.extra_flags & (1 << 38)) or mobile.level - 2 < 40
-        if not fixed and (item.extra_flags & (1 << 39) or not weak):
+        if (
+            not fixed
+            and not randomized_warrior_equipment
+            and (item.extra_flags & (1 << 39) or not weak)
+        ):
             return None
+        if randomized_warrior_equipment:
+            # db.c randomizes this reset's non-fixed equipment. Keep source
+            # identity, slot, type, and castable-item checks above, but do not
+            # treat incidental prototype affects as stable combat estimates.
+            continue
         for location, amount in item.affects:
             if type(location) is not int or type(amount) is not int:
                 return None

@@ -429,6 +429,15 @@ def test_route_invisibility_supply_accepts_source_potion_and_safe_vendor_special
     assert plan.purchase.quantity == 1
     assert plan.commands == ("east",)
     assert plan.required_move > 0
+    state["inventory"] = [[{
+        "short_desc": "a clear potion of invisibility",
+    }]]
+    assert route_invisibility_supply(
+        world,
+        state,
+        carried_descriptions=["a clear potion of invisibility"],
+        ignore_attempt=True,
+    ) is None
     state[ROUTE_INVISIBILITY_SUPPLY_KEY] = {
         "boot_id": "boot",
         "level": 45,

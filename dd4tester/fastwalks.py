@@ -151,6 +151,10 @@ class Fastwalk:
     # rooms, and never grant objective XP.
     route_allowed_armed_transit_mobile_vnums: tuple[int, ...] = ()
     route_allowed_armed_transit_room_vnums: tuple[str, ...] = ()
+    # Exact source-identified current-band route interruptions must pass a
+    # fresh live `consider` before the ordinary combat controller opens. This
+    # includes unarmed fixed sentinels as well as armed wanderers.
+    route_consider_transit_mobile_vnums: tuple[int, ...] = ()
     # Source-capacity research may inspect a live endpoint, but it must never
     # turn a transit interruption into a combat exception.
     no_combat_probe: bool = False

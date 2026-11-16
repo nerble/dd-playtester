@@ -69,6 +69,85 @@ def test_aggressive_weapon_loadout_requires_explicit_singleton_admission() -> No
     assert admitted.weapon_vnum == 201
 
 
+def test_audited_warrior_special_can_use_exact_dual_wield_reset() -> None:
+    candidate, world = loadout_fixture()
+    offhand = ObjectSource(
+        204, "dagger", "a dagger", 5, (0, 0, 0, 2), 0,
+        affects=((19, 1),),
+    )
+    world.objects[204] = offhand
+    world.mobile_specials[101] = ("spec_warrior",)
+    world.mobiles[101] = replace(
+        world.mobiles[101], act_flags=ACT_AGGRESSIVE,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        equipment=world.mob_resets[0].equipment + ((18, 204),),
+    )
+    candidate = replace(
+        candidate,
+        equipped_weapons=("a sword", "a dagger"),
+        specials=("spec_warrior",),
+        autonomy_rejections=("target has special procedure spec_warrior",),
+    )
+
+    assert single_weapon_loadout(candidate, world) is None
+    loadout = single_weapon_loadout(
+        candidate,
+        world,
+        allow_aggressive=True,
+        allow_specials={"spec_warrior"},
+        allow_dual_wield=True,
+    )
+
+    assert loadout is not None
+    assert loadout.weapon_vnum == 201
+
+
+def test_warrior_special_variance_allows_source_boss_randomized_weapons() -> None:
+    candidate, world = loadout_fixture()
+    offhand = ObjectSource(
+        204, "dagger", "a dagger", 5, (0, 0, 0, 2), 0,
+        affects=((19, 1),),
+    )
+    world.objects[204] = offhand
+    world.mobile_specials[101] = ("spec_warrior",)
+    world.mobiles[101] = replace(
+        world.mobiles[101], level=45, rank="boss", act_flags=ACT_AGGRESSIVE,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        equipment=world.mob_resets[0].equipment + ((18, 204),),
+    )
+    candidate = replace(
+        candidate,
+        level=45,
+        estimated_level_range=(43, 47),
+        equipped_weapons=("a sword", "a dagger"),
+        specials=("spec_warrior",),
+        autonomy_rejections=("target has special procedure spec_warrior",),
+    )
+
+    assert single_weapon_loadout(
+        candidate,
+        world,
+        allow_aggressive=True,
+        allow_specials={"spec_warrior"},
+        allow_dual_wield=True,
+    ) is None
+    loadout = single_weapon_loadout(
+        candidate,
+        world,
+        allow_aggressive=True,
+        allow_specials={"spec_warrior"},
+        allow_dual_wield=True,
+        allow_warrior_special_variance=True,
+    )
+
+    assert loadout is not None
+    assert loadout.weapon_vnum == 201
+
+
 def test_nonrandomised_loadout_keeps_exact_affects() -> None:
     candidate, world = loadout_fixture()
     world.objects = {vnum: replace(item, extra_flags=1 << 37)

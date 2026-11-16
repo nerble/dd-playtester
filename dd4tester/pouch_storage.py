@@ -105,7 +105,7 @@ class HealerPouchStorage:
 
     @property
     def pending(self) -> bool:
-        return self.phase in {"audit", "put", "inventory"}
+        return self.phase in {"audit", "baseline", "put", "inventory"}
 
     def _begin_reply(self, phase: str, now: float) -> None:
         self.phase, self.deadline, self.buffer = phase, now + 5, ""
@@ -166,8 +166,22 @@ class HealerPouchStorage:
                     self.phase = "unavailable"
                     self.deadline = None
                     return None
-            self._begin_reply("put", now)
-            return f"put {plan.potion_keyword} {plan.pouch_keyword}"
+            # Capacity-changing commands may have run before this audit (for
+            # example, quaffing a route potion). Refresh the carry count just
+            # before the first put so the final audit compares like with like.
+            self._begin_reply("baseline", now)
+            return "inventory"
+        if self.phase == "baseline":
+            match = re.search(
+                r"^\s*You are carrying (\d+)/(\d+) items\.\s*$",
+                response,
+                re.MULTILINE,
+            )
+            if match and "your backpack contains:" in response.casefold():
+                self.before_count = int(match[1])
+                self._begin_reply("put", now)
+                return f"put {plan.potion_keyword} {plan.pouch_keyword}"
+            return None
         if self.phase == "put":
             replies = re.findall(r"^\s*You put (.+?) in (.+)\.[ \t]*\n", response, re.MULTILINE)
             if any(normalize_item_name(item) == normalize_item_name(plan.potion_name)

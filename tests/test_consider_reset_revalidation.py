@@ -119,6 +119,15 @@ def test_area_reset_opens_one_exact_live_consider_recheck() -> None:
     assert _consume_source_ranked_consider_fuzz_revalidation(
         armed, candidate, character_level=39
     )
+    reset_marker = armed[_SOURCE_RANKED_CONSIDER_RESET_WAIT_KEY]
+    assert reset_marker["revalidation_count"] == 1
+    assert reset_marker["revalidation_targets"] == [
+        {
+            "policy_id": policy_id,
+            "mobile_vnum": candidate.mobile_vnum,
+            "room_vnum": candidate.room_vnum,
+        }
+    ]
     assert armed[_SOURCE_RANKED_CONSIDER_FUZZ_REVALIDATION_HISTORY_KEY][0][
         "policy_id"
     ] == policy_id

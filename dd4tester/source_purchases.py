@@ -233,7 +233,7 @@ def route_invisibility_supply(
         or state["hp"] < state["max_hp"] * 0.95
         or any(
             normalize_item_name(description)
-            == "a clear potion of invisibility"
+            == normalize_item_name("a clear potion of invisibility")
             for description in carried_descriptions
         )
     ):

@@ -63,7 +63,13 @@ def test_storage_never_counts_healer_chatter_as_empty_pouch() -> None:
     assert storage.next_command(39, 38, now=1) is None
     assert storage.phase == "audit"
     storage.observe("A small leather pouch contains:\nNothing.\n" + PROMPT, now=2)
-    assert storage.next_command(39, 38, now=2) == "put clear beltpouch"
+    assert storage.next_command(39, 38, now=2) == "inventory"
+    assert storage.phase == "baseline"
+    storage.observe(
+        "Your backpack contains:\nYou are carrying 39/40 items.\n" + PROMPT,
+        now=3,
+    )
+    assert storage.next_command(39, 40, now=3) == "put clear beltpouch"
 
 
 def test_storage_preserves_existing_pouch_contents() -> None:
@@ -113,7 +119,12 @@ def test_storage_accepts_known_safe_nonempty_pouch_contents_with_capacity() -> N
         "enchanted prayer beads\n" + PROMPT,
         now=1,
     )
-    assert storage.next_command(38, 38, now=1) == "put invisible beltpouch"
+    assert storage.next_command(38, 38, now=1) == "inventory"
+    storage.observe(
+        "Your backpack contains:\nYou are carrying 38/38 items.\n" + PROMPT,
+        now=2,
+    )
+    assert storage.next_command(38, 38, now=2) == "put invisible beltpouch"
     assert storage.phase == "put"
 
 
@@ -129,7 +140,12 @@ def test_storage_requires_each_acknowledgement_and_fresh_capacity() -> None:
     storage = HealerPouchStorage()
     storage.begin(_plan(), 39, now=0)
     storage.observe("A small leather pouch contains:\nNothing.\n" + PROMPT, now=1)
-    assert storage.next_command(39, 38, now=1) == "put clear beltpouch"
+    assert storage.next_command(39, 38, now=1) == "inventory"
+    storage.observe(
+        "Your backpack contains:\nYou are carrying 39/38 items.\n" + PROMPT,
+        now=1.5,
+    )
+    assert storage.next_command(39, 38, now=1.5) == "put clear beltpouch"
     storage.observe("The Healer smiles.\n" + PROMPT, now=2)
     assert storage.next_command(39, 38, now=2) is None
     storage.observe("You put a clear potion in a small leather pouch.\n", now=2.5)
@@ -168,7 +184,12 @@ def test_storage_can_free_capacity_with_duplicate_source_pills() -> None:
     storage = HealerPouchStorage()
     assert storage.begin(plan, 41, now=0) == "look in beltpouch"
     storage.observe("A small leather pouch contains:\nNothing.\n" + PROMPT, now=1)
-    assert storage.next_command(41, 41, now=1) == "put enchanted beltpouch"
+    assert storage.next_command(41, 41, now=1) == "inventory"
+    storage.observe(
+        "Your backpack contains:\nYou are carrying 41/41 items.\n" + PROMPT,
+        now=1.5,
+    )
+    assert storage.next_command(41, 41, now=1.5) == "put enchanted beltpouch"
     storage.observe("You put enchanted prayer beads in a small leather pouch.\n", now=2)
     assert storage.next_command(40, 41, now=2) == "put enchanted beltpouch"
     storage.observe("You put enchanted prayer beads in a small leather pouch.\n", now=3)
@@ -191,7 +212,12 @@ def test_storage_release_refusal_is_bounded_without_counting_capacity() -> None:
     storage = HealerPouchStorage()
     storage.begin(_plan(), 39, now=0)
     storage.observe("A small leather pouch contains:\nNothing.\n" + PROMPT, now=1)
-    storage.next_command(39, 38, now=1)
+    assert storage.next_command(39, 38, now=1) == "inventory"
+    storage.observe(
+        "Your backpack contains:\nYou are carrying 39/38 items.\n" + PROMPT,
+        now=1.5,
+    )
+    assert storage.next_command(39, 38, now=1.5) == "put clear beltpouch"
     storage.observe("You can't let go of it.\n", now=2)
     assert storage.next_command(39, 38, now=2) is None
     assert storage.phase == "unavailable" and storage.packed == 0

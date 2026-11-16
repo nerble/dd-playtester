@@ -171,6 +171,28 @@ def test_short_active_flight_does_not_clear_recorded_funding(duration, requires_
     assert campaign._recorded_flight_funding_shortfall(observed) is requires_funding
 
 
+def test_inline_route_failure_receipt_reopens_bank_funding_after_flag_reconciliation():
+    observed = {
+        **state(),
+        "magic_shop_purchase_failed": False,
+        "campaign_flight_preparation": {
+            "run_id": 91,
+            "level": 46,
+            "boot_id": "boot",
+            "reason": "funds",
+            "status": "failed",
+        },
+        "campaign_flight_purchase_failure": {
+            "run_id": 91,
+            "level": 46,
+            "boot_id": "boot",
+            "reason": "funds",
+        },
+    }
+
+    assert campaign._recorded_flight_funding_shortfall(observed)
+
+
 @pytest.mark.parametrize("case", ["capacity", "other_boot", "other_level", "cleared"])
 def test_flight_funding_requires_current_funds_failure(case):
     receipt = {"reason": "funds", "boot_id": "boot", "level": 46}
