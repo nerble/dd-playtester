@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+import dd4tester.hunt_candidates as hunt_candidates_module
+
 from dd4tester.fastwalks import route_named
 from dd4tester.source_paths import (
     LIVE_UNDEPLOYED_TEMPLATE_NAMES,
@@ -127,6 +129,61 @@ def test_ordered_singleton_reset_uses_first_live_room_only() -> None:
     assert [(reset.room_vnum, reset.maximum_count) for reset in pit_resets] == [
         (13702, 1),
     ]
+
+
+def test_rank_hunt_candidates_reuses_source_indexes_within_analysis_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = WorldSource(
+        mobiles={
+            100: MobileSource(
+                100,
+                "orc",
+                "an orc",
+                10,
+                0,
+                0,
+                "target.are",
+            ),
+        },
+        rooms={
+            3001: RoomSource(
+                3001,
+                "Recall",
+                "midgaard.are",
+                exits={"north": ExitSource("north", 7001, 0, -1)},
+            ),
+            7001: RoomSource(7001, "Target Room", "target.are"),
+        },
+        mob_resets=[MobReset(100, 7001, 1, ())],
+    )
+    cache: dict[object, object] = {}
+    calls = {"resets": 0, "hazards": 0}
+    original_resets = hunt_candidates_module._effective_mob_resets
+    original_hazards = hunt_candidates_module._route_hazard_rooms
+
+    def count_resets(*args: object, **kwargs: object) -> object:
+        calls["resets"] += 1
+        return original_resets(*args, **kwargs)
+
+    def count_hazards(*args: object, **kwargs: object) -> object:
+        calls["hazards"] += 1
+        return original_hazards(*args, **kwargs)
+
+    monkeypatch.setattr(hunt_candidates_module, "_effective_mob_resets", count_resets)
+    monkeypatch.setattr(hunt_candidates_module, "_route_hazard_rooms", count_hazards)
+
+    for _ in range(2):
+        candidates = rank_hunt_candidates(
+            world,
+            character_level=15,
+            include_xp_only=True,
+            include_all_areas=True,
+            analysis_cache=cache,
+        )
+        assert candidates
+
+    assert calls == {"resets": 1, "hazards": 1}
 
 
 def test_required_consumable_can_rank_a_carrier_without_saleable_loot() -> None:
@@ -2031,6 +2088,34 @@ def test_live_source_restores_audited_legacy_goblin_visitor() -> None:
     assert visitor.damage_modifier == 0
     assert visitor.damage_modifier_known is True
     assert visitor.live_compatibility_source_revision == (
+        "e48256a59aa326cd99fe6669dddf896d690bcade"
+    )
+
+
+def test_live_source_restores_audited_legacy_goblin_cook() -> None:
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        include_all_objects=True,
+        live_deployment=True,
+    )
+
+    cook = world.mobiles[20306]
+    assert cook.template_name is None
+    assert cook.level == 47
+    assert cook.alignment == -200
+    assert cook.act_flags == 66
+    assert cook.affected_flags == 516
+    assert cook.body_form_flags is None
+    assert cook.hp_modifier == 0
+    assert cook.hp_modifier_known is True
+    assert cook.damage_modifier == 0
+    assert cook.damage_modifier_known is True
+    assert cook.crit_modifier == 0
+    assert cook.crit_modifier_known is True
+    assert cook.haste_modifier == 0
+    assert cook.haste_modifier_known is True
+    assert cook.live_compatibility_source_revision == (
         "e48256a59aa326cd99fe6669dddf896d690bcade"
     )
 

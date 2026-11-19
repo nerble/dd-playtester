@@ -7,6 +7,7 @@ import queue
 import sqlite3
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -73,6 +74,19 @@ _EXPERIMENT_STARTING_STATE_FIELDS = frozenset(
 class _WriterControl:
     command: str
     completed: threading.Event
+
+
+@dataclass(frozen=True)
+class CampaignSegmentLease:
+    """Identity and liveness receipt for one running campaign segment."""
+
+    campaign_id: int
+    segment_id: int
+    sequence: int
+    phase: str
+    owner_token: str
+    started_at: str
+    heartbeat_at: str
 
 
 def _record_combat_observation(
@@ -697,6 +711,7 @@ class RunStorage:
         self.read_only = read_only
         self._events_since_commit = 0
         self._observation_writer: _BoundedObservationWriter | None = None
+        self._active_campaign_segment_lease: CampaignSegmentLease | None = None
         self._initial_state_checkpoint_queued: set[int] = set()
         self._last_observed_levels: dict[int, int] = {}
         self._recent_campaign_segments_cache: dict[
@@ -972,6 +987,8 @@ class RunStorage:
                 phase TEXT NOT NULL,
                 run_id INTEGER,
                 started_at TEXT NOT NULL,
+                owner_token TEXT,
+                heartbeat_at TEXT,
                 finished_at TEXT,
                 status TEXT NOT NULL,
                 start_state_json TEXT NOT NULL,
@@ -1102,6 +1119,11 @@ class RunStorage:
             row["name"]
             for row in self.connection.execute("PRAGMA table_info(campaign_segments)")
         }
+        for column in ("owner_token", "heartbeat_at"):
+            if column not in segment_columns:
+                self.connection.execute(
+                    f"ALTER TABLE campaign_segments ADD COLUMN {column} TEXT"
+                )
         for column in (
             "execution_status", "objective_outcome", "safety_outcome", "metrics_json",
         ):
@@ -4543,18 +4565,23 @@ class RunStorage:
                 (campaign_id,),
             ).fetchone()[0]
         )
+        started_at = _now()
+        owner_token = uuid.uuid4().hex
         cursor = self.connection.execute(
             """
             INSERT INTO campaign_segments (
-                campaign_id, sequence, phase, started_at, status, start_state_json
+                campaign_id, sequence, phase, started_at, owner_token,
+                heartbeat_at, status, start_state_json
             )
-            VALUES (?, ?, ?, ?, 'running', ?)
+            VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
             """,
             (
                 campaign_id,
                 sequence,
                 phase,
-                _now(),
+                started_at,
+                owner_token,
+                started_at,
                 json.dumps(start_state, sort_keys=True),
             ),
         )
@@ -4568,7 +4595,73 @@ class RunStorage:
         )
         self.connection.commit()
         self._invalidate_campaign_history(campaign_id)
-        return int(cursor.lastrowid)
+        segment_id = int(cursor.lastrowid)
+        self._active_campaign_segment_lease = CampaignSegmentLease(
+            campaign_id=campaign_id,
+            segment_id=segment_id,
+            sequence=sequence,
+            phase=phase,
+            owner_token=owner_token,
+            started_at=started_at,
+            heartbeat_at=started_at,
+        )
+        return segment_id
+
+    def get_campaign_segment_lease(
+        self,
+        segment_id: int,
+    ) -> CampaignSegmentLease | None:
+        """Return the exact owner/liveness receipt for a segment."""
+        row = self.connection.execute(
+            """
+            SELECT campaign_id, id, sequence, phase, owner_token,
+                   started_at, heartbeat_at
+            FROM campaign_segments
+            WHERE id = ?
+            """,
+            (segment_id,),
+        ).fetchone()
+        if row is None or not row["owner_token"]:
+            return None
+        return CampaignSegmentLease(
+            campaign_id=int(row["campaign_id"]),
+            segment_id=int(row["id"]),
+            sequence=int(row["sequence"]),
+            phase=str(row["phase"]),
+            owner_token=str(row["owner_token"]),
+            started_at=str(row["started_at"]),
+            heartbeat_at=str(row["heartbeat_at"] or row["started_at"]),
+        )
+
+    def heartbeat_campaign_segment(
+        self,
+        lease: CampaignSegmentLease,
+    ) -> bool:
+        """Refresh liveness only while this worker still owns the segment."""
+        if self.read_only:
+            return False
+        heartbeat_at = _now()
+        cursor = self.connection.execute(
+            """
+            UPDATE campaign_segments
+            SET heartbeat_at = ?
+            WHERE id = ? AND status = 'running' AND owner_token = ?
+            """,
+            (heartbeat_at, lease.segment_id, lease.owner_token),
+        )
+        if cursor.rowcount != 1:
+            return False
+        self.connection.commit()
+        self._active_campaign_segment_lease = CampaignSegmentLease(
+            campaign_id=lease.campaign_id,
+            segment_id=lease.segment_id,
+            sequence=lease.sequence,
+            phase=lease.phase,
+            owner_token=lease.owner_token,
+            started_at=lease.started_at,
+            heartbeat_at=heartbeat_at,
+        )
+        return True
 
     def finish_campaign_segment(
         self,
@@ -4669,31 +4762,51 @@ class RunStorage:
         self._ensure_campaign_usage(campaign_id)
         old_commands = int(campaign_row["command_count"] or 0)
         old_duration = float(campaign_row["duration_seconds"] or 0)
-        self.connection.execute(
-            """
+        finished_at = _now()
+        active_lease = self._active_campaign_segment_lease
+        owns_segment = (
+            active_lease is not None
+            and active_lease.segment_id == int(segment_id)
+        )
+        update_sql = """
             UPDATE campaign_segments
-            SET run_id = ?, finished_at = ?, status = ?, end_state_json = ?,
+            SET run_id = ?, finished_at = ?, heartbeat_at = ?, status = ?,
+                end_state_json = ?,
                 command_count = ?, duration_seconds = ?, error = ?,
                 execution_status = ?, objective_outcome = ?, safety_outcome = ?,
                 objective_outcome_override = ?, metrics_json = ?
             WHERE id = ?
-            """,
-            (
-                run_id,
-                _now(),
-                status,
-                json.dumps(end_state, sort_keys=True) if end_state is not None else None,
-                command_count,
-                duration_seconds,
-                error,
-                execution_status or status,
-                objective_outcome,
-                safety_outcome or "unknown",
-                int(prefer_segment_objective_outcome),
-                json.dumps(segment_metrics, sort_keys=True),
-                segment_id,
-            ),
+        """
+        update_parameters: tuple[Any, ...] = (
+            run_id,
+            finished_at,
+            finished_at,
+            status,
+            json.dumps(end_state, sort_keys=True) if end_state is not None else None,
+            command_count,
+            duration_seconds,
+            error,
+            execution_status or status,
+            objective_outcome,
+            safety_outcome or "unknown",
+            int(prefer_segment_objective_outcome),
+            json.dumps(segment_metrics, sort_keys=True),
+            segment_id,
         )
+        if owns_segment:
+            update_sql = update_sql.rstrip() + (
+                " AND status = 'running' AND owner_token = ?"
+            )
+            update_parameters += (active_lease.owner_token,)
+        cursor = self.connection.execute(
+            update_sql,
+            update_parameters,
+        )
+        if owns_segment and cursor.rowcount != 1:
+            # A recovery process may have taken the segment after this worker
+            # vanished.  Its late cleanup must not overwrite the recovery
+            # outcome or inflate campaign totals.
+            return
         self.connection.execute(
             """
             UPDATE campaign_usage
@@ -4711,6 +4824,8 @@ class RunStorage:
         )
         self.connection.commit()
         self._invalidate_campaign_history(campaign_id)
+        if owns_segment:
+            self._active_campaign_segment_lease = None
 
         if run_id is not None:
             self.save_compact_campaign_run_summary(
@@ -4722,9 +4837,10 @@ class RunStorage:
         cursor = self.connection.execute(
             """
             SELECT id, campaign_id, sequence, phase, run_id, started_at, finished_at,
-                   status, start_state_json, end_state_json, command_count,
-                   duration_seconds, error, execution_status, objective_outcome,
-                   safety_outcome, metrics_json
+                   owner_token, heartbeat_at, status, start_state_json,
+                   end_state_json, command_count, duration_seconds, error,
+                   execution_status, objective_outcome, safety_outcome,
+                   metrics_json
             FROM campaign_segments
             WHERE campaign_id = ?
             ORDER BY sequence
@@ -5282,8 +5398,9 @@ class RunStorage:
             self.connection.execute(
                 f"""
                 SELECT id, campaign_id, sequence, phase, run_id, started_at,
-                       finished_at, status{outcomes}, start_state_json, end_state_json,
-                       command_count, duration_seconds, error
+                       finished_at, owner_token, heartbeat_at, status{outcomes},
+                       start_state_json, end_state_json, command_count,
+                       duration_seconds, error
                 FROM campaign_segments
                 WHERE id IN ({placeholders})
                 ORDER BY sequence, id
@@ -5307,7 +5424,8 @@ class RunStorage:
             raise ValueError("limit must be between 1 and 256")
         rows = self.connection.execute(
             """
-            SELECT id, campaign_id, sequence, phase, run_id, status
+            SELECT id, campaign_id, sequence, phase, run_id, status,
+                   owner_token, heartbeat_at
             FROM campaign_segments
             WHERE campaign_id = ?
             ORDER BY sequence DESC

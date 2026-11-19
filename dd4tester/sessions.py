@@ -60,6 +60,18 @@ class CombatSessionController:
 
 
 @dataclass
+class ConsiderSessionController:
+    """Own one live ``consider`` result and its observation-only addenda."""
+
+    target: str | None = None
+    target_selector: str | None = None
+    viable: bool | None = None
+    health_warning: bool = False
+    player_health_advantage: bool = False
+    level_offset_ceiling: int | None = None
+
+
+@dataclass
 class TravelSessionController:
     """Own the active policy's bounded route and stop cursors."""
 
@@ -115,6 +127,9 @@ class LiveSessionState:
     combat: CombatSessionController = field(
         default_factory=CombatSessionController,
     )
+    consider: ConsiderSessionController = field(
+        default_factory=ConsiderSessionController,
+    )
     travel: TravelSessionController = field(
         default_factory=TravelSessionController,
     )
@@ -129,6 +144,83 @@ class LiveSessionState:
 
     def apply(self, event: Any) -> bool:
         return self.character.apply(event)
+
+
+@dataclass
+class CampaignDecisionContext:
+    """Own derived selector work for one campaign decision attempt.
+
+    The durable checkpoint remains a plain mapping because it is the storage
+    contract.  All derived indexes, frontier snapshots, and recursion guards
+    live here instead of being scattered across the campaign runner.
+    """
+
+    source_ranked_candidates_cache: dict[Any, Any] = field(default_factory=dict)
+    source_ranked_frontier_snapshot_cache: dict[Any, Any] = field(
+        default_factory=dict
+    )
+    # The latest ordinary frontier is the shared input for adjacent policy
+    # controllers, such as required-gear selection. Keeping it here avoids a
+    # second full source scan and prevents older cache entries from leaking
+    # into the current decision.
+    source_ranked_frontier_candidates: tuple[Any, ...] = ()
+    source_ranked_method_cache: dict[Any, Any] = field(default_factory=dict)
+    source_ranked_navigation_cache: dict[Any, Any] = field(default_factory=dict)
+    source_ranked_historical_state_cache: dict[Any, Any] = field(default_factory=dict)
+    source_ranked_invisibility_supply_cache: dict[Any, Any] = field(default_factory=dict)
+    source_frontier_attempt_key: Any = None
+    source_frontier_attempt_completed: bool = False
+    selector_handoff_used: bool = False
+    selector_selection_depth: int = 0
+    selector_budget_exhausted: bool = False
+
+    def reset_selection_window(self) -> None:
+        """Reset bounded per-selection controls without discarding source indexes."""
+        self.source_ranked_frontier_snapshot_cache.clear()
+        self.source_ranked_frontier_candidates = ()
+        self.source_ranked_method_cache.clear()
+        self.source_frontier_attempt_key = None
+        self.source_frontier_attempt_completed = False
+        self.selector_handoff_used = False
+        self.selector_selection_depth = 0
+        self.selector_budget_exhausted = False
+
+
+@dataclass
+class CampaignStateOwner:
+    """Own the mutable checkpoint mapping at campaign lifecycle boundaries.
+
+    Policy helpers may return a replacement mapping while repairing history.
+    Binding each replacement here makes that transition explicit and gives the
+    runner one place to associate the durable state with its decision context.
+    This is deliberately a lightweight owner: it does not copy or serialize
+    the full state during ordinary reads.
+    """
+
+    state: dict[str, Any] | None = None
+    boundary: str = "uninitialized"
+    generation: int = 0
+    decision: CampaignDecisionContext = field(default_factory=CampaignDecisionContext)
+
+    def bind(self, state: Mapping[str, Any], boundary: str) -> dict[str, Any]:
+        if not isinstance(state, Mapping):
+            raise TypeError("campaign state must be a mapping")
+        bound = state if isinstance(state, dict) else dict(state)
+        if self.state is not bound:
+            self.state = bound
+            self.generation += 1
+        self.boundary = str(boundary)
+        return bound
+
+    def require(self) -> dict[str, Any]:
+        if self.state is None:
+            raise RuntimeError("campaign state has not been bound")
+        return self.state
+
+    def mark_boundary(self, boundary: str) -> None:
+        """Record a lifecycle boundary without copying the checkpoint."""
+        self.require()
+        self.boundary = str(boundary)
 
 
 @dataclass(frozen=True)

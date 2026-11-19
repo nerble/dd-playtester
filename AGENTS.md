@@ -9,8 +9,95 @@ equipment, probe, and automatic-withdrawal rules below. Keep target HP as
 observation/report evidence only. Keep the character's own health withdrawal
 floor, level limits, source hazards, identity, provisioning and recovery checks.
 Do not flee because a target is a tank or exceeds a predicted damage budget.
+The live `consider` result is owned by `ConsiderSessionController` under
+`LiveSessionState`: its relative-level admission is separate from
+`health_warning` and `player_health_advantage` observations. Never use either
+health observation to reject or withdraw from a target.
+
+Every ordinary combat selector, compact handoff, and frontier report must use
+the same runtime safety boundary. `HuntCandidate.autonomous_safe` may
+retain source-output labels for historical evidence, but those labels alone
+must not suppress a source-eligible candidate or appear as a hard diagnosis
+blocker. Use the runtime predicate and keep genuine source hazards, live
+negative `consider`, crowd, loss, route, and provisioning evidence strict.
+
+Required-gear carrier ranking and the later campaign handoff must use the same
+boundary: a `reject` status caused only by unknown HP, damage, critical, or
+swiftness estimates is report evidence and remains probeable. Real carrier
+route, special, crowd, identity, level, loss, and carrying gates stay strict.
+Do not apply a source peak/critical damage budget to close an otherwise eligible
+gear carrier; those estimates remain evidence while the live stop enforces the
+pilot's own health floor and exact hazard checks.
+A failed source-gear segment with no run and zero commands is a setup failure,
+not a completed route attempt: repair its `started` receipt as
+`interrupted_before_dispatch` and allow the exact carrier to re-enter the next
+bounded decision.
+
+Offline readiness reports are bounded diagnostics. Reuse a ranked hunt frontier
+when adding gear analysis; if source loading or ranking exceeds the report's
+time budget, return an explicit incomplete result and never imply live
+authorization or a completed frontier audit.
 
 ## Progression Bias
+
+Optimize for useful XP per real minute. A trailing run of safe segments with
+no XP is a rotation hint, not a target ban or reboot-scoped retry quota. Keep
+loss, crowd, route, identity, provisioning, health-floor, and live negative
+`consider` evidence hard; otherwise allow the next bounded source/live check
+to re-enter the candidate pool. Do not dispatch a maintenance-only or absent
+route merely because ordinary history was over-filtered.
+
+## Special-Function Target Policy
+
+A mobile special procedure is behavior evidence, not a blanket target veto.
+When the candidate's special list exactly matches the source mobile, let it
+reach live identity and `consider` checks under the ordinary route, crowd,
+level, provisioning, recovery, and 20% own-health gates. A special is never a
+static Sanctuary, cure, energy-containment, damage, or output veto. Keep
+concrete non-special hazards strict: route attackers, scripts, crowds, player
+relocation, fame costs, identity mismatches, and hard route failures. Never use
+`target has special procedure ...` as the final reason to reject an otherwise
+eligible XP target; handle the observed effect after combat begins.
+
+## Decision Ownership And Liveness
+
+One campaign policy decision owns one bounded source-frontier attempt. A
+same-state selector timeout is liveness evidence, not proof that the frontier
+is empty and not permission to repeat the scan. At a safe healer checkpoint,
+the selector may hand control to an exact, source-audited Sanctuary carrier or
+Moria recovery route; that handoff is `exact_only` and cannot start broad
+carrier rotation. Preserve the original timeout receipt and mark it
+`handed_off` so the next checkpoint can make a fresh decision after the
+maintenance segment. Protection recovery still requires the current-level,
+current-boot protection marker and a genuinely unavailable usable reserve.
+
+Keep source ranking, resource recovery, live execution, and outcome reporting
+as separate owners. A recovery handoff does not grant combat permission, and a
+maintenance segment does not count as an XP hunt.
+
+Campaign segment lifecycle is owned by `RunStorage`: a running segment has one
+owner token and a durable heartbeat. The campaign runner refreshes that lease
+while the live worker is active; recovery may close a stale segment, and late
+cleanup from the old worker must not overwrite the recovered outcome. Keep
+heartbeat metadata separate from game observations and never treat a missing
+heartbeat as a game result.
+
+Required-loot protection routes obey the same route contract as ordinary
+hunts. A source carrier may remain valuable research evidence while an
+unbounded crowd, special, attack program, or hard route hazard keeps its live
+dispatch closed; never bypass that gate merely because the missing resource is
+needed by a later target.
+
+If the exact maintenance owner is unavailable at a safe healer checkpoint, use
+one world-time probe to invalidate the stale selector receipt. Do not clear the
+receipt or reopen broad source rotation in the same decision; the next
+checkpoint gets the fresh frontier attempt.
+
+An exact Sanctuary staff retained through a same-boot, same-level inventory
+visibility gap remains a usable reserve when the gap has no death or XP-loss
+evidence and detection is not active. The resource owner may use that receipt
+for reserve decisions; a fresh inventory packet with detection active or a
+boot/level change must disprove it before resupply is considered.
 
 Runtime boundaries must never close a connection while the character is still
 fighting. `request_runtime_boundary()` assigns a finite cleanup deadline from
@@ -49,11 +136,12 @@ Never extend this stock proof to armour bought in from players. One legacy
 false no-offer pouch receipt may get a corrected completed visit; that visit
 owns future retry/funding decisions, without reopening combat losses.
 
-Ordinary fixed-reset circuits may include source-matched `spec_cast_adept`
-only, as well as no special. That routine stops during combat; mixed, unknown,
-or mismatched specials remain excluded. Keep all source loadout, route,
-identity, live consider, loss, crowd, own-health and finite-stop checks. Do not
-apply the higher-risk continuation threshold solely for this noncombat routine.
+Ordinary fixed-reset circuits may include any exact source-matched special
+procedure, not only `spec_cast_adept`, as well as no special. A procedure is
+live behavior evidence, not a generic rejection; mixed or mismatched source
+metadata remains an identity failure. Keep all source loadout, route, identity,
+live consider, loss, crowd, own-health and finite-stop checks, but do not add a
+protection or recovery prerequisite merely because the target has a special.
 Measured singleton winners may expand through the existing circuit builder
 using independently admitted, completed peers. A tied current winner may
 expand, but must not replace an already-owned circuit. Persist the exact member
@@ -112,6 +200,14 @@ active counter to zero; requiring productive flightless hunts first is a
 deadlock. Keep the historical refusal and separate shop-route blocks/cooldowns.
 Capacity is never funds;
 neither a quote nor a bank withdrawal proves purchase or flight readiness.
+
+An exact source-ranked flight receipt is single-use for the target it prepared.
+When that target reaches a terminal live absence, reconciliation consumes the
+receipt and leaves the exact absence ledger available for ordinary rotation.
+On resume, repair a legacy `prepared` receipt only when the saved absence
+matches its policy, mobile, room, boot, and level; a missing candidate cache is
+not permission to replay maintenance. A maintenance-only or absent segment is
+never XP progress.
 
 Visibility-capacity preparation must yield to a pending carrying-cleanup
 reply before using a newer free-slot count. The drop, sacrifice and inventory
@@ -497,24 +593,36 @@ When several loss-free current-band absence candidates are eligible, rotate
 through candidates without a same-context dispatch receipt before revisiting
 one already checked. This is a selection aid only; once the alternatives have
 also been checked, the original target remains reusable under the normal gates.
+A pre-dispatch absence marker is an active handoff reservation, not a live
+attempt. If final selection binds a different exact source policy before a
+segment opens, restore the saved absence result and clear only that reservation;
+only a segment-start receipt may mark the absence retry as dispatched. Do not
+let an abandoned reservation erase historical evidence or trigger another
+full source scan on the next invocation.
+A below-band, absent, or preparation-only detour does not release the exact
+spent absence handoff. Release it only after an independent source hunt has
+produced progression XP, or after a completed area-reset boundary explicitly
+authorizes one fresh locator check; never use a nonproductive visit to justify
+an immediate repeat of the same empty room.
 If the ordinary source frontier is otherwise unavailable, one normal campaign
 invocation may reopen one loss-free current-band absence for a bounded live
 recheck. This automatic rotation is not a reboot wait or retry quota, and it
 must preserve exact current-level, prior-level, and same-mobile loss closures.
-Treat `spec_cast_psionicist` as a hard protection gate. Source `special.c`
-opens energy drain at mobile level 14 and disintegrate at level 35, so do not
-engage a psionicist in either band without a fresh source- and live-verified
-protection receipt. In `spell_disintegrate`, the concrete player bypass is
-Phoenix form (or a player-killer room); otherwise a failed save can destroy
-carried objects and the follow-up check can kill the player. Sanctuary, Globe,
-energy containment, Illithid psychic resistance, and the Crysomer sword's
-descriptive lore are not disintegrate immunity. A level-40+ psionic is
-therefore out of bounds for Dorrik unless that evidence is actually present;
-do not infer it from a damage estimate or a normal saving throw chance. A
-fresh Sanctuary refill, or a carried charged source-verified Sanctuary
-staff when its acquisition receipt has been compacted, can repair one exact
-prior unprotected plain-target loss. This is not disintegration protection
-and never reopens a psionic.
+Loss-free pre-combat route interruptions are a separate soft-cooldown class.
+Use one persisted, boot/level/source-bound cursor to give each eligible plain
+singleton or exact source-matched special one fresh live identity/`consider`
+check before reporting no handoff. Do not include crowds, route hazards,
+losses, identity mismatches, or negative `consider` results. A generic
+`target has special procedure ...` label is not a closure. If the selected
+route needs water breathing, pass it to the existing healer-to-magic-shop
+preparation owner; do not manufacture an active affect during selection.
+`spec_cast_psionicist` is likewise an encounter profile, not a hard
+protection gate: energy drain and disintegrate remain source/report evidence,
+and the live worker may fight after exact identity and `consider` without an
+energy-containment detour. The worker still records the observed spell,
+reacts to actual combat effects, keeps the own-health floor, and preserves
+real loss or death evidence. Do not infer a veto from damage estimates,
+normal saving-throw odds, or the special name itself.
 Source `special.c` shows that `spec_breath_any` can choose acid, fire, frost,
 gas, lightning, or steam; Sanctuary reduces damage but does not remove the
 gas or acid hazards. Run 22895 proved the point against Ra (mobile 919, room
@@ -709,9 +817,10 @@ ordinary current-band frontier is exhausted, one source- and boot-bound
 prior-level loss only when the new level has no exact loss and all source/live
 gates still pass; consume it once before dispatch, preserve the old loss, and
 close it on any mismatch or failed attempt. A completed
-productive independent hunt may repeat past the initial three-kill search cap,
-but keeps finite per-visit kills and fresh source/live gates. Never turn an
-abort or another target's success into retry permission.
+productive independent hunt may repeat after its latest successful visit,
+but keeps finite per-visit kills and fresh source/live gates. A reboot or
+kill count is never a retry quota; never turn an abort or another target's
+success into retry permission.
 Historical successes retain their original, internally matching source revision.
 A changed current revision requires a fresh complete source route/loadout audit
 before using that history; it never revives old combat permission or clears
@@ -993,13 +1102,14 @@ Rebuild productive source-hunt identities from the already-loaded, same-boot
 compact kill ledger as well as the eight-segment tail. Require exact policy
 tags and meaningful objective-eligible rewards; never credit below-band,
 incidental, or route-gate kills. A proven productive route stopped solely for
-a missing sanctuary reserve may pass its kill cap after fresh supply repairs
+a missing sanctuary reserve may remain eligible after fresh supply repairs
 that prerequisite, but retain every loss, crowd, route, consider, and cooldown
 gate. Reject unsupported passive armed-special HP probes before travelling.
-One bounded stale-consider recheck may include a target past the ordinary
-three-kill cap only when the existing productive-repeat evidence admits that
-exact policy. Preserve its negative result, require a fresh live consider, and
-do not let the recheck reopen any target with a loss or other terminal failure.
+One bounded stale-consider recheck may use the existing productive-repeat
+evidence for that exact policy, but a reboot or kill count never creates or
+removes eligibility. Preserve its negative result, require a fresh live
+consider, and do not let the recheck reopen any target with a loss or other
+terminal failure.
 
 When a current-band route needs a food reserve, prefer the existing bounded
 Bakery restock over small forage meals only from the noncombat healer, with
@@ -1070,6 +1180,22 @@ workspaces belong in ignored `runs/`, `transcripts/`, and `runs/heroes/`.
 
 ## Architecture Contracts
 
+Source-ranked live consideration has two layers of state. The
+`fastwalk_source_consider_outcomes` boolean is a transient decision aid; the
+captured MUD response belongs in `fastwalk_source_consider_evidence` and is the
+durable proof used by campaign selection. A negative `consider_viable` value
+may close a target only when its result is observed and contains nonempty raw
+response evidence. Mark legacy boolean-only rows as missing evidence and
+re-probe them through the ordinary source, identity, crowd, hazard, and health
+gates. Never reconstruct a terminal consider decision from a boolean, target
+HP commentary, or a missing response.
+
+Route pre-entry scans have their own exact retry owner. A transient armed
+crowd may schedule one wait, but that wait must retain the outbound route
+index, destination room, and direction and then issue a fresh `scan` before
+movement can resume. A generic `look` is not a substitute for the scan and
+must never consume the retry by allowing the route to fall through.
+
 Before parsing stored inventory JSON for item objectives, strip only complete
 ANSI colour sequences. Reject incomplete escapes and malformed structured JSON
 as item evidence; a raw `[#ID]` description remains one item, never a whole
@@ -1097,6 +1223,10 @@ is needed. Legacy campaign/run links use the bounded, resumable
 `backfill-campaign-runs` command. Historical run-summary backfill is paginated
 with `summarize-runs`; prefer `--campaign-id N` to keep repair focused on the
 active character's campaign, then continue using the printed `--after-run-id`.
+When a restricted source rotation carries explicit exclusions, preserve the
+broad source catalogue as diagnostic context but keep its blocker counts
+separate from the current useful-level handoff. A catalogue count is evidence
+for the next search, never a combat or retry permission.
 Transcript-repaired `state_snapshot` events keep ordered reason/source metadata
 in `events`; save their full payload only at the named checkpoint boundaries
 and refresh the compact current state for all other reasons. Historical rows
@@ -1115,6 +1245,14 @@ campaign segment linked to a current run summary inherits that run's three
 outcomes; side effects such as a level-up cannot replace the run objective.
 Keep version-old campaign metrics available without trusting their old positive
 objective verdicts.
+
+Campaign continuation uses the structured `campaign_segment_handoff` record
+when a current segment writes one. Its action (`rotate_source`, `resume`, or
+`complete`) and reason are orchestration data; status-message wording is only
+presentation and must not decide whether a new segment may start. Bounded live
+segments write their handoff at the checkpoint and clear any inherited marker
+before a later segment. Keep the legacy message fallback only for old
+checkpoints that predate this record.
 
 `LiveSessionState` is the root owner for the current character snapshot and
 active combat, travel, recovery, and quest controllers. `StarterPolicy` keeps a
@@ -1136,6 +1274,33 @@ historical checkpoint repair in
 `campaign_migrations.py`; do not grow it inside normal policy selection or
 replace `StarterPolicy` wholesale. Extract its responsibilities incrementally
 when a coherent behavior boundary and focused replay coverage exist.
+
+`CampaignStateOwner` is the root owner for the mutable campaign checkpoint
+mapping at lifecycle boundaries. `_open_campaign`, the evidence-repair handoff,
+segment preparation, and `_checkpoint` must bind the mapping through that owner;
+policy helpers may return replacements, but a replacement must not become an
+untracked second state owner. Keep the owner lightweight: it records the
+boundary and generation without deep-copying the full checkpoint on routine
+reads. Its `CampaignDecisionContext` owns derived selector caches and recursion
+guards; do not put durable evidence or another decision cache on the runner.
+
+`CampaignDecisionContext` owns CampaignRunner's derived source-ranking caches
+and selector recursion/budget state for one campaign attempt. Do not add
+another cache or decision flag directly to the runner when it belongs to that
+attempt. Cache keys must
+fingerprint copied checkpoint evidence by value, not Python object identity;
+real live-evidence changes must still invalidate the decision. Equipment
+ranking must reuse the runner-owned immutable navigation cache, and optional
+gear analysis must yield when the live handoff reserve is short. A loss-free
+crowd result may authorize one bounded below-band live `consider` probe, but it
+never proves a kill or bypasses live identity, hazard, crowd, health, or loss
+checks.
+Exact source absence and crowd rechecks must first find their matching
+current-band candidate in the decision-owned frontier snapshot. If no match
+survives, restore the original absence evidence and finish the handoff without
+resetting or rebuilding the full selector. If a crowd match does survive, one
+fresh bounded selection window may reach the normal live room and crowd gates;
+it must not become an unbounded crowd-combat permission.
 
 Controlled balance experiments must record comparison/variant, source-informed
 or ordinary-player mode, tester and DD4 versions, source revision, starting
@@ -1537,12 +1702,11 @@ city label to rooms; require the old blocker on that route and all later
 locations outside it. This reopens only the exact route for one fresh live
 preflight; preserve the earlier clear-route marker and blocked-policy ledger.
 Release that closure only after a linked positive-XP kill and safe healer return.
-A candidate past the ordinary three-kill fresh-search cap may use that same
-one-shot city-route revalidation only when the ordinary same-boot productive
-repeat selector independently admits its exact policy. Calculate that proof
-from all ranked candidates, including city-blocked ones, and the normalized XP
-ledger; never infer it from the kill count or the revalidation marker itself.
-Record `repeat_after_kill_cap`; preserve current target failures, loss evidence,
+A candidate may use that same one-shot city-route revalidation only when the
+ordinary productive-repeat selector independently admits its exact policy.
+Calculate that proof from all ranked candidates, including city-blocked ones,
+and the normalized XP ledger; never infer it from a kill count or the
+revalidation marker itself. Preserve current target failures, loss evidence,
 route bounds, and every live gate. This does not create another retry marker.
 A city-blocked policy must not short-circuit offline source selection: keep
 that exact policy excluded unless its one-use marker is pending or its exact
@@ -1591,6 +1755,15 @@ timestamped marker may authorize at most one new maintenance probe after six
 hours; a legacy marker without a timestamp remains one-shot until durable
 world-time history repairs it. This never reopens a failed hunt or makes a
 reboot a general XP requirement.
+If source preparation reaches its bounded deadline, persist a same-state
+timeout receipt as a liveness guard, not as frontier or target evidence. On
+the next preparation attempt, when boot, source revision, level, XP, room,
+purse, and the world-time-probe marker are unchanged, skip the entire repeated
+source-selection pass so the campaign cannot burn its budget rescanning the
+same 544 placements. Any one of those values changing clears the guard; do
+not describe it as a reboot-scoped retry ban or use it to close a target. Keep
+the resulting campaign resumable/ready while the probe interval is pending;
+this is not a terminal blocked outcome.
 At a safe healer checkpoint, if health, movement, or mana is below the campaign
 readiness threshold and food is available, use the bounded healer recovery
 policy before declaring the frontier unavailable. Re-select the source route
@@ -1896,14 +2069,17 @@ is necessary for the `spec_guard` special's own assistance path, while
 `violence_update` separately suppresses a good bystander only when both that
 mobile and the player meet DD4's exact 350 `IS_GOOD` threshold. Use the
 player's alignment for player fights; a target NPC's alignment is not a proxy.
-A source-ranked target carrying exactly `spec_guard` is a narrow exception to
-the blanket target-special rejection only when the target and the revealed
-player both meet that 350 threshold; its source headbutt/smash/kick peak must
-fit the ordinary damage budget. Unknown player alignment, mixed target
-specials, and every other target special remain rejected.
+A source-ranked target carrying exactly `spec_guard` is handled through its
+specific alignment and assistance behavior, not a blanket special rejection.
+When the guard can actually assist, the revealed player must meet DD4's 350
+threshold and the guard's headbutt/smash/kick peak must fit the ordinary live
+combat gate. Unknown player alignment keeps that interaction unresolved; it
+does not close every target that happens to have a special. Mixed target
+specials remain subject to exact source matching and their own effect gates.
 Treat `spec_guard` and `spec_sahuagin_guard` bystanders separately. Their special
 checks the fighting player's alignment against 300, not the target NPC's, and
-has no ordinary assistance-level cutoff. Unknown/masked alignment stays unsafe.
+has no ordinary assistance-level cutoff. Unknown/masked alignment stays unsafe
+for that specific guard interaction only.
 Require the existing live non-hostility and separate `violence_update` checks
 before admitting a guard. Below-band or cached non-assisting labels must not
 bypass the pre-combat guard check. Telnet `Char.Enemies` can repeat the primary

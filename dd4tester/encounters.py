@@ -27,7 +27,11 @@ from .hunt_candidates import (
     mobile_expected_round_damage,
     mobile_sanctuary_peak_round_damage,
 )
-from .populations import source_sequential_duplicate_reset_limit
+from .populations import (
+    SOURCE_SEQUENTIAL_DUPLICATE_MAX_INSTANCES,
+    SOURCE_SEQUENTIAL_DUPLICATE_MIN_INSTANCES,
+    source_sequential_duplicate_reset_limit,
+)
 
 
 @dataclass(frozen=True)
@@ -140,6 +144,7 @@ class SourcePairEncounter:
     defeated: set[str] = field(default_factory=set)
     damage_commands: int = 0
     finisher_grace_used: bool = False
+    budget_overrun_recorded: bool = False
 
     @property
     def remaining(self) -> tuple[str, ...]:
@@ -541,24 +546,30 @@ def source_sequential_duplicate_budget(
     max_mana: int,
     output: SourceCombatOutput | None,
     maximum_level_offset: int = 1,
+    armed: bool = False,
 ) -> SourcePairBudget:
-    """Admit a small plain reset for sequential, one-at-a-time kills.
+    """Admit a bounded reset for sequential, one-at-a-time kills.
 
     The caller supplies fresh exact selectors and live ``consider`` results.
     This function only proves the source reset and prices one bounded opening
     window per observed copy; it never uses target HP as an admission gate.
+    ``armed`` is limited to the source-audited fixed single-wield loadout.
     """
-    if not 2 <= instance_count <= 4:
+    if not (
+        SOURCE_SEQUENTIAL_DUPLICATE_MIN_INSTANCES
+        <= instance_count
+        <= SOURCE_SEQUENTIAL_DUPLICATE_MAX_INSTANCES
+    ):
         return SourcePairBudget(
             False,
-            "sequential duplicate encounter needs two to four live copies",
+            "sequential duplicate encounter needs two to eight live copies",
         )
     mobile = world.mobiles.get(mobile_vnum)
     if mobile is None or output is None or output.conservative_damage <= 0:
         return SourcePairBudget(False, "missing source mobile or executable damage")
     if (
-        not mobile.sentinel
-        or mobile.wanders
+        not (mobile.sentinel or mobile.stay_area)
+        or (mobile.wanders and not mobile.stay_area)
         or mobile.aggressive
         or mobile.fear_aura
         or mobile.programs
@@ -572,12 +583,12 @@ def source_sequential_duplicate_budget(
             False,
             "sequential duplicate encounter requires a plain sentinel reset",
         )
-    if not mobile.damage_modifier_known:
-        return SourcePairBudget(False, "source mobile damage modifier is unavailable")
+    damage_bound_known = mobile.damage_modifier_known
     reset_limit = source_sequential_duplicate_reset_limit(
         world,
         mobile_vnum=mobile_vnum,
         room_vnum=room_vnum,
+        allow_armed=armed,
     )
     if reset_limit is None or instance_count > reset_limit:
         return SourcePairBudget(
@@ -604,23 +615,31 @@ def source_sequential_duplicate_budget(
             False,
             "sequential duplicate has no source level intersection",
         )
-    expected_one = mobile_expected_round_damage(
-        upper,
-        wielding=False,
-        dual_wielding=False,
-        damage_modifier=mobile.damage_modifier,
-    )
-    peak_one = _mobile_peak_round_damage(
-        upper,
-        wielding=False,
-        dual_wielding=False,
-        damage_modifier=mobile.damage_modifier,
-    )
-    critical_one = _mobile_critical_hit_damage(
-        upper,
-        wielding=False,
-        damage_modifier=mobile.damage_modifier,
-    )
+    if damage_bound_known:
+        expected_one = mobile_expected_round_damage(
+            upper,
+            wielding=armed,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        peak_one = _mobile_peak_round_damage(
+            upper,
+            wielding=armed,
+            dual_wielding=False,
+            damage_modifier=mobile.damage_modifier,
+        )
+        critical_one = _mobile_critical_hit_damage(
+            upper,
+            wielding=armed,
+            damage_modifier=mobile.damage_modifier,
+        )
+    else:
+        # An older live deployment may have a valid source reset whose
+        # template scalar is absent from the checkout.  Do not turn that
+        # missing output estimate into a target admission veto.  Exact live
+        # identity/consider checks and the player's own health floor remain
+        # the combat boundary; zero here means "unpriced", not "harmless".
+        expected_one = peak_one = critical_one = 0
     reserve = ceil(max_hp * .20)
     # One measured opening window per copy keeps the source admission finite;
     # the live controller still owns the actual 20% withdrawal decision.
@@ -639,13 +658,13 @@ def source_sequential_duplicate_budget(
         target_hp_ceiling=0,
         source_only=True,
     )
-    if max(peak_one, critical_one) >= hp - reserve:
+    if damage_bound_known and max(peak_one, critical_one) >= hp - reserve:
         return SourcePairBudget(
             False,
             "sequential duplicate source damage reaches the 20% reserve",
             **values,
         )
-    if expected_incoming >= hp - reserve:
+    if damage_bound_known and expected_incoming >= hp - reserve:
         return SourcePairBudget(
             False,
             "sequential duplicate opening window reaches the 20% reserve",
@@ -669,7 +688,11 @@ def source_sequential_duplicate_budget(
         )
     return SourcePairBudget(
         True,
-        "source plain duplicate reset and live considers fit sequential rotation",
+        (
+            "source plain duplicate reset and live considers fit sequential rotation"
+            if damage_bound_known
+            else "source plain duplicate reset admitted; live own-health floor covers unresolved source damage"
+        ),
         **values,
     )
 
@@ -1100,6 +1123,103 @@ def _red_dragon_fire_reset_shape_allowed(
     )
 
 
+def _captains_concubine_archmage_reset_shape_allowed(
+    world: WorldSource,
+    mobile_vnum: int,
+) -> bool:
+    """Validate the exact archmage/bodyguard pair used by the live stop."""
+    if mobile_vnum != 17511:
+        return False
+    target = world.mobiles.get(17511)
+    companion = world.mobiles.get(17512)
+    room = world.rooms.get(17542)
+    target_resets = tuple(
+        reset for reset in world.mob_resets if reset.mobile_vnum == 17511
+    )
+    companion_resets = tuple(
+        reset for reset in world.mob_resets if reset.mobile_vnum == 17512
+    )
+    target_reset = target_resets[0] if len(target_resets) == 1 else None
+    companion_reset = (
+        companion_resets[0] if len(companion_resets) == 1 else None
+    )
+    target_objects = (17542, 17542, 17541, 17540, 17543, 17543)
+    target_equipment = (
+        (1, 17542),
+        (2, 17542),
+        (13, 17541),
+        (5, 17540),
+        (14, 17543),
+        (15, 17543),
+    )
+    companion_objects = (17538, 17537, 17539, 17536)
+    companion_equipment = (
+        (5, 17538),
+        (7, 17537),
+        (8, 17539),
+        (16, 17536),
+    )
+    room_mobiles = {
+        reset.mobile_vnum
+        for reset in world.mob_resets
+        if reset.room_vnum == 17542
+    }
+    return bool(
+        target is not None
+        and target.level == 42
+        and target.area_file.casefold() == "smuggler.are"
+        and not target.aggressive
+        and not target.wanders
+        and target.sentinel
+        and target.stay_area
+        and not target.programs
+        and not target.attack_programs
+        and not target.fear_aura
+        and not target.confused
+        and not target.non_corporeal
+        and not target.costs_fame
+        and tuple(world.mobile_specials.get(17511, ()))
+        == ("spec_cast_archmage",)
+        and target_reset is not None
+        and target_reset.room_vnum == 17542
+        and target_reset.maximum_count == 1
+        and target_reset.object_vnums == target_objects
+        and target_reset.equipment == target_equipment
+        and all(
+            (item := world.objects.get(object_vnum)) is not None
+            and item.item_type != ITEM_WEAPON
+            for object_vnum in target_objects
+        )
+        and companion is not None
+        and companion.level == 38
+        and companion.area_file.casefold() == "smuggler.are"
+        and companion.aggressive
+        and not companion.wanders
+        and companion.sentinel
+        and companion.stay_area
+        and not companion.programs
+        and not companion.attack_programs
+        and not companion.fear_aura
+        and not companion.confused
+        and not companion.non_corporeal
+        and not companion.costs_fame
+        and not world.mobile_specials.get(17512)
+        and companion_reset is not None
+        and companion_reset.room_vnum == 17542
+        and companion_reset.maximum_count == 1
+        and companion_reset.object_vnums == companion_objects
+        and companion_reset.equipment == companion_equipment
+        and all(world.objects.get(object_vnum) is not None for object_vnum in companion_objects)
+        and (blade := world.objects.get(17536)) is not None
+        and blade.item_type == ITEM_WEAPON
+        and room is not None
+        and not room.no_recall
+        and not room.random_exits
+        and bool(room.exits)
+        and room_mobiles == {17511, 17512}
+    )
+
+
 def _encounter_special_is_allowed(
     world: WorldSource,
     mobile_vnum: int,
@@ -1151,26 +1271,38 @@ def _encounter_special_is_allowed(
     )
     source_mage_allowed = (
         mobile_vnum in allowed_source_mage_special_vnums
-        and mobile_vnum == 16125
-        and specials == {"spec_cast_mage"}
-        and mobile is not None
-        and mobile.level == 47
-        and mobile.area_file.casefold() == "underdark.are"
-        and not mobile.aggressive
-        and not mobile.wanders
-        and mobile.sentinel
-        and mobile.stay_area
-        and not mobile.fear_aura
-        and not mobile.confused
-        and not mobile.programs
-        and not mobile.attack_programs
-        and not mobile.non_corporeal
-        and not mobile.costs_fame
-        and len(resets) == 1
-        and resets[0].room_vnum == 16478
-        and resets[0].maximum_count == 1
-        and not resets[0].object_vnums
-        and not resets[0].equipment
+        and (
+            (
+                mobile_vnum == 16125
+                and specials == {"spec_cast_mage"}
+                and mobile is not None
+                and mobile.level == 47
+                and mobile.area_file.casefold() == "underdark.are"
+                and not mobile.aggressive
+                and not mobile.wanders
+                and mobile.sentinel
+                and mobile.stay_area
+                and not mobile.fear_aura
+                and not mobile.confused
+                and not mobile.programs
+                and not mobile.attack_programs
+                and not mobile.non_corporeal
+                and not mobile.costs_fame
+                and len(resets) == 1
+                and resets[0].room_vnum == 16478
+                and resets[0].maximum_count == 1
+                and not resets[0].object_vnums
+                and not resets[0].equipment
+            )
+            or (
+                mobile_vnum == 17511
+                and specials == {"spec_cast_archmage"}
+                and _captains_concubine_archmage_reset_shape_allowed(
+                    world,
+                    mobile_vnum,
+                )
+            )
+        )
     )
     caerlin_allowed = (
         mobile_vnum in allowed_caerlin_special_vnums

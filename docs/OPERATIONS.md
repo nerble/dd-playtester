@@ -1,5 +1,148 @@
 # Operating Instructions
 
+## November 19 Selector Boundary
+
+Ordinary dispatch and frontier diagnosis now share the runtime safety
+predicate. Missing source HP, damage, critical, or swiftness modifiers remain
+visible as evidence, but they are not hard blockers by themselves. The compact
+ordinary handoff and stale-consider ranking use the same predicate as the live
+selector, while genuine source hazards, live negative `consider`, crowd, loss,
+route, and provisioning evidence remain strict. A read-only replay of Dorrik's
+level-46 checkpoint confirmed 62 current-band candidates and 58 runtime-safe
+candidates; its zero executable handoffs came from recorded game evidence, not
+source-output estimates. Focused campaign tests pass; this was not another
+daily regression batch.
+The next bounded resumes reached checkpoints **85119**, **85125**, **85134**,
+**85149**, and **85155**, then **85160** through **85184**. Dorrik admitted the
+exact Ra source special to a real live visit and recorded a **1,480** XP loss;
+the repaired absence handoff rotated once to Hera and recorded a **1,063** XP
+loss. Checkpoint **85149** acquired Sanctuary from the Alchemist for **390 XP**;
+**85160** gained **750 XP** from source gear, while **85178** restored
+provisions and **85173/85184** recorded safe, non-productive hunt boundaries.
+The earlier checkpoint **85077** remains the successful kill proof, and the
+Golden Buddha partial-XP record remains valid. This is an open evidence
+boundary, not a reboot requirement.
+
+Special procedures are not a target veto. Any exact source-matched procedure,
+including aggressive, poison, breath, caster, and psionic specials whose
+static output estimates are incomplete, reaches live identity and `consider`
+without a static Sanctuary, cure, damage, output, or energy-containment
+requirement. The starter records and reacts to the observed effect alongside
+the normal route, crowd, provisioning, recovery, and own-health gates. Keep
+specific source-proven route hazards, identity mismatches, scripts, crowds,
+and player relocation strict; the special name itself is never a closure.
+
+Required-gear carrier ranking follows the same boundary. Unknown HP, damage,
+critical, or swiftness modifiers may leave a carrier marked `reject` for
+reporting, but output-only labels do not close an otherwise source-eligible
+required-loot route. Route hazards, specials, crowds, identity, level, losses,
+and carrying checks remain hard gates. A source peak/critical damage budget is
+also report evidence, not a carrier admission gate; the live stop owns Dorrik's
+own health floor and exact hazard checks.
+A failed source-gear segment with no run and zero commands is repaired as a
+pre-dispatch setup failure, not counted as a route attempt, so its exact carrier
+can be selected again on the next bounded resume.
+The same distinction is enforced in the carrier attempt ledger: a
+`interrupted_before_dispatch` receipt is retained for audit but does not close
+the source, while a live interruption remains closed. Gear routes no longer
+apply a duplicate source damage/critical budget; live own-health, Sanctuary,
+identity, route, crowd, loss, and carrying gates remain authoritative.
+
+Offline readiness inspection now shares the already-ranked hunt frontier with
+gear analysis and uses a bounded `--max-analysis-seconds` budget. A cold source
+parse or ranking timeout returns `analysis_status: "timed_out"`,
+`analysis_complete: false`, and `live_authorization: false`; it is diagnostic
+evidence, not a progression decision or a permission to start a connection.
+
+## November 19 Architecture Checkpoint
+
+Campaign checkpoint state now has an explicit runtime owner. The
+`CampaignStateOwner` binds the mapping loaded from storage, the repaired mapping
+handed to policy selection, and each mapping sent to a checkpoint. Its
+`CampaignDecisionContext` owns derived selector caches and recursion limits.
+This is a boundary contract, not a full-state copy: normal reads must remain
+cheap, and durable evidence still belongs in SQLite. When adding a repair that
+returns a replacement mapping, bind it at the next named lifecycle boundary and
+cover that transition with a focused test.
+
+## November 18 Architecture Checkpoint
+
+Keep evidence reads separate from decisions. Protected-retry history is
+loaded on demand after identifying a matching loss; do not read full past
+segments merely to decide that a candidate has no loss. On checkpoint 84630
+the old query returned 256 segments containing 72,293,227 JSON characters.
+Only the selector with the actual search options should cache a hunt decision.
+A miss with flight or Sanctuary ruled out is not a miss when they are allowed.
+A search cut short by the deadline is not a completed search.
+
+Check the linked run before reporting XP. Runs 25638–25649 together lost
+1,290 XP in about 21 minutes of recorded segment time, **excluding** time
+between segments and planning. The two most recent searches for Blacksail
+accounted for 227 seconds of that time and zero XP. Checkpoint 84641 did
+not open a connection. Do not count a supply kill, safe return, or a
+planning-only checkpoint as a successful XP hunt.
+
+The campaign now separates durable source evidence from transient decision
+flags, caches source indexes within one decision, and keeps execution,
+objective, and safety outcomes distinct. The latest live proof exposed one
+remaining route-state flaw: after an armed transit crowd was seen, a generic
+`look` could consume the bounded wait and let movement continue without a new
+adjacent scan. The route controller now owns an exact `(route step, room,
+direction)` retry token and reissues `scan` before it can advance. A mismatch
+fails closed and preserves the route evidence.
+
+The policy selector now has an explicit liveness handoff. If a same-state
+source scan reaches its preparation budget at a safe healer checkpoint, the
+next decision can use only an exact, already-audited Sanctuary carrier or
+Moria recovery route. It records the original timeout as `handed_off` and does
+not enter broad carrier rotation or repeat the full frontier scan. This keeps
+maintenance and ordinary XP selection separate; a timeout is not treated as
+proof that every target is absent.
+
+If no exact maintenance owner is usable, the selector uses one healer-side
+`world-time-probe` to create a fresh decision boundary. The probe preserves the
+original timeout receipt and does not authorize combat. Broad source rotation
+must wait for the following checkpoint rather than clearing the timeout inside
+the same policy decision, and the existing six-hour probe cadence prevents an
+immediate resume from reconnecting for the same liveness check.
+
+Frontier diagnosis has the same ownership boundary. A complete diagnosis whose
+boot, level, and source revision still match is retained through a preparation
+timeout or planning-only recheck, and is marked with its selection stage and
+outcome. Its source-catalog count is descriptive only; the executable-handoff
+count and blocker list explain why no live segment was opened. An incomplete
+scan is removed instead of being reported as evidence that the MUD is empty.
+
+Gear preparation accepts a structured `equipment` snapshot when the derived
+`campaign_worn_equipment` replay field is absent in an older checkpoint. An
+explicit empty worn audit remains authoritative; only a fresh live `eq all`
+observation can replace that evidence.
+
+The resource owner also handles the known DD4 visibility edge. When an exact
+charged Sanctuary staff was observed and then disappears from the inventory
+row only because detect-invisibility expired, the same-boot, same-level,
+no-loss receipt remains usable. A live inventory packet with detect-invisibility
+active, a death or XP loss, or a boot/level change closes that receipt. This
+prevents duplicate Moria resupply while retaining a real negative observation
+when the object is genuinely gone.
+
+The same ownership rule now covers flight preparation. When the exact prepared
+source hunt reaches a terminal live absence, reconciliation consumes the
+matching preparation receipt and leaves the source absence ledger available for
+normal rotation. Older checkpoints may lack the `handoff_status` or candidate
+cache; startup repairs those receipts from the exact saved mobile, room, boot,
+level, and policy identity. A prepared flag is therefore never treated as a
+fresh hunt, and an absent or maintenance-only segment is never counted as XP.
+
+Live segment **25056** / run **25694** verified the legacy case: Dorrik was
+safe at healer **3054**, but the exact Admiral Blacksail route was absent and
+gave no XP. The persisted checkpoint still carries the old unbound marker; the
+next resume must repair it before ordinary selection, rather than buying flight
+or replaying the route.
+
+Focused checks for this change pass. Do not count them as a second daily
+regression batch.
+
 ## November 15 Carry-Capacity Fix
 
 **81174/25155**: Dorrik is **level 46**, at **2,185,732 XP** with **75,268**
@@ -871,6 +1014,15 @@ gear route. The dispatcher changes compile; new cases are saved unrun and
 this shorter recovery has not yet been live-proved.
 
 ## Current Target-Selection Policy
+
+### Ownership Of Unlaunched Absence Handoffs
+
+A pre-dispatch source-absence marker is an active selection reservation, not
+evidence that a live locate occurred. If final selection binds a different
+exact source policy before a segment opens, restore the saved absence result
+and clear only the reservation. A segment-start receipt owns dispatched retry
+history; an abandoned reservation must not erase research evidence or reopen
+the same full source scan on the next invocation.
 
 ### Loadout Repair And Perception Timing
 
@@ -2412,11 +2564,14 @@ totals cannot rewind. A completed productive independent hunt may repeat beyond
 the initial three-kill discovery cap, retaining its one-kill visit limit and
 every fresh source/live check. Absence, crowd, loss, or failed objective cannot
 qualify. Historical rows and parent failure ledgers are not rewritten.
-The one-shot stale-consider rotation may recheck such a capped target only
-when the same productive-repeat helper admits its exact policy from meaningful
-same-boot XP evidence and no terminal loss. Preserve the old negative result;
-the fresh live `consider` remains authoritative, and this exception never
-reopens a loss, crowd, route hazard, or identity failure.
+Each bounded stale-consider rotation may recheck a capped target only when the
+same productive-repeat helper admits its exact policy from meaningful same-boot
+XP evidence and no terminal loss. An empty rotation is a selection aid, not a
+reboot-sized quota: a later bounded invocation may start another target-rotated
+pass. Preserve the old negative result; the fresh live `consider` remains
+authoritative, and this exception never reopens a loss, crowd, route hazard, or
+identity failure. After a live absence locate, the exact target yields to a
+different hunt until that dispatch releases the rotation.
 
 `hunt_efficiency.py` compares at most eight linked completed visits using their
 actual net XP and full run duration, including safe zero-progress visits to the
@@ -6829,6 +6984,16 @@ making their old "latest" sections authoritative. Update current facts once
 in the active review rather than copying every run into all three root files.
 
 ## Level-Based Engagement (October 15)
+
+### Consider Evidence Ownership
+
+The live controller may keep a boolean `consider_viable` for the immediate
+combat decision, but campaign history must also retain the captured MUD reply.
+Only an observed result with nonempty response evidence can close a target for
+the current source/boot. A legacy row that contains only the boolean is
+incomplete evidence: preserve it for reporting, mark the gap, and let the
+normal bounded selector re-probe the target. This prevents an interrupted or
+partially recorded observation from becoming a permanent XP frontier blocker.
 
 Choose mobs by relative level and live `consider`. Target hitpoints are
 diagnostic evidence, including the health comparison in `consider`; they do

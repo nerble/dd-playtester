@@ -5,8 +5,12 @@ from pathlib import Path
 
 import pytest
 
+import dd4tester.campaign as campaign_module
 from dd4tester import starter as starter_module
 from dd4tester.campaign import (
+    CampaignDecisionContext,
+    CampaignResult,
+    CampaignRunner,
     _campaign_deferred_practice_types,
     _campaign_practice_types_spent,
     _campaign_rejected_practice_skills,
@@ -21,10 +25,128 @@ from dd4tester.report import (
     render_markdown,
 )
 from dd4tester.report_migrations import migrate_legacy_run_context
-from dd4tester.sessions import LiveSessionState
+from dd4tester.sessions import (
+    CampaignStateOwner,
+    ConsiderSessionController,
+    LiveSessionState,
+)
 import dd4tester.storage as storage_module
 from dd4tester.storage import RUN_REPORT_SUMMARY_VERSION, RunStorage
 from dd4tester.state import CharacterState
+
+
+def test_campaign_decision_caches_have_one_owner() -> None:
+    runner = CampaignRunner.__new__(CampaignRunner)
+
+    runner._source_ranked_method_cache = {"decision": "cached"}
+    runner._source_ranked_candidates_cache = {"frontier": ()}
+    runner._source_ranked_frontier_snapshot_cache = {"frontier": ()}
+    runner._source_selector_selection_depth = 2
+
+    context = runner._campaign_decision_context
+    assert isinstance(context, CampaignDecisionContext)
+    assert context.source_ranked_method_cache == {"decision": "cached"}
+    assert context.source_ranked_candidates_cache == {"frontier": ()}
+    assert context.source_ranked_frontier_snapshot_cache == {"frontier": ()}
+    assert context.selector_selection_depth == 2
+    assert runner._source_ranked_method_cache is context.source_ranked_method_cache
+
+
+def test_campaign_decision_context_resets_only_selection_window_state() -> None:
+    context = CampaignDecisionContext(
+        source_ranked_candidates_cache={"candidate": "kept"},
+        source_ranked_frontier_snapshot_cache={"frontier": "stale"},
+        source_ranked_method_cache={"method": "stale"},
+        source_frontier_attempt_key=("boot-1", 46),
+        source_frontier_attempt_completed=True,
+        selector_handoff_used=True,
+        selector_selection_depth=2,
+        selector_budget_exhausted=True,
+    )
+
+    context.reset_selection_window()
+
+    assert context.source_ranked_candidates_cache == {"candidate": "kept"}
+    assert context.source_ranked_frontier_snapshot_cache == {}
+    assert context.source_ranked_method_cache == {}
+    assert context.source_frontier_attempt_key is None
+    assert context.source_frontier_attempt_completed is False
+    assert context.selector_handoff_used is False
+    assert context.selector_selection_depth == 0
+    assert context.selector_budget_exhausted is False
+
+
+def test_campaign_state_owner_binds_replacements_at_named_boundaries() -> None:
+    owner = CampaignStateOwner()
+    first = {"level": 46}
+    second = {"level": 47}
+
+    assert owner.bind(first, "checkpoint_loaded") is first
+    assert owner.require() is first
+    assert owner.generation == 1
+    assert owner.boundary == "checkpoint_loaded"
+
+    assert owner.bind(second, "policy_selection_ready") is second
+    assert owner.require() is second
+    assert owner.generation == 2
+    assert owner.boundary == "policy_selection_ready"
+
+
+def test_optional_gear_search_yields_to_live_handoff_budget(monkeypatch) -> None:
+    monkeypatch.setattr(
+        campaign_module,
+        "_campaign_preparation_seconds_remaining",
+        lambda: 24.9,
+    )
+    assert campaign_module._campaign_optional_gear_search_allowed() is False
+
+    monkeypatch.setattr(
+        campaign_module,
+        "_campaign_preparation_seconds_remaining",
+        lambda: 25.1,
+    )
+    assert campaign_module._campaign_optional_gear_search_allowed() is True
+
+
+def test_source_frontier_attempt_is_not_reentered_for_retry_variant(monkeypatch) -> None:
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner._selected_source_ranked_circuit = ()
+    runner._selected_source_ranked_candidate = None
+    calls = []
+
+    def uncached(_state, **_kwargs):
+        calls.append(True)
+        return None
+
+    monkeypatch.setattr(runner, "_select_source_ranked_candidate_uncached", uncached)
+    state = {
+        "campaign_source_revision": "rev-1",
+        "world_boot_id": "boot-1",
+        "level": 46,
+        "xp": 2202004,
+        "room_vnum": "3054",
+    }
+
+    assert runner._select_source_ranked_candidate(state, allow_low_probability_current_band=True) is None
+    assert runner._select_source_ranked_candidate(
+        state,
+        allow_low_probability_current_band=True,
+        preferred_special_reserve="existing_sanctuary",
+    ) is None
+    assert calls == [True]
+
+
+def test_campaign_result_behavior_stays_on_campaign_result() -> None:
+    result = CampaignResult(
+        campaign_id=1,
+        status="ready",
+        checkpoint_id=2,
+        message="awaiting area reset",
+        state={},
+    )
+
+    assert result.awaiting_area_reset is True
+    assert not hasattr(CampaignDecisionContext(), "awaiting_area_reset")
 
 
 def test_compact_projection_covers_every_durable_character_field() -> None:
@@ -56,6 +178,76 @@ def test_live_session_boot_identity_is_checkpointed_with_character_state() -> No
 
     assert owner.world_boot_id == "boot-1"
     assert character.to_compact_dict()["world_boot_id"] == "boot-1"
+
+
+def test_live_session_owns_consider_state_as_one_controller() -> None:
+    owner = LiveSessionState(character=CharacterState())
+    policy = object.__new__(starter_module.StarterPolicy)
+    policy._session_state_owner = owner
+
+    policy.consider_target = "executioner"
+    policy.consider_viable = False
+    policy.consider_health_warning = True
+
+    assert isinstance(owner.consider, ConsiderSessionController)
+    assert owner.consider.target == "executioner"
+    assert owner.consider.viable is False
+    assert owner.consider.health_warning is True
+
+
+def test_campaign_segment_lease_blocks_late_worker_after_recovery(tmp_path) -> None:
+    database = tmp_path / "runs.sqlite3"
+    storage = RunStorage(database)
+    campaign_id = storage.create_campaign(
+        name="Lifecycle",
+        config_path=tmp_path / "campaign.yaml",
+        character_profile_path=tmp_path / "character.yaml",
+        target_level=100,
+    )
+    segment_id = storage.start_campaign_segment(
+        campaign_id,
+        phase="test-hunt",
+        start_state={"level": 46},
+    )
+    lease = storage.get_campaign_segment_lease(segment_id)
+    assert lease is not None
+    assert storage.heartbeat_campaign_segment(lease) is True
+    storage.close()
+
+    recovery = RunStorage(database)
+    assert recovery.recover_interrupted_campaign_segments(
+        campaign_id,
+        reason="simulated worker loss",
+    ) == 1
+    assert recovery.get_campaign_segment_by_id(campaign_id, segment_id)["status"] == "ready"
+    recovery.close()
+
+    late_worker = RunStorage(database)
+    late_worker._active_campaign_segment_lease = lease
+    late_worker.finish_campaign_segment(
+        segment_id,
+        status="success",
+        run_id=None,
+        end_state={"level": 46},
+        command_count=1,
+        duration_seconds=1.0,
+    )
+    assert late_worker.get_campaign_segment_by_id(campaign_id, segment_id)["status"] == "ready"
+    late_worker.close()
+
+
+def test_campaign_progress_suppresses_only_consecutive_duplicates() -> None:
+    progress: list[str] = []
+    runner = CampaignRunner.__new__(CampaignRunner)
+    runner.progress_callback = progress.append
+    runner._last_progress_message = None
+
+    runner._emit_progress("same status")
+    runner._emit_progress("same status")
+    runner._emit_progress("next status")
+    runner._emit_progress("same status")
+
+    assert progress == ["same status", "next status", "same status"]
 
 
 def test_routine_cooldown_events_use_the_bounded_writer_without_a_barrier() -> None:

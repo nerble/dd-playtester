@@ -26,6 +26,7 @@ def test_special_profiles_mirror_source_xp_bonus_tiers() -> None:
     assert source_special_xp_bonus("spec_demon") == 15
     assert source_special_xp_bonus("spec_grail") == 20
     assert source_special_xp_bonus("spec_cast_mage") == 10
+    assert source_special_xp_bonus("spec_cast_archmage") == 20
     assert source_special_xp_bonus("spec_wraith") == 10
     assert source_special_xp_bonus("spec_wight") == 10
     assert source_special_xp_bonus("spec_spectre") == 15
@@ -38,6 +39,7 @@ def test_special_profiles_distinguish_behavioral_risk() -> None:
     assert source_special_profile("spec_poison").risk == "debilitating"
     assert source_special_profile("spec_guard").risk == "extra-attack"
     assert source_special_profile("spec_cast_judge").risk == "direct-damage"
+    assert source_special_profile("spec_cast_archmage").risk == "boss-combat"
     assert source_special_profile("spec_executioner").risk == "conditional-combat"
     assert source_special_profile("spec_wraith").risk == "moderate-combat"
     assert source_special_profile("spec_wight").risk == "moderate-combat"
@@ -80,6 +82,10 @@ def test_source_caster_profiles_expose_status_effects_from_special_c() -> None:
         "dispel magic",
     )
     assert "blindness" in source_special_profile("spec_cast_mage").status_effects
+    assert source_special_status_effects("spec_cast_archmage", level=42) == (
+        "dispel magic",
+        "energy drain",
+    )
     assert source_special_status_effects("spec_assassin") == (
         "blindness",
         "trip",

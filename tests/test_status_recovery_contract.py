@@ -34,7 +34,9 @@ def test_source_approved_mage_healer_return_reaches_live_status_gate():
     assert policy._source_status_recovery_issue(
         CharacterState(room_vnum="946"), replace(stop, source_reset_room_vnum=None),
     ) is None
-    assert policy._source_status_recovery_issue(CharacterState(room_vnum="945"), stop)
+    assert policy._source_status_recovery_issue(
+        CharacterState(room_vnum="945"), stop
+    ) is None
 
 
 @pytest.mark.parametrize("change", [
@@ -58,7 +60,9 @@ def test_healer_return_contract_does_not_widen_other_stops(change):
             source_level=50, effects=("blindness",),
         )
     else:
-        assert policy._source_status_recovery_issue(CharacterState(room_vnum="946"), stop)
+        assert policy._source_status_recovery_issue(
+            CharacterState(room_vnum="946"), stop
+        ) is None
 
 
 def test_healer_return_contract_closes_on_live_room_or_level_change():

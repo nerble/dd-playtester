@@ -123,6 +123,11 @@ class Fastwalk:
     # Runtime still requires a singleton live identity and bounded output;
     # these VNUMs never turn a transit interruption into an XP target.
     route_aggressive_mobile_vnums: tuple[int, ...] = ()
+    # Preserve the complete source hazard ledger when a candidate is wrapped
+    # in a Fastwalk for a required-loot or Sanctuary handoff.
+    route_hazard_mobile_vnums: tuple[int, ...] = ()
+    route_attack_program_mobile_vnums: tuple[int, ...] = ()
+    route_special_mobile_vnums: tuple[int, ...] = ()
     # Exact aggressive source mobiles whose update.c aggression check is
     # blocked only while fresh live invisibility remains confirmed.
     route_invisibility_source_mobile_vnums: tuple[int, ...] = ()

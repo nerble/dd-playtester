@@ -4,7 +4,9 @@ import argparse
 import asyncio
 from collections import Counter
 import json
+import math
 import sys
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -149,6 +151,7 @@ from .training import (
 
 
 DEFAULT_DATABASE = Path("runs/dd4tester.sqlite3")
+DEFAULT_READINESS_ANALYSIS_SECONDS = 30.0
 # A historical campaign-character join deserializes JSON from every matching
 # checkpoint.  Keep inspection bounded for the shared database, which is
 # intentionally append-only and can grow into tens of gigabytes.
@@ -813,6 +816,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="emit machine-readable readiness JSON",
+    )
+    combat_readiness_parser.add_argument(
+        "--max-analysis-seconds",
+        type=float,
+        default=DEFAULT_READINESS_ANALYSIS_SECONDS,
+        help=(
+            "bound offline source analysis; timed-out reports are marked "
+            "incomplete, default: 30 seconds"
+        ),
     )
     arena_research_parser.add_argument(
         "--target-level",
@@ -1956,6 +1968,7 @@ def main(argv: list[str] | None = None) -> int:
             include_all_areas=args.all_areas,
             json_output=args.json,
             live_deployment=args.live_deployment,
+            max_analysis_seconds=args.max_analysis_seconds,
         )
 
     if args.command == "configure-login":
@@ -3991,6 +4004,7 @@ def show_combat_readiness(
     include_all_areas: bool = False,
     json_output: bool = False,
     live_deployment: bool = False,
+    max_analysis_seconds: float = DEFAULT_READINESS_ANALYSIS_SECONDS,
 ) -> int:
     """Render an offline combat/readiness audit without authorizing a run."""
     if level < 1 or level > 100:
@@ -3999,10 +4013,26 @@ def show_combat_readiness(
     if limit < 1:
         print("--limit must be at least 1", file=sys.stderr)
         return 2
+    if not math.isfinite(max_analysis_seconds) or max_analysis_seconds <= 0:
+        print(
+            "--max-analysis-seconds must be a positive finite number",
+            file=sys.stderr,
+        )
+        return 2
+    analysis_deadline = time.monotonic() + max_analysis_seconds
+
+    def preparation_check() -> None:
+        if time.monotonic() >= analysis_deadline:
+            raise TimeoutError(
+                "combat-readiness source analysis exceeded "
+                f"{max_analysis_seconds:g} seconds"
+            )
+
     try:
         source_options: dict[str, object] = {
             "include_all_areas": include_all_areas,
             "include_all_objects": True,
+            "preparation_check": preparation_check,
         }
         if live_deployment:
             source_options["live_deployment"] = True
@@ -4079,6 +4109,7 @@ def show_combat_readiness(
         }
 
     try:
+        analysis_cache: dict[object, object] = {}
         candidates = rank_hunt_candidates(
             world,
             character_level=level,
@@ -4099,6 +4130,8 @@ def show_combat_readiness(
             include_all_areas=include_all_areas,
             recall_origins=recall_origins,
             character_alignment=character_alignment,
+            analysis_cache=analysis_cache,
+            preparation_check=preparation_check,
         )
         placements = rank_gear_sources(
             world,
@@ -4111,7 +4144,37 @@ def show_combat_readiness(
             character_max_hp=character_max_hp,
             include_all_areas=include_all_areas,
             recall_origins=recall_origins,
+            analysis_cache=analysis_cache,
+            ranked_hunt_candidates=candidates,
+            preparation_check=preparation_check,
         )
+    except TimeoutError as exc:
+        incomplete = {
+            "source": str(source.resolve()),
+            "deployment_profile": (
+                "live-filtered" if live_deployment else "upstream research"
+            ),
+            "character": character,
+            "level": level,
+            "character_class": character_class,
+            "subclass": subclass or state.get("subclass") or "none",
+            "database": str(database.resolve()),
+            "analysis_status": "timed_out",
+            "analysis_complete": False,
+            "analysis_error": str(exc),
+            "live_authorization": False,
+        }
+        if json_output:
+            print(json.dumps(incomplete, indent=2, sort_keys=True))
+        else:
+            print("Combat readiness: incomplete")
+            print(f"Source: {incomplete['source']}")
+            print(
+                f"Character: {character}, level {level}, class {character_class}"
+            )
+            print(f"Analysis: {exc}")
+            print("Live authorization: false")
+        return 1
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -4206,6 +4269,8 @@ def show_combat_readiness(
         "character_class": character_class,
         "subclass": subclass or state.get("subclass") or "none",
         "database": str(database.resolve()),
+        "analysis_status": "complete",
+        "analysis_complete": True,
         "boot_id": boot_id or "unknown",
         "character_max_hp": character_max_hp,
         "character_alignment": character_alignment,

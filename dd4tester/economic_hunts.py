@@ -33,6 +33,12 @@ _ECONOMIC_TARGET_LOCATOR_ROOM_LIMIT = 512
 _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS = frozenset({
     0, 1, 2, 3, 4, 5, 12, 13, 14, 17, 20, 21, 22, 23, 24,
 })
+# The source steel dagger carried by the Quake thief has hitroll (18). It is
+# harmless for route-only ``spec_thief`` transit, while damroll remains closed
+# because it is unmodelled outgoing combat output if source behavior changes.
+_ECONOMIC_ROUTE_ALLOWED_ITEM_AFFECTS = (
+    _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS | {18}
+)
 
 
 def known_purse(currencies: object) -> int | None:
@@ -71,12 +77,36 @@ def passive_economic_hunt_mobile(
     )
 
 
+def passive_economic_transit_mobile(
+    world: WorldSource,
+    vnum: int,
+    *,
+    level: int,
+    allow_bounded_population: bool = False,
+) -> bool:
+    """Audit a spec_thief for route-only coin exposure.
+
+    A thief's equipment can affect combat output, but ``spec_thief`` never
+    initiates combat or uses that equipment to steal coins. Keep the stricter
+    loadout audit for a possible target and use this narrower route contract
+    when the mobile is only being crossed in transit.
+    """
+    return _passive_economic_hunt_mobile_uncached(
+        world,
+        vnum,
+        level=level,
+        allow_bounded_population=allow_bounded_population,
+        route_only=True,
+    )
+
+
 def _passive_economic_hunt_mobile_uncached(
     world: WorldSource,
     vnum: int,
     *,
     level: int,
     allow_bounded_population: bool = False,
+    route_only: bool = False,
 ) -> bool:
     """Audit a non-initiating spec_thief; never authorize fighting it."""
     mobile = world.mobiles.get(vnum)
@@ -119,8 +149,14 @@ def _passive_economic_hunt_mobile_uncached(
                 or mobile.level - 2 >= 40 and not item.extra_flags & (1 << 38)
             ):
                 return False
-            if any(location not in _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS
-                   for location, _amount in item.affects):
+            allowed_item_affects = (
+                _ECONOMIC_ROUTE_ALLOWED_ITEM_AFFECTS
+                if route_only else _ECONOMIC_TARGET_ALLOWED_ITEM_AFFECTS
+            )
+            if any(
+                location not in allowed_item_affects
+                for location, _amount in item.affects
+            ):
                 return False
             # Positive hitpoint affects on the target are observation/report
             # evidence, not a reason to close an otherwise plain economic
@@ -249,7 +285,7 @@ def economic_hunt_candidate(
         or candidate.source_damage_modifier != mobile.damage_modifier
         or not candidate.route_special_mobile_vnums
         or any(
-            not passive_economic_hunt_mobile(
+            not passive_economic_transit_mobile(
                 world,
                 vnum,
                 level=level,
@@ -312,7 +348,7 @@ def economic_hunt_runtime_issue(
     if purse is None or purse > ECONOMIC_HUNT_MAX_COPPER:
         return "ordinary XP route exceeded its known economic coin reserve"
     if world is None or any(
-        not passive_economic_hunt_mobile(
+        not passive_economic_transit_mobile(
             world,
             vnum,
             level=level,

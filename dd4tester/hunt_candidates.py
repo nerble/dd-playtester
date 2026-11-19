@@ -8,7 +8,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Collection, Iterable, Mapping
+from typing import Any, Callable, Collection, Iterable, Mapping, MutableMapping
 
 from .fastwalks import FASTWALKS, MAP_ROUTES
 from .combat_capabilities import (
@@ -61,6 +61,15 @@ _SOURCE_OUTPUT_EVIDENCE_REJECTIONS = frozenset(
         "source mobile swiftness modifier is unavailable",
     }
 )
+
+
+def _source_output_evidence_only(rejections: Iterable[str]) -> bool:
+    """Return whether rejections are report evidence rather than hard gates."""
+    values = tuple(str(rejection) for rejection in rejections)
+    return bool(values) and all(
+        rejection in _SOURCE_OUTPUT_EVIDENCE_REJECTIONS
+        for rejection in values
+    )
 
 # ``rank_table`` in ``server/src/mob.c`` is applied by ``create_mobile``
 # after the ordinary area-file hit-point roll.  Keep the source multiplier
@@ -3676,6 +3685,7 @@ def load_world_source(
     include_all_areas: bool = False,
     include_all_objects: bool = False,
     live_deployment: bool | None = None,
+    preparation_check: Callable[[], None] | None = None,
 ) -> WorldSource:
     """Parse a source world using a cache key that includes deployment mode."""
     area_directory = resolve_source_area_directory(area_directory)
@@ -3684,11 +3694,19 @@ def load_world_source(
         if live_deployment is None
         else bool(live_deployment)
     )
-    return _load_world_source_cached(
+    if preparation_check is None:
+        return _load_world_source_cached(
+            area_directory,
+            include_all_areas=include_all_areas,
+            include_all_objects=include_all_objects,
+            live_deployment=selected_deployment,
+        )
+    return _load_world_source_uncached(
         area_directory,
         include_all_areas=include_all_areas,
         include_all_objects=include_all_objects,
         live_deployment=selected_deployment,
+        preparation_check=preparation_check,
     )
 
 
@@ -3699,6 +3717,22 @@ def _load_world_source_cached(
     include_all_areas: bool = False,
     include_all_objects: bool = False,
     live_deployment: bool = False,
+) -> WorldSource:
+    return _load_world_source_uncached(
+        area_directory,
+        include_all_areas=include_all_areas,
+        include_all_objects=include_all_objects,
+        live_deployment=live_deployment,
+    )
+
+
+def _load_world_source_uncached(
+    area_directory: Path,
+    *,
+    include_all_areas: bool = False,
+    include_all_objects: bool = False,
+    live_deployment: bool = False,
+    preparation_check: Callable[[], None] | None = None,
 ) -> WorldSource:
     """Parse global hazards and selected candidate-area loot evidence."""
     if not area_directory.is_dir():
@@ -3741,12 +3775,15 @@ def _load_world_source_cached(
         else target_files
     )
     for path in sorted(area_directory.glob("*.are")):
+        if preparation_check is not None:
+            preparation_check()
         parsed = parse_area_file(
             path,
             include_resets=True,
             include_entities=True,
             include_objects=path.name in object_files,
             mobile_templates=mobile_templates,
+            preparation_check=preparation_check,
         )
         if live_deployment:
             _apply_live_mobile_source_overrides(parsed)
@@ -3761,6 +3798,8 @@ def _load_world_source_cached(
         world.area_recalls[path.name] = parsed.recall_vnum
         for container, contents in parsed.container_contents.items():
             world.container_contents.setdefault(container, []).extend(contents)
+        if preparation_check is not None:
+            preparation_check()
     return world
 
 
@@ -3853,8 +3892,11 @@ def parse_area_file(
     include_entities: bool = True,
     include_objects: bool | None = None,
     mobile_templates: Mapping[str, MobileTemplateSource] | None = None,
+    preparation_check: Callable[[], None] | None = None,
 ) -> AreaSource:
     lines = path.read_text(encoding="latin-1").splitlines()
+    if preparation_check is not None:
+        preparation_check()
     area_levels = _parse_area_level_bounds(lines)
     sections = _section_ranges(lines)
     mobiles = (
@@ -3867,6 +3909,8 @@ def parse_area_file(
         if include_entities
         else {}
     )
+    if preparation_check is not None:
+        preparation_check()
     if include_objects is None:
         include_objects = include_entities
     objects = (
@@ -3874,6 +3918,8 @@ def parse_area_file(
         if include_objects
         else {}
     )
+    if preparation_check is not None:
+        preparation_check()
     rooms = _parse_rooms(lines, sections.get("#ROOMS"), path.name)
     mob_resets: list[MobReset] = []
     room_object_resets: list[RoomObjectReset] = []
@@ -3883,6 +3929,8 @@ def parse_area_file(
         lines,
         sections.get("#SHOPS"),
     )
+    if preparation_check is not None:
+        preparation_check()
     if area_levels is not None:
         low_level, high_level, low_enforced, high_enforced = area_levels
         for room in rooms.values():
@@ -3916,6 +3964,8 @@ def parse_area_file(
             mobiles=mobiles,
             mobile_templates=mobile_templates,
         )
+        if preparation_check is not None:
+            preparation_check()
     return AreaSource(
         path,
         mobiles,
@@ -4720,6 +4770,7 @@ def rank_hunt_candidates(
     route_economic_transit_allow_equipped_mobile_vnums: Collection[int] = (),
     route_blocked_room_vnums: Collection[int] = (),
     route_blocked_room_max_extra_steps: int = _MAX_SOURCE_ROUTE_DETOUR_STEPS,
+    analysis_cache: MutableMapping[Any, Any] | None = None,
     preparation_check: Callable[[], None] | None = None,
 ) -> list[HuntCandidate]:
     if preparation_check is not None:
@@ -4730,6 +4781,32 @@ def rank_hunt_candidates(
         raise ValueError("level_ceiling_offset must not be negative")
     if route_blocked_room_max_extra_steps < 0:
         raise ValueError("route_blocked_room_max_extra_steps must not be negative")
+
+    def cached_analysis(
+        name: str,
+        key: Any,
+        factory: Callable[[], Any],
+    ) -> Any:
+        """Share immutable source indexes across one campaign decision.
+
+        Candidate admission still runs for every call because it depends on
+        live state and selector options.  The room/reset indexes underneath it
+        do not.  Keeping this cache caller-owned bounds its lifetime to the
+        decision and avoids retaining a parsed world globally.
+        """
+        if preparation_check is not None:
+            preparation_check()
+        cache_key = ("rank-hunt-analysis", id(world), name, key)
+        if analysis_cache is None or cache_key not in analysis_cache:
+            value = factory()
+            if analysis_cache is not None:
+                analysis_cache[cache_key] = value
+        else:
+            value = analysis_cache[cache_key]
+        if preparation_check is not None:
+            preparation_check()
+        return value
+
     effective_level_ceiling_offset = (
         1 if level_ceiling_offset is None else int(level_ceiling_offset)
     )
@@ -4758,11 +4835,16 @@ def rank_hunt_candidates(
     # while only the first reset can actually load it.  Build route and hunt
     # evidence from the reset placements the server can create, rather than
     # presenting later skipped alternatives as live endpoints.
-    effective_mob_resets = _effective_mob_resets(
-        world.mob_resets,
-        rooms=world.rooms,
+    effective_mob_resets = cached_analysis(
+        "effective-mob-resets",
+        (),
+        lambda: _effective_mob_resets(world.mob_resets, rooms=world.rooms),
     )
-    resets_by_room = _resets_by_room(world, effective_mob_resets)
+    resets_by_room = cached_analysis(
+        "resets-by-room",
+        (),
+        lambda: _resets_by_room(world, effective_mob_resets),
+    )
     prototype_population_limits: dict[int, int] = {}
     reset_rooms_by_mobile: dict[int, set[int]] = {}
     for reset in world.mob_resets:
@@ -4780,9 +4862,10 @@ def rank_hunt_candidates(
         int(vnum)
         for vnum in route_economic_transit_allow_equipped_mobile_vnums
     }
-    wandering_aggressors = _wandering_aggressors(
-        world,
-        effective_mob_resets,
+    wandering_aggressors = cached_analysis(
+        "wandering-aggressors",
+        (),
+        lambda: _wandering_aggressors(world, effective_mob_resets),
     )
     recall_origin_rooms: dict[int, int] = {0: RECALL_VNUM}
     for raw_index, raw_room_vnum in (recall_origins or {}).items():
@@ -4797,15 +4880,21 @@ def rank_hunt_candidates(
     route_key_vnums = {
         int(object_vnum) for object_vnum in route_key_object_vnums
     }
-    recall_paths_by_origin = {
-        index: _shortest_paths_from(
-            world.rooms,
-            room_vnum,
-            unlockable_key_vnums=route_key_vnums,
-            preparation_check=preparation_check,
-        )
-        for index, room_vnum in recall_origin_rooms.items()
-    }
+    recall_origin_key = tuple(sorted(recall_origin_rooms.items()))
+    route_key_key = tuple(sorted(route_key_vnums))
+    recall_paths_by_origin = cached_analysis(
+        "recall-paths",
+        (recall_origin_key, route_key_key),
+        lambda: {
+            index: _shortest_paths_from(
+                world.rooms,
+                room_vnum,
+                unlockable_key_vnums=route_key_vnums,
+                preparation_check=preparation_check,
+            )
+            for index, room_vnum in recall_origin_rooms.items()
+        },
+    )
     if preparation_check is not None:
         preparation_check()
     observed_blocked_rooms = {
@@ -4813,81 +4902,91 @@ def rank_hunt_candidates(
         for room_vnum in route_blocked_room_vnums
         if int(room_vnum) in world.rooms
     }
-    wanderer_reachability = {}
-    for mobile, reset in wandering_aggressors:
-        if preparation_check is not None:
-            preparation_check()
-        wanderer_reachability[(mobile.vnum, reset.room_vnum)] = (
-            _wanderer_reachable_rooms(
+    wanderer_reachability = cached_analysis(
+        "wanderer-reachability",
+        tuple((mobile.vnum, reset.room_vnum) for mobile, reset in wandering_aggressors),
+        lambda: {
+            (mobile.vnum, reset.room_vnum): _wanderer_reachable_rooms(
                 world,
                 mobile,
                 reset.room_vnum,
                 preparation_check=preparation_check,
             )
-        )
+            for mobile, reset in wandering_aggressors
+        },
+    )
     # Index source reachability once, retaining reset order for stable evidence.
     # Joining-only specials matter at the endpoint, not every transit room.
-    transit_wanderers: dict[int, set[int]] = {}
-    endpoint_wanderers: dict[int, set[int]] = {}
-    for index, (hazard, hazard_reset) in enumerate(wandering_aggressors):
-        if preparation_check is not None:
-            preparation_check()
-        if _source_mobile_safe_special_suppresses_route_hazard(
+    transit_wanderers, endpoint_wanderers = cached_analysis(
+        "wanderer-room-indexes",
+        character_level,
+        lambda: _wanderer_room_indexes(
             world,
-            hazard,
+            wandering_aggressors,
+            wanderer_reachability,
             character_level=character_level,
-        ):
-            continue
-        room_index = (
-            transit_wanderers
-            if hazard.aggressive
-            or hazard.attack_programs
-            or _source_mobile_has_unsafe_special(
-                world,
-                hazard.vnum,
-                hazard,
-                character_level=character_level,
-            )
-            else endpoint_wanderers
-        )
-        for reachable_room in wanderer_reachability[
-            (hazard.vnum, hazard_reset.room_vnum)
-        ]:
-            room_index.setdefault(reachable_room, set()).add(index)
-    source_keyword_counts = _source_keyword_counts(world)
-    same_display_keyword_counts = _same_display_keyword_counts(world)
+        ),
+    )
+    source_keyword_counts = cached_analysis(
+        "source-keyword-counts", (), lambda: _source_keyword_counts(world)
+    )
+    same_display_keyword_counts = cached_analysis(
+        "same-display-keyword-counts", (), lambda: _same_display_keyword_counts(world)
+    )
     required_loot_vnums = {
         int(object_vnum) for object_vnum in required_loot_object_vnums
     }
-    route_hazard_rooms = _route_hazard_rooms(
-        world,
-        resets_by_room,
-        character_level=character_level,
-        preparation_check=preparation_check,
+    route_hazard_rooms = cached_analysis(
+        "route-hazard-rooms",
+        character_level,
+        lambda: _route_hazard_rooms(
+            world,
+            resets_by_room,
+            character_level=character_level,
+            preparation_check=preparation_check,
+        ),
     )
     if preparation_check is not None:
         preparation_check()
-    safe_recall_paths_by_origin = {
-        index: _shortest_paths_from(
-            world.rooms,
-            room_vnum,
-            blocked_rooms=(route_hazard_rooms | observed_blocked_rooms)
-            - {room_vnum},
-            unlockable_key_vnums=route_key_vnums,
-            preparation_check=preparation_check,
-        )
-        for index, room_vnum in recall_origin_rooms.items()
-    }
-    observed_safe_recall_paths_by_origin = {
-        index: _shortest_paths_from(
-            world.rooms,
-            room_vnum,
-            blocked_rooms=observed_blocked_rooms - {room_vnum},
-            unlockable_key_vnums=route_key_vnums,
-            preparation_check=preparation_check,
-        )
-        for index, room_vnum in recall_origin_rooms.items()
-    }
+    safe_recall_key = (
+        recall_origin_key,
+        route_key_key,
+        tuple(sorted((route_hazard_rooms | observed_blocked_rooms))),
+    )
+    safe_recall_paths_by_origin = cached_analysis(
+        "safe-recall-paths",
+        safe_recall_key,
+        lambda: {
+            index: _shortest_paths_from(
+                world.rooms,
+                room_vnum,
+                blocked_rooms=(route_hazard_rooms | observed_blocked_rooms)
+                - {room_vnum},
+                unlockable_key_vnums=route_key_vnums,
+                preparation_check=preparation_check,
+            )
+            for index, room_vnum in recall_origin_rooms.items()
+        },
+    )
+    observed_safe_recall_key = (
+        recall_origin_key,
+        route_key_key,
+        tuple(sorted(observed_blocked_rooms)),
+    )
+    observed_safe_recall_paths_by_origin = cached_analysis(
+        "observed-safe-recall-paths",
+        observed_safe_recall_key,
+        lambda: {
+            index: _shortest_paths_from(
+                world.rooms,
+                room_vnum,
+                blocked_rooms=observed_blocked_rooms - {room_vnum},
+                unlockable_key_vnums=route_key_vnums,
+                preparation_check=preparation_check,
+            )
+            for index, room_vnum in recall_origin_rooms.items()
+        },
+    )
     if preparation_check is not None:
         preparation_check()
 
@@ -7271,11 +7370,11 @@ def _source_route_hazard_rejections(
         )
     }
     if not combat_at_destination and economic_hunt_mobile_vnums:
-        from .economic_hunts import passive_economic_hunt_mobile
+        from .economic_hunts import passive_economic_transit_mobile
 
         economic_transit.update(
             vnum for vnum in economic_hunt_mobile_vnums
-            if passive_economic_hunt_mobile(
+            if passive_economic_transit_mobile(
                 world,
                 vnum,
                 level=character_level,
@@ -9054,6 +9153,42 @@ def _wandering_aggressors(
         )
         and mobile.wanders
     )
+
+
+def _wanderer_room_indexes(
+    world: WorldSource,
+    wandering_aggressors: Collection[tuple[MobileSource, MobReset]],
+    wanderer_reachability: Mapping[tuple[int, int], Collection[int]],
+    *,
+    character_level: int,
+) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
+    """Index wandering hazards once for the current level band."""
+    transit_wanderers: dict[int, set[int]] = {}
+    endpoint_wanderers: dict[int, set[int]] = {}
+    for index, (hazard, hazard_reset) in enumerate(wandering_aggressors):
+        if _source_mobile_safe_special_suppresses_route_hazard(
+            world,
+            hazard,
+            character_level=character_level,
+        ):
+            continue
+        room_index = (
+            transit_wanderers
+            if hazard.aggressive
+            or hazard.attack_programs
+            or _source_mobile_has_unsafe_special(
+                world,
+                hazard.vnum,
+                hazard,
+                character_level=character_level,
+            )
+            else endpoint_wanderers
+        )
+        for reachable_room in wanderer_reachability[
+            (hazard.vnum, hazard_reset.room_vnum)
+        ]:
+            room_index.setdefault(reachable_room, set()).add(index)
+    return transit_wanderers, endpoint_wanderers
 
 
 def _money_object_keyword(item: ObjectSource) -> str:

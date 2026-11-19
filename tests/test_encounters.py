@@ -434,6 +434,40 @@ def test_source_sequential_duplicate_prices_four_plain_copies_without_target_hp(
     assert "target HP" not in budget.reason
 
 
+def test_source_sequential_duplicate_keeps_unknown_damage_as_live_evidence():
+    world = _world()
+    world.mobiles[1] = replace(
+        world.mobiles[1],
+        level=39,
+        act_flags=ACT_SENTINEL,
+        damage_modifier=None,
+        damage_modifier_known=False,
+    )
+    world.mob_resets[0] = replace(
+        world.mob_resets[0],
+        room_vnum=100,
+        maximum_count=4,
+    )
+
+    budget = source_sequential_duplicate_budget(
+        world,
+        1,
+        room_vnum=100,
+        instance_count=4,
+        character_level=39,
+        hp=1000,
+        max_hp=1000,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput("kick", 100, 100, 100, "actions", 0, 12),
+    )
+
+    assert budget.allowed
+    assert budget.expected_incoming == 0
+    assert budget.peak_round == 0
+    assert "unresolved source damage" in budget.reason
+
+
 def test_source_sequential_duplicate_accepts_transient_lower_reported_caps():
     budget = _source_sequential(hp=927, max_hp=912, mana=531, max_mana=462)
 
@@ -443,7 +477,7 @@ def test_source_sequential_duplicate_accepts_transient_lower_reported_caps():
 
 @pytest.mark.parametrize("change", [
     {"instance_count": 1},
-    {"instance_count": 5},
+    {"instance_count": 9},
     {"hp": 700},
     {"maximum_level_offset": 0, "character_level": 50},
 ])
@@ -633,6 +667,51 @@ def test_active_encounter_accepts_the_audited_irmugar_hezron_pair_only():
     assert rejected.allowed is False
     assert accepted.allowed is True
     assert accepted.mobile_vnums == (16125, 16126)
+
+
+def test_active_encounter_accepts_the_exact_captains_concubine_pair():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+        include_all_objects=True,
+    )
+    enemies = [
+        {
+            "isnpc": "17511",
+            "name": "The Captain's Concubine",
+            "level": "42",
+        },
+        {
+            "isnpc": "17512",
+            "name": "Concubine's Bodyguard",
+            "level": "38",
+        },
+    ]
+    common = dict(
+        world=world,
+        enemies=enemies,
+        character_level=46,
+        hp=1117,
+        max_hp=1117,
+        mana=0,
+        max_mana=0,
+        output=SourceCombatOutput(
+            "kick", 35, 55, 75, "actions", 0, 12,
+        ),
+        target_hp_evidence_only=True,
+        maximum_level_offsets_by_vnum={17511: 5},
+    )
+
+    rejected = active_encounter_budget(**common)
+    accepted = active_encounter_budget(
+        **common,
+        allowed_source_mage_special_vnums=(17511,),
+        allowed_source_companion_vnums=(17512,),
+    )
+
+    assert rejected.allowed is False
+    assert accepted.allowed is True
+    assert accepted.mobile_vnums == (17511, 17512)
 
 
 @pytest.mark.parametrize("hazard", [

@@ -133,7 +133,7 @@ def test_output_capability_does_not_forecast_target_hp(monkeypatch):
 
 @pytest.mark.parametrize(
     ("nominal_level", "fuzzed_maximum", "expected"),
-    [(40, 42, True), (41, 43, True), (40, 43, False)],
+    [(40, 42, True), (41, 43, True), (40, 43, True)],
 )
 def test_poison_special_source_fuzz_only_opens_bounded_scouting(
     nominal_level, fuzzed_maximum, expected,

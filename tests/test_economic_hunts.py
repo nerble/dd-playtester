@@ -7,7 +7,8 @@ import dd4tester.economic_hunts as economic_module
 
 from dd4tester.economic_hunts import (
     economic_hunt_candidate, economic_hunt_runtime_issue,
-    known_purse, passive_economic_hunt_mobile, plain_bounded_economic_resets,
+    known_purse, passive_economic_hunt_mobile, passive_economic_transit_mobile,
+    plain_bounded_economic_resets,
 )
 from dd4tester.fastwalks import Fastwalk
 from dd4tester.hunt_candidates import (
@@ -99,6 +100,14 @@ def test_passive_economic_audit_rechecks_mutable_source_world(
     assert calls == 2
 
 
+def test_route_economic_audit_ignores_noncombat_thief_output_affects() -> None:
+    _candidate, world, _state = economic_fixture()
+    world.objects[201] = replace(world.objects[201], affects=((18, 2),))
+
+    assert not passive_economic_hunt_mobile(world, 102, level=30)
+    assert passive_economic_transit_mobile(world, 102, level=30)
+
+
 def test_source_bounded_thief_route_preserves_hazards_and_opens_mirror_target() -> None:
     world = load_world_source(
         Path("runs/dd4-source/server/area"),
@@ -133,7 +142,7 @@ def test_source_bounded_thief_route_preserves_hazards_and_opens_mirror_target() 
     assert "route crosses a non-safe special mobile" in (
         orion_admitted.autonomy_rejections
     )
-    assert "a non-safe special mobile can reach the route" in (
+    assert "an economic special mobile can reach the route" in (
         orion_admitted.autonomy_rejections
     )
     assert orion_admitted.route_economic_hunt_mobile_vnums == ()

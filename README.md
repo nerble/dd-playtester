@@ -3,12 +3,139 @@
 An experimental autonomous Dragons Domain IV playtester using asyncio Telnet,
 GMCP, source-backed deterministic policies, and durable run evidence.
 
-## Current Status: November 15, 2026
+## Current Status: November 19, 2026
 
-Completed checkpoint **81002** (campaign **39**, run **25125**) records Dorrik
-at level **46 Knight**, **2,155,907 XP**, 1,082/1,117 HP, full mana/movement,
-at the Midgaard healer (**3054**). HERO remains unproved; **105,093 XP** remains
-to 47. No gameplay worker remains at this completed boundary; HERO100 is active.
+Campaign **39**: Dorrik, level **46 Knight**, **2,216,572 XP**, needs **44,428**
+for 47. The latest bounded resume reached checkpoint **85184** after safe,
+non-productive rotation through Irmugar and Admiral Blacksail. Checkpoint
+**85160** gained **750 XP** from a source-gear route; **85178** restored
+provisions. No character has reached HERO.
+
+Resume the existing pilot with
+`python -m dd4tester hero --name Dorrik --autonomous --progress`.
+For one bounded attempt add `--segments 1 --reset-retries 0 --max-segment-runtime 600`.
+A campaign marked `ready` can be resumed; it does **not** imply a kill,
+an XP gain, or even a connection. A hunt-planning timeout now reports
+`execution=not_started` separately from the campaign status.
+
+The architectural repair also makes transient route-crowd waits explicit: the
+controller retains the exact route step, destination, and direction, then
+reissues the adjacent `scan` before movement. It cannot consume that retry with
+a generic `look` and fall through into the room.
+
+`CampaignStateOwner` now binds the durable checkpoint mapping at named campaign
+boundaries, while its `CampaignDecisionContext` owns the source selector's
+derived caches and bounded recursion state. Policy repairs can return a new
+mapping without silently creating a second state owner. Equivalent copied
+checkpoints reuse the same decision work, while changed evidence still
+invalidates it. A loss-free crowd result can
+also earn one bounded live `consider` probe for a stale below-band marker; it
+does not authorize combat or weaken the normal live gates. Optional gear
+ranking now shares the same navigation cache and yields to the live handoff
+reserve when the preparation budget is nearly spent.
+Special procedures are not a target veto. Any exact source-matched special,
+including poison, breath, caster, and psionic procedures, reaches live
+identity and `consider` without a static Sanctuary, cure, damage, output, or
+energy-containment requirement. The live runner records and reacts to the
+observed effect under the normal route, crowd, provisioning, recovery, and
+own-health gates. Source identity, scripts, route attackers, crowds, player
+relocation, and other concrete route hazards remain hard gates. Checkpoint **85077** remains the successful live proof
+of this policy: `spec_cast_adept` Golden Buddha **10728/10819** completed for
+**3,607 XP**. Checkpoints **85094**, **85119**, and **85134** confirm special
+procedures are admitted to combat; their exact loss and partial-XP evidence
+remain recorded instead of becoming blanket special-target vetoes. The current
+revision also lets source-matched aggressive, poison, and psionic specials
+reach live `consider` without a static damage/output or containment veto.
+Checkpoint 85134 also verifies stale-absence
+rotation; 85149 proves protection recovery, 85155 records safe liquidation, and
+85160-85184 record the following gear, flight, hunt, provisioning, and absence
+boundaries.
+
+Required-gear carriers may be below the ordinary XP band when they provide a
+missing upgrade, but they still pass the exact route, source, crowd, identity,
+loss, carrying, Sanctuary, and live-health checks. Source damage and critical
+estimates remain report evidence only. A failed carrier segment with no run
+and zero commands is recorded as `interrupted_before_dispatch` and can be
+retried; a live interruption remains closed.
+
+Offline `show-combat-readiness` reports reuse the caller's ranked hunt frontier
+and have a bounded `--max-analysis-seconds` limit (30 seconds by default).
+When a cold source parse or ranking pass exceeds that limit, the command emits
+an explicit incomplete report with `analysis_status: "timed_out"` and never
+claims live authorization.
+
+Live `consider` state has one owner under `LiveSessionState`:
+`ConsiderSessionController` keeps relative-level admission separate from
+target-health wording. Messages such as "healthier than you" remain report
+evidence even when "no match for you" correctly closes a below-band target;
+they cannot authorize or veto combat.
+
+Campaign segment lifecycle has one owner under `RunStorage`. Each live segment
+gets an owner token and heartbeat while the MUD worker runs. Recovery can close
+an orphaned segment, and a late worker cannot overwrite that recovered outcome;
+the heartbeat is liveness evidence only, never gameplay evidence.
+
+Exact absence and crowd rechecks now consult the source catalogue already built
+for the current decision before resetting the selector. A missing exact match
+restores its absence evidence without paying for a duplicate full scan. A
+source-eligible crowd receipt gets one fresh selection window and then reaches
+the normal live room, identity, `consider`, crowd, health, and return gates.
+
+Segment continuation now has a structured `campaign_segment_handoff` record.
+Bounded runs record whether the next action is to rotate, resume, or finish,
+along with the reason; `ready_for_next_segment` no longer depends on matching
+human-readable status text for new checkpoints.
+
+Trailing no-XP history is a soft rotation signal rather than a hard candidate
+exclusion. Loss-free source-safe routes can receive another bounded live check
+after the ordinary frontier has rotated; losses, crowds, route hazards,
+identity failures, and negative `consider` results still close the exact route.
+
+A same-state source-selection timeout is now a liveness receipt, not evidence
+that the MUD frontier is empty. At the healer, the planner first offers an
+exact Sanctuary maintenance owner; if none is available, it spends one
+world-time probe to create a fresh checkpoint. It does not clear the receipt
+and rescan multiple source rotations inside the same decision. The probe
+handoff also respects the existing six-hour maintenance cadence, so a fresh
+resume cannot reconnect repeatedly without new world evidence.
+
+Frontier diagnoses now survive same-state preparation timeouts and planning-only
+rechecks when their boot, level, and source revision still match. They label the
+stage explicitly: a source-catalog count is not an executable handoff, and a
+no-hunt checkpoint records the final handoff outcome plus blocker counts.
+When a rotation pass has narrowed the live pool, the diagnosis retains the
+broad source catalogue separately from the current-band blocker summary;
+out-of-band route noise cannot drown out the reasons that matter for the next
+leveling decision. Incomplete scans are still discarded rather than presented
+as proof that the world is empty.
+
+Loss-free, pre-combat route interruptions now use a bounded soft-cooldown
+cursor. Each eligible singleton gets one fresh live chance before the
+frontier is reported empty; losses, crowds, hazards, identity mismatches, and
+negative `consider` evidence remain closed. A route that needs water breathing
+passes through the existing healer-to-magic-shop preparation owner rather than
+inventing an affect in selector state.
+
+Required protection resources follow the same boundary. The source catalog can
+record an exact carrier and potion even when its route is hazardous, but the
+campaign will not launch that maintenance segment until the route's crowd,
+special, attack-program, and live-preflight contract is executable. This keeps
+resource research separate from live combat permission.
+
+Gear selection accepts the authoritative structured `equipment` snapshot when
+an older checkpoint lacks the derived `campaign_worn_equipment` replay field.
+An explicitly recorded empty worn audit still wins; the next live `eq all`
+observation remains the authority for durable updates.
+
+Source-ranked consideration now has an explicit evidence boundary: the boolean
+used by the live controller is not enough to close a target historically. The
+campaign stores the captured MUD response separately; legacy boolean-only rows
+are re-probed through normal gates instead of being treated as terminal
+negative evidence.
+Runs **25487-25488** safely checked the absent Admiral Blacksail route. The
+subsequent selection checkpoints kept it closed and ended without an XP change.
+The absence handoff now keeps that exact target out until a different hunt is
+actually dispatched, while preserving later fresh retries.
 Runs **25108-25125** lost **25,206 net XP** despite four useful kills (13,151 XP)
 and four maintenance kills (680 XP). Egor's failed timed escape cost 50 XP,
 then death cost **38,987**. Corpse and equipment recovery succeeded. The
@@ -3578,7 +3705,9 @@ access permission.
 the learned repeatable action, conservative damage ceiling, durable campaign
 constraints, separate player alignment and fame, ranked current-band targets,
 and stronger gear placements with their source rejection reasons. Use `--json`
-for automation. Its output is
+for automation. Use `--max-analysis-seconds 60` for a larger offline audit
+budget when needed. If the budget expires, the JSON report is explicitly
+marked incomplete. Its output is
 analysis only and never authorizes a live connection; a target still needs
 the campaign's fresh consider, protection, resource, route, and loss gates.
 The quest section reports DD4's active-quest, fame, and cooldown gates. Old

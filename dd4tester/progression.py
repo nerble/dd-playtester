@@ -1739,18 +1739,18 @@ _SOURCE_RANKED_SANCTUARY_RESERVE_POLICY = ProgressionPolicy(
     status="research",
     execution="moria-deep-sanctuary-hunt",
     summary=(
-        "Acquire a source-identified sanctuary reserve before entering a "
-        "source-ranked mobile whose special procedure requires protection; "
-        "blindness-capable casters also need cure blindness training or a "
-        "second purple potion."
+        "Keep resource acquisition available as optional maintenance while "
+        "exact source-matched special targets proceed through live identity "
+        "and consider like ordinary targets."
     ),
     evidence=(
-        "The source-ranked candidate gate models the target special procedure "
-        "before opening combat and requires a carried sanctuary reserve.",
-        "The existing bounded Moria deep-carrier route can recover one purple "
-        "sanctuary potion without turning its below-band carrier into an XP "
-        "policy; a caster-special route is not opened until its blindness "
-        "recovery reserve is also executable.",
+        "Special procedures are behavior and XP evidence, not a static "
+        "Sanctuary, cure, damage, output, or energy-containment veto.",
+        "The live worker still owns exact identity, consider, crowd, route, "
+        "provisioning, own-health, combat, and post-effect recovery decisions.",
+        "The bounded Moria deep-carrier route remains available for genuinely "
+        "needed supplies, but it is never a prerequisite created only by a "
+        "target special.",
     ),
     practice_skill=None,
     segment_kill_limit=1,
@@ -2029,6 +2029,30 @@ _SOURCE_RANKED_FLIGHT_RESERVE_POLICY = ProgressionPolicy(
     ),
     practice_skill=None,
     segment_kill_limit=None,
+)
+
+_SOURCE_RANKED_ENERGY_CONTAINMENT_RESERVE_POLICY = ProgressionPolicy(
+    policy_id="source-ranked-energy-containment-reserve-35-100",
+    minimum_level=35,
+    maximum_level=100,
+    status="research",
+    execution="source-ranked-energy-containment-reserve",
+    summary=(
+        "Acquire one source-verified energy-containment potion before "
+        "reopening a high-level psionic target."
+    ),
+    evidence=(
+        "DD4's energy containment spell improves the saving throw used by "
+        "the source disintegrate spell; it is a protection effect, not an "
+        "immunity claim.",
+        "The resource selector binds the exact object, carrier, reset room, "
+        "and source route before a live required-loot probe.",
+        "The live combat controller must confirm the energy-containment "
+        "affect before the psionic fight starts; acquisition alone never "
+        "authorizes combat.",
+    ),
+    practice_skill=None,
+    segment_kill_limit=0,
 )
 
 _FAME_RECOVERY_CIRCUS_POLICY = ProgressionPolicy(
@@ -2903,18 +2927,11 @@ _SOURCE_RANKED_HUNT_POLICY = ProgressionPolicy(
         "specials add a withdrawal-triggering affect; and weak guard, "
         "bloodsucker, and judge procedures have bounded extra-hit or direct "
         "damage effects.",
-        "The source-ranked selector therefore permits only those explicitly "
-        "audited harmless/economic/weak cases when the special is the sole "
-        "rejection and its source damage bound fits current max HP. Conditional "
-        "crime specials and moderate, strong, boss, breath, and caster tiers "
-        "remain research-gated. Every permitted special retains exact-target, "
-        "single-mobile, live-consider, elevated-health, one-kill, disabling-"
-        "affect withdrawal, and healer-recovery boundaries. Existing source-"
-        "bounded mage, cleric, lightning-breath, and guard paths remain "
-        "explicit; gas-bearing breath variants (`spec_breath_gas` and the "
-        "random gas branch of `spec_breath_any`) remain research-gated until "
-        "poison-safe recovery is executable. Other moderate, strong, and boss "
-        "tiers remain research-gated.",
+        "The source-ranked selector admits an exact source-matched special "
+        "through the ordinary useful relative-level band. Source effects are "
+        "reported and handled after live identity/consider; only concrete "
+        "route, script, crowd, identity, provisioning, loss, and own-health "
+        "gates remain hard.",
         "Live run 3087 verified the wandering locator against forest mobile "
         "18007: `where man` placed the medicine man in River bed, a source-"
         "excluded route with aggressive wanderers, so the bot recalled without "

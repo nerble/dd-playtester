@@ -19,6 +19,7 @@ from dd4tester.hunt_candidates import (
     RoomSource,
     WorldSource,
     load_world_source,
+    rank_hunt_candidates,
 )
 from dd4tester.populations import (
     plain_bounded_population,
@@ -190,6 +191,54 @@ def test_four_copy_sentinel_reset_is_admitted_with_a_finite_sequential_bound():
     ) == 4
 
 
+def test_eight_copy_sentinel_reset_is_admitted_with_a_finite_sequential_bound():
+    world = sequential_duplicate_case()
+    world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=8)
+
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=100, room_vnum="200",
+    ) == 8
+
+
+def test_dwarven_home_maid_has_an_audited_single_wield_sequential_reset():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=20519, room_vnum=20500,
+    ) is None
+    assert source_sequential_duplicate_reset_limit(
+        world, mobile_vnum=20519, room_vnum=20500, allow_armed=True,
+    ) == 8
+
+
+def test_dwarven_home_maid_capacity_rejection_can_enter_ordinary_selection():
+    world = load_world_source(
+        Path("runs/dd4-source/server/area"),
+        include_all_areas=True,
+    )
+    candidate = next(
+        candidate
+        for candidate in rank_hunt_candidates(
+            world,
+            character_level=46,
+            character_class="warrior",
+            character_subclass="knight",
+            character_max_hp=1117,
+            include_all_areas=True,
+            include_below_band=True,
+            character_alignment=208,
+        )
+        if candidate.mobile_vnum == 20519 and candidate.room_vnum == 20500
+    )
+
+    assert campaign._source_ranked_plain_duplicate_rotation_selection_allowed(
+        candidate, world,
+    )
+
+
 def test_sequential_duplicate_reset_allows_source_passive_perception_affects():
     world = sequential_duplicate_case()
     world.mobiles[100] = replace(world.mobiles[100], affected_flags=(1 << 2) | (1 << 9))
@@ -225,7 +274,7 @@ def test_stay_area_terra_kan_population_allows_harmless_healing_pill():
 
 @pytest.mark.parametrize("mutation", [
     "aggressive", "wanders", "affected", "program", "special",
-    "armed", "object", "fifth_copy", "different_room", "second_reset",
+    "armed", "object", "ninth_copy", "different_room", "second_reset",
 ])
 def test_sequential_duplicate_reset_rejects_any_unverified_source_change(mutation):
     world = sequential_duplicate_case()
@@ -250,8 +299,8 @@ def test_sequential_duplicate_reset_rejects_any_unverified_source_change(mutatio
         )
     elif mutation == "object":
         world.mob_resets[0] = replace(world.mob_resets[0], object_vnums=(200,))
-    elif mutation == "fifth_copy":
-        world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=5)
+    elif mutation == "ninth_copy":
+        world.mob_resets[0] = replace(world.mob_resets[0], maximum_count=9)
     elif mutation == "different_room":
         world.mob_resets[0] = replace(world.mob_resets[0], room_vnum=201)
     else:

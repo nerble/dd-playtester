@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from dd4tester.fastwalks import expand_fastwalk, route_named, routes_for_level
+from dd4tester.fastwalks import Fastwalk, expand_fastwalk, route_named, routes_for_level
 from dd4tester.hunt_candidates import load_world_source
 
 
@@ -67,6 +67,22 @@ def test_route_expansion_cache_is_bounded_and_keyed_by_notation() -> None:
     assert expand_fastwalk.cache_info().maxsize == 1024
     assert replace(route, notation="2n").commands == ("north", "north")
     assert route.commands == expected
+
+
+def test_fastwalk_can_carry_source_hazard_ledger() -> None:
+    route = Fastwalk(
+        "source handoff",
+        1,
+        100,
+        "s",
+        route_hazard_mobile_vnums=(101,),
+        route_attack_program_mobile_vnums=(102,),
+        route_special_mobile_vnums=(103,),
+    )
+
+    assert route.route_hazard_mobile_vnums == (101,)
+    assert route.route_attack_program_mobile_vnums == (102,)
+    assert route.route_special_mobile_vnums == (103,)
 
 
 def test_official_routes_are_searchable_by_level_and_name() -> None:

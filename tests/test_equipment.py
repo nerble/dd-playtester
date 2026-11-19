@@ -114,6 +114,63 @@ def test_gear_upgrade_rank_uses_replaceable_or_empty_paired_slot(
     assert placements[0].upgrade_rank[0] == expected_gain
 
 
+def test_gear_ranking_reuses_campaign_analysis_cache(monkeypatch) -> None:
+    weapon = _item(60, "test sword", wear_bit=13)
+    world = WorldSource(
+        objects={weapon.vnum: weapon},
+        rooms={3001: RoomSource(3001, "recall", "test.are")},
+        room_object_resets=[RoomObjectReset(weapon.vnum, 3001)],
+    )
+    captured = {}
+
+    def fake_rank_hunt_candidates(_world, **kwargs):
+        captured["analysis_cache"] = kwargs["analysis_cache"]
+        return []
+
+    monkeypatch.setattr(
+        "dd4tester.equipment.rank_hunt_candidates",
+        fake_rank_hunt_candidates,
+    )
+    analysis_cache = {}
+
+    rank_gear_sources(
+        world,
+        character_level=46,
+        character_class="warrior",
+        include_all_areas=True,
+        analysis_cache=analysis_cache,
+    )
+
+    assert captured["analysis_cache"] is analysis_cache
+
+
+def test_gear_ranking_reuses_supplied_hunt_candidates(monkeypatch) -> None:
+    weapon = _item(61, "cached sword", wear_bit=13)
+    world = WorldSource(
+        objects={weapon.vnum: weapon},
+        rooms={3001: RoomSource(3001, "recall", "test.are")},
+        room_object_resets=[RoomObjectReset(weapon.vnum, 3001)],
+    )
+
+    def unexpected_rank(*_args, **_kwargs):
+        raise AssertionError("gear ranking should reuse the caller's candidates")
+
+    monkeypatch.setattr(
+        "dd4tester.equipment.rank_hunt_candidates",
+        unexpected_rank,
+    )
+
+    placements = rank_gear_sources(
+        world,
+        character_level=46,
+        character_class="warrior",
+        include_all_areas=True,
+        ranked_hunt_candidates=(),
+    )
+
+    assert placements
+
+
 def test_recovery_acquisition_ranks_added_health_not_total_item_health() -> None:
     current = _item(1, "old vest", (13, 100), wear_bit=3)
     vest = _item(2, "new vest", (13, 101), wear_bit=3)
@@ -667,6 +724,32 @@ def test_rank_executable_carrier_gear_sources_keeps_exact_safe_carriers() -> Non
             replace(
                 placements[0],
                 hazards=("reachable combat-joining special: the cityguard",),
+            ),
+        ),
+    ) == []
+    output_only = replace(
+        placements[0],
+        status="reject",
+        autonomy_rejections=("source mobile damage modifier is unavailable",),
+    )
+    assert rank_executable_carrier_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+        ranked_placements=(output_only,),
+    ) == [output_only]
+    assert rank_executable_carrier_gear_sources(
+        world,
+        character_level=5,
+        character_class="warrior",
+        current_items=(current,),
+        include_all_areas=True,
+        ranked_placements=(
+            replace(
+                output_only,
+                autonomy_rejections=("route crosses a higher-level aggressor",),
             ),
         ),
     ) == []

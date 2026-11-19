@@ -13,7 +13,116 @@ one character reaches HERO; Dorrik is the sole active progression track.
 The [September 8 review](docs/APPROACH_REVIEW_2026-09-08.md) is the current work
 order; dated run evidence belongs there, not in an expanding policy changelog.
 
-### Current Campaign Status: November 15, 2026
+### Next Proof: Level 46 to 47
+
+Resume from the healer. The latest bounded live work reached checkpoint
+**85184** at **2,216,572 XP**: the source-gear route at **85160** gained **750
+XP**, while later Irmugar and Admiral Blacksail visits were safe but
+non-productive and **85178** restored provisions. Source-matched specials now
+reach live `consider` without a static output veto; concrete protection rules,
+including psionic containment, remain active.
+The immediate test is still an independently
+selected useful kill, followed by positive net XP over consecutive autonomous trips,
+including losses, return travel and preparation. Then verify level 47 from the
+server. Do not widen class or level coverage first.
+
+### Architecture Checkpoint: November 19, 2026
+
+The storage/reporting recommendations are active: ordered events, compact
+current state, sparse checkpoints, bounded writes, cached summaries, and
+separate execution/objective/safety outcomes. `LiveSessionState` owns live
+controller state. `CampaignStateOwner` now binds replacement checkpoint
+mappings at named lifecycle boundaries, while its `CampaignDecisionContext`
+owns selector-derived caches and recursion limits. Gear ranking reuses that
+runner-owned navigation cache and yields when optional analysis would consume
+the live handoff reserve.
+Campaign segment lifecycle is now owned by `RunStorage`: running segments carry
+an owner token and heartbeat, the live campaign runner refreshes that lease,
+and recovery prevents late cleanup from overwriting a recovered segment. This
+is liveness evidence only and remains separate from game observations.
+The current frontier repair also lets one loss-free crowd observation reopen a
+stale below-band target for live `consider`; it never turns source evidence
+into combat permission. Keep the next implementation work focused on
+productive level-46/47 progression.
+The selector's trailing no-progress window is a ranking/rotation hint, not a
+reboot-scoped quota or hard target ban. Loss-free routes that still pass the
+source and live gates may re-enter for a bounded `consider`; terminal loss,
+crowd, route, identity and negative-`consider` evidence remains authoritative.
+Special procedures are behavior evidence rather than a generic target veto.
+The source-matched special must still pass exact identity, route, crowd, level,
+provisioning, effect recovery, and own-health gates; concrete source hazards
+remain strict. Checkpoint **85077** proves the revised handoff live: Dorrik
+selected Golden Buddha **10728/10819** (`spec_cast_adept`), completed the kill,
+gained **3,607 XP**, and returned safely. The subsequent checkpoint **85094**
+admitted the same special-procedure target again, recorded **2,051** partial XP
+and a **1,480** XP flee loss at the own-health floor, and returned safely for net
+**+571 XP**. Checkpoint **85119** then admitted the exact Ra special to a live
+visit and recorded its **1,480 XP** loss; checkpoint **85125** recorded a safe,
+absent Admiral Blacksail visit, and **85134** rotated once to Hera before
+recording a **1,063 XP** loss. Checkpoint **85149** acquired Sanctuary from the
+Alchemist for **390 XP**; **85155** then completed safe loot liquidation.
+Dorrik remains level 46 with **2,216,572 XP** and **44,428 XP** to level 47.
+Offline readiness diagnostics now reuse the ranked hunt frontier instead of
+recomputing it for gear placement, and their source loading/ranking is bounded.
+An expired `--max-analysis-seconds` budget produces an explicit incomplete
+report rather than a silent or indefinite worker.
+Flight preparation is now an explicit one-owner receipt: exact live absence
+consumes it at reconciliation, and legacy checkpoints repair an unbound receipt
+from the saved exact absence even when the candidate cache is gone. This keeps
+maintenance from replaying or masquerading as an XP decision while preserving
+the route for ordinary source rotation.
+Live segment **25056** / run **25694** then confirmed the old checkpoint shape:
+the exact Blacksail visit was safe but absent, leaving Dorrik at level 46 with
+no XP. The next invocation should consume that legacy marker during resume;
+only then should it make a new source decision.
+Same-state selector timeouts now have an explicit liveness handoff: exact
+Sanctuary maintenance is preferred, and an unavailable exact owner falls back
+to one healer-side world-time probe. Broad source rotation cannot clear the
+receipt and run repeated scans inside that decision; the next checkpoint owns
+the fresh frontier attempt. The probe path now shares the six-hour maintenance
+cadence, and gear comparison can consume structured worn equipment when older
+checkpoints lack the derived replay field.
+Frontier explanations now have an explicit lifecycle as well: complete
+same-boot diagnoses survive a preparation timeout and planning-only recheck,
+while incomplete scans are discarded. The checkpoint labels source-catalog
+counts separately from executable-handoff counts and records whether the final
+handoff was never started or had no executable candidate. Restricted rotation
+passes now retain the broad source catalogue without replacing the current-band
+diagnosis, and reports expose separate current-band and catalogue blocker lists.
+The selector/report boundary was then aligned: missing source output modifiers
+remain in candidate evidence but cannot suppress an ordinary compact handoff or
+inflate the frontier's hard-blocker counts. The level-46 replay now reports 58
+runtime-safe current-band candidates; its zero executable handoffs are due to
+actual live `consider`, loss, crowd, and route evidence rather than target-HP
+estimates. Keep this distinction intact while pursuing the next live route.
+Loss-free pre-combat route interruptions now rotate through a bounded persisted
+cursor before the frontier is declared empty. The selector can hand a route
+that needs underwater breathing to the existing magic-shop preparation owner;
+it never treats the planned effect as already active. Hard evidence such as a
+loss, crowd, route hazard, identity mismatch, or negative `consider` still
+closes the exact target.
+Required-loot protection routes use the same safety boundary: an exact source
+carrier can remain catalog evidence while an unbounded crowd, special,
+attack-program, or hard route hazard keeps its maintenance dispatch closed.
+The carrier ledger now distinguishes a zero-command setup failure from a live
+route interruption. The former is preserved as audit evidence but may re-enter
+the next bounded decision; the latter remains closed. Gear selection and live
+dispatch also no longer apply a duplicate source damage/critical budget on top
+of the real Sanctuary, route, identity, carrying, and own-health checks.
+
+The continuation contract is now structured as `campaign_segment_handoff` at
+the checkpoint. New bounded segments expose an explicit next action and reason,
+so message wording cannot accidentally restart, suppress, or repeat a campaign
+segment. Exact absence and crowd rechecks are now cache-gated before they reset
+the selector's decision window, preventing a stale marker from causing a
+duplicate full source scan. Live segment **25049** / run **25687** exercised the
+absence path for Admiral Blacksail; segment **25050** / run **25688** exercised
+the crowd path for `a living shadow`, reached the room, found three mobiles, and
+returned safely without claiming XP. Checkpoint **84965** is the current
+planning boundary. Keep the next implementation work focused on productive
+level-46/47 progression.
+
+### Earlier Campaign Status: November 15, 2026
 
 Completed checkpoint **81002**, campaign **39**, records Dorrik at level **46**,
 **2,155,907 XP**, at healer **3054**, **105,093 XP** to 47. No owned worker
@@ -1360,6 +1469,8 @@ HERO remains unproved.
 The storage, state-ownership, outcome, incremental-summary, and experiment
 foundations from the architecture review remain in the current worktree; keep
 the work focused on Dorrik's current-band gates and durable resume evidence.
+`LiveSessionState` now also owns the typed `ConsiderSessionController`, keeping
+relative-level admission separate from observation-only target-health wording.
 
 Run **16147** failed before issuing game commands because optional rearm
 reporting dereferenced an absent policy adapter; that crash is fixed. Run

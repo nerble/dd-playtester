@@ -518,10 +518,9 @@ def test_show_combat_readiness_reports_output_and_blockers(
     captured = capsys.readouterr()
     report = json.loads(captured.out)
     assert exit_code == 0
-    assert world_load_options == {
-        "include_all_areas": False,
-        "include_all_objects": True,
-    }
+    assert world_load_options["include_all_areas"] is False
+    assert world_load_options["include_all_objects"] is True
+    assert callable(world_load_options["preparation_check"])
     assert report["source_revision"] == "source-current"
     assert report["output"]["total_conservative_ceiling"] == 76
     assert report["target_summary"] == {
@@ -560,6 +559,53 @@ def test_show_combat_readiness_reports_output_and_blockers(
     )
     assert captured_alignment["value"] == 1000
     assert captured_alignment["level_ceiling_offset"] == 9
+
+
+def test_show_combat_readiness_returns_explicit_timeout_report(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "area"
+    source.mkdir()
+    database = tmp_path / "runs.sqlite3"
+    with RunStorage(database):
+        pass
+
+    monkeypatch.setattr(
+        dd4tester.cli,
+        "load_world_source",
+        lambda *_args, **_kwargs: SimpleNamespace(objects={}),
+    )
+
+    def slow_rank(_world, **_kwargs):
+        raise TimeoutError("forced readiness timeout")
+
+    monkeypatch.setattr(dd4tester.cli, "rank_hunt_candidates", slow_rank)
+
+    exit_code = main(
+        [
+            "show-combat-readiness",
+            "--level",
+            "46",
+            "--class",
+            "warrior",
+            "--source",
+            str(source),
+            "--database",
+            str(database),
+            "--max-analysis-seconds",
+            "0.001",
+            "--json",
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert report["analysis_status"] == "timed_out"
+    assert report["analysis_complete"] is False
+    assert report["live_authorization"] is False
+    assert "timeout" in report["analysis_error"]
 
 
 def test_readiness_gear_uses_exact_worn_vnum_and_skips_ambiguous_names() -> None:

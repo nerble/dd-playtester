@@ -20,6 +20,7 @@ from dd4tester.hunt_candidates import (
     MobileSource,
     MobReset,
     ObjectSource,
+    RoomObjectReset,
     ITEM_WEAPON,
     WEAR_WIELD,
     WorldSource,
@@ -85,6 +86,172 @@ def test_unique_wandering_source_bystander_is_resolved_without_room_reset():
 
     assert policy._source_mobile_vnums_for_name_in_room("midget", state) == (101,)
     assert policy._source_mobile_name_is_non_assisting_bystander("midget", state)
+
+
+def test_complete_targetmode_listing_caps_repeated_room_text_counts():
+    policy, state = _encounter("warrior")
+    policy.room_target_counts["200"] = {"illusionist": 2, "midget": 1}
+    state.room_listing = {
+        "room_vnum": "200",
+        "render_complete": True,
+        "targeted_lines": [
+            {
+                "description": "The illusionist is doing tricks here.",
+                "target_id": "10",
+            },
+            {
+                "description": "A midget is doing acrobatics here.",
+                "target_id": "11",
+            },
+        ],
+    }
+
+    assert policy._current_room_target_counts(state) == {
+        "illusionist": 1,
+        "midget": 1,
+    }
+
+
+def test_complete_targetmode_listing_drops_status_marked_source_object():
+    policy, state = _encounter("warrior")
+    object_description = (
+        "The mace has been broken two-thirds the way up the handle, "
+        "and many of the spikes are now blunt."
+    )
+    policy.source_world.objects[12] = ObjectSource(
+        12,
+        "a broken spiked mace",
+        "a broken spiked mace",
+        15,
+        (),
+        0,
+        room_description=object_description,
+    )
+    policy.source_world.room_object_resets.append(RoomObjectReset(12, 200))
+    # Model a global source alias collision: the same prose is indexed as a
+    # mobile elsewhere, but this room's source reset identifies it as an item.
+    policy.source_mobile_targets[object_description.casefold()] = ("mace",)
+    policy.room_target_counts["200"][object_description] = 1
+    state.room_listing = {
+        "room_vnum": "200",
+        "render_complete": True,
+        "targeted_lines": [
+            {
+                "description": "(Magical) [_?_] " + object_description,
+                "target_id": "12",
+            },
+            {
+                "description": "The illusionist is doing tricks here.",
+                "target_id": "10",
+            },
+        ],
+    }
+
+    assert policy._current_room_target_counts(state) == {
+        "illusionist": 1,
+        "midget": 1,
+    }
+
+
+def test_complete_targetmode_listing_does_not_promote_unknown_object_rows():
+    policy, state = _encounter("warrior")
+    policy.source_world.objects[12] = ObjectSource(
+        12,
+        "armor posts",
+        "a number of armor posts",
+        1,
+        (),
+        0,
+        room_description="A number of armor posts are against the walls.",
+    )
+    policy.source_world.room_object_resets.append(RoomObjectReset(12, 200))
+    policy.room_target_counts["200"] = {
+        "illusionist": 1,
+        "midget": 1,
+        "a number of armor posts": 1,
+    }
+    state.room_listing = {
+        "room_vnum": "200",
+        "render_complete": True,
+        "targeted_lines": [
+            {
+                "description": "A number of armor posts are against the walls.",
+                "target_id": "12",
+            },
+            {
+                "description": "The illusionist is doing tricks here.",
+                "target_id": "10",
+            },
+            {
+                "description": "A midget is doing acrobatics here.",
+                "target_id": "11",
+            },
+        ],
+    }
+
+    assert policy._current_room_target_counts(state) == {
+        "illusionist": 1,
+        "midget": 1,
+    }
+
+
+def test_object_rows_do_not_recreate_crowd_after_bystander_probe():
+    policy, state = _encounter("warrior")
+    policy.source_world.objects[12] = ObjectSource(
+        12,
+        "armor posts",
+        "a number of armor posts",
+        1,
+        (),
+        0,
+        room_description="A number of armor posts are against the walls.",
+    )
+    policy.source_world.room_object_resets.append(RoomObjectReset(12, 200))
+    policy.room_target_counts["200"] = {
+        "illusionist": 1,
+        "midget": 1,
+        "a number of armor posts": 1,
+    }
+    policy.room_target_selectors["200"] = {
+        "illusionist": ("#10",),
+        "midget": ("#11",),
+    }
+    policy.room_target_selector_descriptions["200"] = {
+        "#10": "the illusionist is doing tricks here.",
+        "#11": "a midget is doing acrobatics here.",
+    }
+    state.room_listing = {
+        "room_vnum": "200",
+        "render_complete": True,
+        "targeted_lines": [
+            {
+                "description": "A number of armor posts are against the walls.",
+                "target_id": "12",
+            },
+            {
+                "description": "The illusionist is doing tricks here.",
+                "target_id": "10",
+            },
+            {
+                "description": "A midget is doing acrobatics here.",
+                "target_id": "11",
+            },
+        ],
+    }
+    policy.bystander_consider_results["#11"] = {
+        "below_assistance_band": True,
+        "room_vnum": "200",
+        "level": 8,
+        "source_mobile_vnum": 101,
+        "boot_id": "test-boot",
+        "expires_at": time.monotonic() + 30,
+    }
+
+    decision = policy._consider_fastwalk_target(state)
+
+    assert decision is not None
+    assert decision.command == "consider #10"
+    assert policy.fastwalk_crowded is False
 
 
 def _sequential_duplicate_shadow() -> tuple[StarterPolicy, CharacterState]:

@@ -75,7 +75,7 @@ def test_master_elf_exception_matches_only_the_source_reset(master_elf, source_w
     )
 
 
-def test_master_elf_exception_requires_protection_and_live_band(master_elf, source_world):
+def test_master_elf_special_is_not_a_static_protection_gate(master_elf, source_world):
     state = _prepared_state()
     assert campaign._audited_source_special_candidate_allowed(
         master_elf,
@@ -83,7 +83,7 @@ def test_master_elf_exception_requires_protection_and_live_band(master_elf, sour
         character_max_hp=937,
         source_world=source_world,
     )
-    assert campaign._source_ranked_candidate_requires_sanctuary(master_elf)
+    assert not campaign._source_ranked_candidate_requires_sanctuary(master_elf)
     assert campaign._source_ranked_special_candidate_in_live_level_ceiling(
         master_elf,
         character_level=39,
@@ -94,7 +94,7 @@ def test_master_elf_exception_requires_protection_and_live_band(master_elf, sour
         "combat_pouch_potions": {},
         "verified_combat_pouch_potions": {},
     }
-    assert not campaign._audited_source_special_candidate_allowed(
+    assert campaign._audited_source_special_candidate_allowed(
         master_elf,
         state=no_sanctuary,
         character_max_hp=937,
@@ -102,7 +102,7 @@ def test_master_elf_exception_requires_protection_and_live_band(master_elf, sour
     )
 
     too_high = replace(master_elf, level=41)
-    assert not campaign._source_ranked_special_candidate_in_live_level_ceiling(
+    assert campaign._source_ranked_special_candidate_in_live_level_ceiling(
         too_high,
         character_level=39,
     )
@@ -120,7 +120,7 @@ def test_master_elf_route_closes_when_source_fuzz_can_reach_xp_floor(
         character_level=character_level,
     )
     state = {**_prepared_state(), "level": character_level}
-    assert not campaign._source_ranked_candidate_in_current_band(
+    assert campaign._source_ranked_candidate_in_current_band(
         master_elf,
         state,
         world=source_world,

@@ -163,6 +163,7 @@ POST_OBJECTIVE_HAZARD_SPECIALS = frozenset(
         *WEAK_DIRECT_DAMAGE_SPECIALS,
         "spec_cast_cleric",
         "spec_cast_mage",
+        "spec_cast_archmage",
         "spec_cast_undead",
         "spec_wight",
         "spec_wraith",
@@ -186,6 +187,11 @@ _STATUS_EFFECTS_BY_SPECIAL: dict[str, tuple[str, ...]] = {
         "dispel magic",
         "energy drain",
     ),
+    # The archmage table opens dispel magic at level 35 and energy drain at
+    # level 40. Direct spell damage is bounded by the campaign's exact
+    # two-enemy source contract; these are the lasting effects that matter
+    # for recovery planning.
+    "spec_cast_archmage": ("dispel magic", "energy drain"),
     # spec_cast_undead selects from a level-gated spell table only after the
     # player is already fighting the mobile. The unparameterized profile is
     # intentionally the union of every possible late-level effect; callers
@@ -400,6 +406,7 @@ def source_special_status_effects(
     if normalized not in {
         "spec_cast_cleric",
         "spec_cast_mage",
+        "spec_cast_archmage",
         "spec_cast_undead",
         "spec_cast_druid",
         "spec_cast_psionicist",
@@ -427,6 +434,13 @@ def source_special_status_effects(
         if caster_level >= 20:
             effects.append("dispel magic")
         if caster_level >= 25:
+            effects.append("energy drain")
+        return tuple(effects)
+    if normalized == "spec_cast_archmage":
+        effects: list[str] = []
+        if caster_level >= 35:
+            effects.append("dispel magic")
+        if caster_level >= 40:
             effects.append("energy drain")
         return tuple(effects)
     if normalized == "spec_cast_druid":

@@ -2,7 +2,7 @@
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 
 from .equipment import normalize_item_name
@@ -15,9 +15,11 @@ from .hunt_candidates import (
     ITEM_POTION,
     ITEM_SCROLL,
     ITEM_STAFF,
+    ITEM_TREASURE,
     ITEM_WAND,
     ITEM_WEAPON,
     WEAR_DUAL,
+    WEAR_HOLD,
     WEAR_WIELD,
     HuntCandidate,
     WorldSource,
@@ -43,6 +45,19 @@ _SOURCE_HUNT_ID = re.compile(
 # Detect-evil, detect-hidden, and infrared are passive perception flags. They
 # do not add an attack, protection, movement, or crowd hazard to a plain reset.
 _SOURCE_SEQUENTIAL_PASSIVE_AFFECTS = (1 << 2) | (1 << 5) | (1 << 9)
+
+# A sequential reset is still a bounded live encounter when the source has a
+# few more exact copies than the original four-copy contract.  The runner
+# fights one selector at a time and never treats this as a crowd permission.
+SOURCE_SEQUENTIAL_DUPLICATE_MIN_INSTANCES = 2
+SOURCE_SEQUENTIAL_DUPLICATE_MAX_INSTANCES = 8
+
+# These are the same passive NPC equipment affects accepted by the source
+# armed-loadout audit.  Damage and hit-point modifiers stay outside this
+# narrow sequential contract because the encounter budget does not model them.
+_SOURCE_SEQUENTIAL_PASSIVE_EQUIPMENT_AFFECTS = frozenset({
+    0, 1, 2, 3, 4, 5, 12, 14, 17, 18, 20, 21, 22, 23, 24,
+})
 
 # Population checks are called repeatedly while the source-ranked selector
 # rotates through candidates.  The source world is immutable for a campaign
@@ -71,9 +86,14 @@ def _resets_by_mobile_for_world(
 def _source_sequential_reset_objects_are_harmless(
     world: WorldSource,
     object_vnums: tuple[int, ...],
+    *,
+    equipment_vnums: Collection[int] = (),
 ) -> bool:
     """Allow only inert food or simple healing items on a plain reset."""
+    equipped = set(equipment_vnums)
     for object_vnum in object_vnums:
+        if object_vnum in equipped:
+            continue
         item = world.objects.get(object_vnum)
         if item is None or item.item_type not in {ITEM_FOOD, ITEM_PILL}:
             return False
@@ -95,21 +115,56 @@ def _source_sequential_reset_objects_are_harmless(
     return True
 
 
+def _source_sequential_reset_equipment_is_harmless(
+    world: WorldSource,
+    equipment: tuple[tuple[int, int], ...],
+    *,
+    allow_armed: bool,
+) -> bool:
+    """Audit the optional fixed single-wield loadout for a reset."""
+    if not allow_armed:
+        return not equipment
+    wielded = [
+        object_vnum
+        for slot, object_vnum in equipment
+        if slot == WEAR_WIELD
+    ]
+    if (
+        len(wielded) != 1
+        or any(slot == WEAR_DUAL for slot, _ in equipment)
+    ):
+        return False
+    for slot, object_vnum in equipment:
+        item = world.objects.get(object_vnum)
+        if item is None or any(
+            location not in _SOURCE_SEQUENTIAL_PASSIVE_EQUIPMENT_AFFECTS
+            for location, _amount in item.affects
+        ):
+            return False
+        if slot == WEAR_WIELD:
+            if item.item_type != ITEM_WEAPON or item.extra_flags & (1 << 14):
+                return False
+        elif slot != WEAR_HOLD or item.item_type != ITEM_TREASURE:
+            return False
+    return True
+
+
 def source_sequential_duplicate_reset_limit(
     world: WorldSource | None,
     *,
     mobile_vnum: int,
     room_vnum: int | str,
+    allow_armed: bool = False,
 ) -> int | None:
     """Prove a small plain stationary or stay-area reset safe to select sequentially.
 
     This is not multi-target combat permission or the capacity-only population
-    research path. It applies only to one unprogrammed, unspecial, unequipped
-    sentinel or stay-area reset with two to four instances in one room. A
-    stay-area mobile is included only when its source reset is otherwise
-    plain; the live locator still has to find the exact copy before each
-    bounded action. The caller still has to prove every live selector and
-    keep the sequential kill bound.
+    research path. It applies only to one unprogrammed, unspecial sentinel or
+    stay-area reset with two to eight instances in one room. The default shape
+    is unequipped; ``allow_armed`` admits only a fixed single-wield weapon and
+    passive held treasure whose source affects are known. The live locator
+    still has to find the exact copy before each bounded action. The caller
+    still has to prove every live selector and keep the sequential kill bound.
     """
     try:
         room = int(room_vnum)
@@ -139,14 +194,26 @@ def source_sequential_duplicate_reset_limit(
         or not room_resets
         or len(room_resets) != 1
         or type(room_resets[0].maximum_count) is not int
-        or not 2 <= room_resets[0].maximum_count <= 4
+        or not (
+            SOURCE_SEQUENTIAL_DUPLICATE_MIN_INSTANCES
+            <= room_resets[0].maximum_count
+            <= SOURCE_SEQUENTIAL_DUPLICATE_MAX_INSTANCES
+        )
+        or len({reset.equipment for reset in resets}) != 1
         or any(
             type(reset.maximum_count) is not int
             or reset.maximum_count != room_resets[0].maximum_count
-            or reset.equipment
+            or not _source_sequential_reset_equipment_is_harmless(
+                world,
+                reset.equipment,
+                allow_armed=allow_armed,
+            )
             or not _source_sequential_reset_objects_are_harmless(
                 world,
                 reset.object_vnums,
+                equipment_vnums=(
+                    object_vnum for _slot, object_vnum in reset.equipment
+                ),
             )
             for reset in resets
         )

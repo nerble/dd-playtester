@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from dd4tester.campaign import (
     CampaignResult,
+    _campaign_segment_handoff_marker,
     _decorate_campaign_result,
 )
 from dd4tester.storage import RunStorage
@@ -29,6 +30,50 @@ def test_campaign_result_exposes_independent_outcomes() -> None:
     assert result.objective_achieved is False
     assert result.ran_safely is True
     assert result.target_achieved is False
+
+
+def test_structured_handoff_controls_continuation_without_message_parsing() -> None:
+    waiting = CampaignResult(
+        7,
+        "ready",
+        None,
+        "campaign rotation will continue",
+        {
+            "campaign_segment_handoff": {
+                "action": "wait_for_reset",
+                "reason": "field_reset",
+            }
+        },
+    )
+    rotating = CampaignResult(
+        7,
+        "ready",
+        None,
+        "message wording is irrelevant",
+        {},
+        handoff="rotate_source",
+    )
+
+    assert waiting.ready_for_next_segment is False
+    assert rotating.ready_for_next_segment is True
+
+
+def test_bounded_source_handoff_records_negative_consider_reason() -> None:
+    marker = _campaign_segment_handoff_marker(
+        {
+            "campaign_fastwalk_source_consider_outcomes": {
+                "source-ranked-hunt-dwarven-home-20516-20525-46": False
+            }
+        },
+        execution="source-ranked-hunt",
+        objective_kills=(),
+        policy_id="source-ranked-hunt-dwarven-home-20516-20525-46",
+        bounded=True,
+    )
+
+    assert marker["action"] == "rotate_source"
+    assert marker["reason"] == "negative_consider"
+    assert marker["objective"] == "not_achieved"
 
 
 def test_campaign_result_decorates_from_the_checkpointed_segment(
@@ -182,9 +227,9 @@ def test_unlinked_checkpoint_does_not_reuse_an_older_objective(tmp_path: Path) -
     )
 
     assert decorated.outcomes == {
-        "execution": "success",
+        "execution": "not_started",
         "objective": "not_achieved",
-        "safety": "safe",
+        "safety": "unknown",
     }
     assert decorated.target_outcome == "not_achieved"
 

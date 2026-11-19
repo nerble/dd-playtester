@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from .hunt_candidates import (
     ITEM_INSTRUMENT,
@@ -21,6 +21,7 @@ from .hunt_candidates import (
     _rank_direct_ground_stashes,
     _reset_object_vnums,
     _shortest_paths_from,
+    _source_output_evidence_only,
     load_object_set_sources,
     load_object_sources,
     rank_hunt_candidates,
@@ -332,6 +333,9 @@ def rank_gear_sources(
     include_all_areas: bool = False,
     character_max_hp: int | None = None,
     recall_origins: Mapping[int, int] | None = None,
+    analysis_cache: MutableMapping[Any, Any] | None = None,
+    ranked_hunt_candidates: Sequence[Any] | None = None,
+    preparation_check: Any | None = None,
 ) -> list[GearSourcePlacement]:
     """Rank source placements that can improve a character's loadout.
 
@@ -342,6 +346,8 @@ def rank_gear_sources(
     """
     if character_level < 1:
         raise ValueError("character_level must be at least 1")
+    if preparation_check is not None:
+        preparation_check()
     # Validate the stance before doing source work, including on an empty map.
     if stance not in {STANCE_COMBAT, STANCE_PRE_LEVEL, STANCE_RECOVERY}:
         raise ValueError(f"Unknown equipment stance: {stance}")
@@ -365,6 +371,8 @@ def rank_gear_sources(
             character_alignment=character_alignment,
         )
     )
+    if preparation_check is not None:
+        preparation_check()
     if not selected_objects:
         return []
 
@@ -394,19 +402,26 @@ def rank_gear_sources(
     }
 
     selected_vnums = {item.vnum for item in selected_objects}
-    candidates = rank_hunt_candidates(
-        world,
-        character_level=character_level,
-        character_class=character_class,
-        character_subclass=subclass,
-        include_xp_only=True,
-        include_below_band=True,
-        character_max_hp=character_max_hp,
-        include_level_ceiling_candidates=character_max_hp is not None,
-        include_all_areas=include_all_areas,
-        required_loot_object_vnums=selected_vnums,
-        recall_origins=recall_origins,
-    )
+    if ranked_hunt_candidates is not None:
+        candidates = list(ranked_hunt_candidates)
+    else:
+        candidates = rank_hunt_candidates(
+            world,
+            character_level=character_level,
+            character_class=character_class,
+            character_subclass=subclass,
+            include_xp_only=True,
+            include_below_band=True,
+            character_max_hp=character_max_hp,
+            include_level_ceiling_candidates=character_max_hp is not None,
+            include_all_areas=include_all_areas,
+            required_loot_object_vnums=selected_vnums,
+            recall_origins=recall_origins,
+            analysis_cache=analysis_cache,
+            preparation_check=preparation_check,
+        )
+    if preparation_check is not None:
+        preparation_check()
     candidates_by_source: dict[tuple[int, int], Any] = {}
     for candidate in candidates:
         candidates_by_source.setdefault(
@@ -616,6 +631,8 @@ def rank_gear_sources(
 
     object_by_vnum = {item.vnum: item for item in selected_objects}
     for reset in world.mob_resets:
+        if preparation_check is not None:
+            preparation_check()
         room = world.rooms.get(reset.room_vnum)
         mobile = world.mobiles.get(reset.mobile_vnum)
         if room is None or mobile is None:
@@ -647,6 +664,8 @@ def rank_gear_sources(
             )
 
     for reset in world.room_object_resets:
+        if preparation_check is not None:
+            preparation_check()
         item = object_by_vnum.get(reset.object_vnum)
         room = world.rooms.get(reset.room_vnum)
         if item is None or room is None:
@@ -694,6 +713,7 @@ def rank_executable_ground_gear_sources(
     recall_origins: Mapping[int, int] | None = None,
     require_no_flight: bool = False,
     ranked_placements: Sequence[GearSourcePlacement] | None = None,
+    analysis_cache: MutableMapping[Any, Any] | None = None,
 ) -> list[GearSourcePlacement]:
     """Return exact ground-reset upgrades that the runner can execute.
 
@@ -718,6 +738,7 @@ def rank_executable_ground_gear_sources(
             include_all_areas=include_all_areas,
             character_max_hp=character_max_hp,
             recall_origins=recall_origins,
+            analysis_cache=analysis_cache,
         )
     )
     executable: list[GearSourcePlacement] = []
@@ -763,6 +784,7 @@ def rank_executable_carrier_gear_sources(
     recall_origins: Mapping[int, int] | None = None,
     require_no_flight: bool = False,
     ranked_placements: Sequence[GearSourcePlacement] | None = None,
+    analysis_cache: MutableMapping[Any, Any] | None = None,
 ) -> list[GearSourcePlacement]:
     """Return safe upgrades that require defeating a source-listed carrier.
 
@@ -784,17 +806,30 @@ def rank_executable_carrier_gear_sources(
             include_all_areas=include_all_areas,
             character_max_hp=character_max_hp,
             recall_origins=recall_origins,
+            analysis_cache=analysis_cache,
         )
     )
     executable: list[GearSourcePlacement] = []
     for placement in placements:
         item = world.objects.get(placement.object_vnum)
+        source_blocking_rejections = tuple(
+            rejection
+            for rejection in placement.autonomy_rejections
+            if not _source_output_evidence_only((rejection,))
+        )
+        source_output_only_reject = (
+            placement.status == "reject"
+            and _source_output_evidence_only(placement.autonomy_rejections)
+        )
         if (
             placement.source_kind not in {"mob-carried", "mob-equipped"}
             or placement.source_mobile_vnum is None
             or not placement.better_than_current
-            or placement.status not in {"promising", "caution"}
-            or placement.autonomy_rejections
+            or (
+                placement.status not in {"promising", "caution"}
+                and not source_output_only_reject
+            )
+            or source_blocking_rejections
             or not placement.route
             or item is None
             or not is_releasable_funding_item(item)
